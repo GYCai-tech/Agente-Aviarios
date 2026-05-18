@@ -66,7 +66,6 @@ export interface DatosIntake {
   num_gallinas: number;
   sistema: Sistema;
   superficie_nave_m2: number;
-  tipo_nidal?: "individual" | "colectivo";
 }
 
 export interface VerificacionNave {

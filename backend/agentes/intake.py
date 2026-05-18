@@ -11,7 +11,6 @@ class DatosIntake(BaseModel):
     num_gallinas: int
     sistema: Sistema
     superficie_nave_m2: float
-    tipo_nidal: Optional[TipoNidal] = None  # solo sistemas alternativos
 
 
 class RequisitoCalculado(BaseModel):
@@ -47,11 +46,12 @@ def generar_informe(datos: DatosIntake) -> InformeIntake:
     verificaciones: list[VerificacionNave] = []
     requisitos: list[RequisitoCalculado] = []
     advertencias: list[str] = []
+    tipo_nidal: TipoNidal = "individual" if n <= 100 else "colectivo"
 
     if datos.sistema == "jaulas":
         _informe_jaulas(n, datos, verificaciones, requisitos, advertencias)
     else:
-        _informe_alternativo(n, datos, verificaciones, requisitos, advertencias)
+        _informe_alternativo(n, datos, tipo_nidal, verificaciones, requisitos, advertencias)
 
     fallos = [v for v in verificaciones if not v.cumple]
 
@@ -114,7 +114,7 @@ def _informe_jaulas(n, datos, verificaciones, requisitos, advertencias):
         )
 
 
-def _informe_alternativo(n, datos, verificaciones, requisitos, advertencias):
+def _informe_alternativo(n, datos, tipo_nidal, verificaciones, requisitos, advertencias):
     densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
     densidad_real = n / datos.superficie_nave_m2
 
@@ -145,7 +145,7 @@ def _informe_alternativo(n, datos, verificaciones, requisitos, advertencias):
     ))
 
     # Nidales
-    if datos.tipo_nidal == "individual":
+    if tipo_nidal == "individual":
         nidales_min = math.ceil(n / 7)
         requisitos.append(RequisitoCalculado(
             nombre="Nidales individuales",

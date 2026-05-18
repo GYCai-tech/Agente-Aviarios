@@ -43,7 +43,6 @@ export default function ChatInterface() {
   const sistemaLabel = mainV.sistema as SistemaLabel | undefined;
   const sistemaApi   = sistemaLabel ? SISTEMA_MAP[sistemaLabel] : undefined;
   const esJaulas     = sistemaApi === "jaulas";
-  const tipoNidal    = instV.tipo_nidal as "individual" | "colectivo" | undefined;
 
   function go(next: Step) { setAnim((k) => k + 1); setStep(next); }
 
@@ -55,7 +54,6 @@ export default function ChatInterface() {
         num_gallinas:       parseInt(mainV.gallinas),
         sistema:            sistemaApi!,
         superficie_nave_m2: parseFloat(instV.superficie_nave_m2),
-        ...(!esJaulas && tipoNidal ? { tipo_nidal: tipoNidal } : {}),
       };
       setRes(await solicitarIntake(datos));
     } catch {
@@ -270,24 +268,10 @@ export default function ChatInterface() {
                   </div>
                 </div>
 
-                {!esJaulas && (
-                  <>
-                    <div className="avi-sep"><span>Zona de puesta</span></div>
-                    <div className="avi-field">
-                      <label className="avi-label">Tipo de nidal</label>
-                      <select className="avi-select" required value={instV.tipo_nidal ?? ""}
-                        onChange={(e) => setInst((v) => ({ ...v, tipo_nidal: e.target.value }))}>
-                        <option value="" disabled>Selecciona tipo</option>
-                        <option value="individual">Nidal individual (1 por cada 7 gallinas)</option>
-                        <option value="colectivo">Nidal colectivo (1 m² por cada 120 gallinas)</option>
-                      </select>
-                    </div>
-                  </>
-                )}
 
                 <div className="avi-btn-row">
                   <button type="submit" className="avi-btn-primary"
-                    disabled={!instV.superficie_nave_m2 || (!esJaulas && !tipoNidal)}>
+                    disabled={!instV.superficie_nave_m2}>
                     Calcular requisitos
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
