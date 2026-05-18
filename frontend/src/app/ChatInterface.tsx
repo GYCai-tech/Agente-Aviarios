@@ -2,62 +2,29 @@
 
 import { useState } from "react";
 import {
-  calcularGranja,
-  type DatosCalculadora,
-  type CalcularResponse,
+  solicitarIntake,
+  type DatosIntake,
+  type IntakeResponse,
   type Sistema,
-  type TipoNidal,
 } from "./actions";
 
 type Step = "main" | "instalacion" | "loading" | "result";
 
-const SISTEMAS_LABEL = ["En suelo", "Campero", "Ecológico"] as const;
+const SISTEMAS_LABEL = ["En suelo", "Campero", "Ecológico", "Jaulas enriquecidas"] as const;
 type SistemaLabel = (typeof SISTEMAS_LABEL)[number];
 
 const SISTEMA_MAP: Record<SistemaLabel, Sistema> = {
-  "En suelo":  "suelo",
-  "Campero":   "campero",
-  "Ecológico": "ecologico",
+  "En suelo":           "suelo",
+  "Campero":            "campero",
+  "Ecológico":          "ecologico",
+  "Jaulas enriquecidas":"jaulas",
 };
 
 const STEPS = [
   { key: "main",        label: "Proyecto" },
   { key: "instalacion", label: "Instalación" },
-  { key: "result",      label: "Resultado" },
+  { key: "result",      label: "Informe" },
 ] as const;
-
-function buildDatos(
-  main: Record<string, string>,
-  inst: Record<string, string>
-): DatosCalculadora {
-  const sistema = SISTEMA_MAP[main.sistema as SistemaLabel] ?? "suelo";
-  const tipoNidal = (inst.tipo_nidal ?? "individual") as TipoNidal;
-  const exter = ["campero", "ecologico"].includes(sistema);
-
-  return {
-    num_gallinas:       parseInt(main.gallinas),
-    sistema,
-    superficie_nave_m2: parseFloat(inst.superficie_nave_m2),
-    altura_libre_cm:    parseFloat(inst.altura_libre_cm),
-    tipo_nidal: tipoNidal,
-    ...(tipoNidal === "individual"
-      ? { num_nidales: parseInt(inst.num_nidales || "0") }
-      : { superficie_nidales_m2: parseFloat(inst.superficie_nidales_m2 || "0") }),
-    ...(exter ? {
-      superficie_exterior_m2:  parseFloat(inst.superficie_exterior_m2 || "0"),
-      ancho_total_salidas_cm:  parseFloat(inst.ancho_total_salidas_cm  || "0"),
-    } : {}),
-  };
-}
-
-function parseAnalisis(text: string) {
-  if (text.includes("##VEREDICTO##")) {
-    const parts = text.split(/##VEREDICTO##|##CAPACIDAD##|##REQUISITOS##/);
-    if (parts.length >= 4)
-      return { veredicto: parts[1].trim(), capacidad: parts[2].trim(), requisitos: parts[3].trim() };
-  }
-  return { veredicto: text.trim(), capacidad: "", requisitos: "" };
-}
 
 function renderMd(text: string): string {
   return text
@@ -67,16 +34,16 @@ function renderMd(text: string): string {
 }
 
 export default function ChatInterface() {
-  const [step, setStep]       = useState<Step>("main");
-  const [mainV, setMain]      = useState<Record<string, string>>({});
-  const [instV, setInst]      = useState<Record<string, string>>({});
-  const [resultado, setRes]   = useState<CalcularResponse | null>(null);
-  const [animKey, setAnim]    = useState(0);
+  const [step, setStep]     = useState<Step>("main");
+  const [mainV, setMain]    = useState<Record<string, string>>({});
+  const [instV, setInst]    = useState<Record<string, string>>({});
+  const [resultado, setRes] = useState<IntakeResponse | null>(null);
+  const [animKey, setAnim]  = useState(0);
 
-  const sistema    = mainV.sistema as SistemaLabel | undefined;
-  const sistemaApi = sistema ? SISTEMA_MAP[sistema] : undefined;
-  const esExterior = sistemaApi === "campero" || sistemaApi === "ecologico";
-  const tipoNidal  = instV.tipo_nidal as TipoNidal | undefined;
+  const sistemaLabel = mainV.sistema as SistemaLabel | undefined;
+  const sistemaApi   = sistemaLabel ? SISTEMA_MAP[sistemaLabel] : undefined;
+  const esJaulas     = sistemaApi === "jaulas";
+  const tipoNidal    = instV.tipo_nidal as "individual" | "colectivo" | undefined;
 
   function go(next: Step) { setAnim((k) => k + 1); setStep(next); }
 
@@ -84,8 +51,13 @@ export default function ChatInterface() {
     e.preventDefault();
     go("loading");
     try {
-      const datos = buildDatos(mainV, instV);
-      setRes(await calcularGranja(datos));
+      const datos: DatosIntake = {
+        num_gallinas:       parseInt(mainV.gallinas),
+        sistema:            sistemaApi!,
+        superficie_nave_m2: parseFloat(instV.superficie_nave_m2),
+        ...(!esJaulas && tipoNidal ? { tipo_nidal: tipoNidal } : {}),
+      };
+      setRes(await solicitarIntake(datos));
     } catch {
       setRes(null);
     }
@@ -155,7 +127,6 @@ export default function ChatInterface() {
         .avi-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
         .avi-loading-text { font-size: 0.88rem; color: #7A7566; font-style: italic; }
 
-        /* ── RESULT ── */
         .avi-result-wrap { border-radius: 8px; overflow: hidden; border: 1px solid #C8C2B0; margin-bottom: 1.5rem; box-shadow: 0 4px 24px rgba(28,36,24,0.08); }
 
         .avi-summary-bar { padding: 1.4rem 1.75rem; display: flex; align-items: center; gap: 1.25rem; }
@@ -165,7 +136,6 @@ export default function ChatInterface() {
         .avi-meta-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.75rem; background: rgba(0,0,0,0.15); }
         .avi-meta-pill { font-size: 0.74rem; font-weight: 500; padding: 0.2rem 0.65rem; border-radius: 20px; background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.8); }
 
-        /* Verification table */
         .avi-table-block { background: #FFFFFF; }
         .avi-table-head { padding: 0.8rem 1.75rem; background: #F5F1E8; border-bottom: 1px solid #EDE9DF; display: flex; align-items: center; justify-content: space-between; }
         .avi-table-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7060; }
@@ -188,7 +158,6 @@ export default function ChatInterface() {
         .avi-diff.ok   { background: #E8F5EC; color: #2E7D4F; }
         .avi-diff.fail { background: #FBE9E7; color: #C0392B; }
 
-        /* Requirements table */
         .avi-req-row { display: flex; align-items: flex-start; padding: 0.75rem 1.75rem; border-bottom: 1px solid #F0EDE5; gap: 0.75rem; }
         .avi-req-row:last-child { border-bottom: none; }
         .avi-req-icon { width: 22px; height: 22px; border-radius: 50%; background: #EAE6DB; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
@@ -197,21 +166,19 @@ export default function ChatInterface() {
         .avi-req-formula { font-size: 0.78rem; color: #9A9486; margin-top: 0.1rem; font-style: italic; }
         .avi-req-value { font-size: 0.88rem; font-weight: 700; color: #1C2418; flex-shrink: 0; white-space: nowrap; }
 
-        /* Analysis */
-        .avi-sections { background: #FFFFFF; border-top: 2px solid #EDE9DF; }
+        .avi-warn-block { background: #FFFBF0; border-top: 2px solid #F0E0A0; }
+        .avi-warn-head { padding: 0.8rem 1.75rem; background: #FDF6DC; border-bottom: 1px solid #F0E0A0; }
+        .avi-warn-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #8A6A00; }
+        .avi-warn-row { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.75rem; border-bottom: 1px solid #F0E0A0; }
+        .avi-warn-row:last-child { border-bottom: none; }
+        .avi-warn-text { font-size: 0.87rem; color: #5A4A00; line-height: 1.6; }
+
+        .avi-analysis-block { background: #FFFFFF; border-top: 2px solid #EDE9DF; }
         .avi-analysis-head { padding: 0.8rem 1.75rem; background: #F5F1E8; border-bottom: 1px solid #EDE9DF; }
         .avi-analysis-label { font-size: 0.7rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #6B7060; }
-        .avi-section { padding: 1.4rem 1.75rem; border-bottom: 1px solid #EDE9DF; }
-        .avi-section:last-child { border-bottom: none; }
-        .avi-section-head { display: flex; align-items: center; gap: 0.75rem; margin-bottom: 0.85rem; }
-        .avi-section-num { font-size: 0.62rem; font-weight: 700; letter-spacing: 0.12em; color: #FFFFFF; width: 22px; height: 22px; border-radius: 4px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .avi-section-num.slate { background: #6B7060; }
-        .avi-section-num.green { background: #4A7C59; }
-        .avi-section-num.amber { background: #B07A20; }
-        .avi-section-title { font-size: 0.72rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: #4A4A3E; }
-        .avi-section-body { font-size: 0.93rem; line-height: 1.85; color: #2C2C24; }
-        .avi-section-body strong { font-weight: 600; color: #1C2418; }
-        .avi-section-body em { font-style: italic; color: #4A4A3E; }
+        .avi-analysis-body { padding: 1.4rem 1.75rem; font-size: 0.93rem; line-height: 1.85; color: #2C2C24; }
+        .avi-analysis-body strong { font-weight: 600; color: #1C2418; }
+        .avi-analysis-body em { font-style: italic; color: #4A4A3E; }
 
         .avi-result-footer { font-size: 0.73rem; color: #9A9486; font-style: italic; padding: 0.85rem 1.75rem; background: #FAF8F3; border-top: 1px solid #EDE9DF; }
         .avi-error { padding: 2rem; background: #FBE9E7; border: 1px solid #F5C6C2; border-radius: 8px; color: #C0392B; font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; }
@@ -221,7 +188,7 @@ export default function ChatInterface() {
         <header className="avi-header">
           <div className="avi-eyebrow">Granja avícola — Producción de huevo</div>
           <h1 className="avi-title">Agente Aviario</h1>
-          <p className="avi-tagline">Introduce las dimensiones de tu instalación y calcula el equipamiento mínimo exigido por la normativa.</p>
+          <p className="avi-tagline">Introduce los datos de tu instalación y obtén los requisitos mínimos exigidos por la normativa.</p>
           <div className="avi-divider" />
         </header>
 
@@ -243,7 +210,7 @@ export default function ChatInterface() {
             ))}
           </div>
 
-          {/* ── Step 1: Proyecto ── */}
+          {/* Step 1: Proyecto */}
           {step === "main" && (
             <div key={`main-${animKey}`} className="avi-step">
               <div className="avi-form-title">Datos del proyecto</div>
@@ -253,7 +220,7 @@ export default function ChatInterface() {
                   <div className="avi-field">
                     <label className="avi-label">Gallinas a alojar</label>
                     <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="10000" min={1} required
+                      <input type="number" className="avi-input has-unit" placeholder="500" min={1} required
                         value={mainV.gallinas ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, gallinas: e.target.value }))} />
                       <span className="avi-unit">aves</span>
@@ -269,8 +236,8 @@ export default function ChatInterface() {
                   </div>
                 </div>
                 <div className="avi-btn-row">
-                  <button type="submit" className="avi-btn-primary">
-                    Siguiente — Instalación
+                  <button type="submit" className="avi-btn-primary" disabled={!mainV.gallinas || !mainV.sistema}>
+                    Siguiente
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 </div>
@@ -278,104 +245,49 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* ── Step 2: Instalación ── */}
+          {/* Step 2: Instalación */}
           {step === "instalacion" && (
             <div key={`inst-${animKey}`} className="avi-step">
               <button className="avi-back" onClick={() => go("main")}>
                 <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
-              <div className="avi-badge">{sistema} · {mainV.gallinas} aves</div>
+              <div className="avi-badge">{sistemaLabel} · {mainV.gallinas} aves</div>
               <div className="avi-form-title">Dimensiones de la instalación</div>
-              <p className="avi-form-subtitle">Nave y zona de puesta. El sistema calculará el equipamiento mínimo requerido.</p>
+              <p className="avi-form-subtitle">
+                {esJaulas
+                  ? "Introduce la superficie útil total de jaulas. El sistema calculará los requisitos de equipamiento."
+                  : "Introduce la superficie útil y el tipo de zona de puesta. El sistema calculará todo lo demás."}
+              </p>
               <form onSubmit={onInstSubmit}>
-                <div className="avi-sep"><span>Nave</span></div>
-                <div className="avi-row">
-                  <div className="avi-field">
-                    <label className="avi-label">Superficie útil</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="800" min={1} required
-                        value={instV.superficie_nave_m2 ?? ""}
-                        onChange={(e) => setInst((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
-                      <span className="avi-unit">m²</span>
-                    </div>
-                  </div>
-                  <div className="avi-field">
-                    <label className="avi-label">Altura libre sobre el suelo</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="250" min={1} required
-                        value={instV.altura_libre_cm ?? ""}
-                        onChange={(e) => setInst((v) => ({ ...v, altura_libre_cm: e.target.value }))} />
-                      <span className="avi-unit">cm</span>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="avi-sep"><span>Zona de puesta</span></div>
                 <div className="avi-field">
-                  <label className="avi-label">Tipo</label>
-                  <select className="avi-select" required value={instV.tipo_nidal ?? ""}
-                    onChange={(e) => setInst((v) => ({ ...v, tipo_nidal: e.target.value }))}>
-                    <option value="" disabled>Selecciona tipo</option>
-                    <option value="individual">Nidal individual</option>
-                    <option value="colectivo">Nidal colectivo</option>
-                    <option value="aviario">Aviario (zona de puesta integrada)</option>
-                  </select>
+                  <label className="avi-label">Superficie útil de la nave</label>
+                  <div className="avi-input-wrap">
+                    <input type="number" className="avi-input has-unit" placeholder="60" min={1} step="0.1" required
+                      value={instV.superficie_nave_m2 ?? ""}
+                      onChange={(e) => setInst((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
+                    <span className="avi-unit">m²</span>
+                  </div>
                 </div>
 
-                {tipoNidal === "individual" && (
-                  <div className="avi-field">
-                    <label className="avi-label">Número de nidales</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="72" min={1} required
-                        value={instV.num_nidales ?? ""}
-                        onChange={(e) => setInst((v) => ({ ...v, num_nidales: e.target.value }))} />
-                      <span className="avi-unit">ud.</span>
-                    </div>
-                  </div>
-                )}
-                {(tipoNidal === "colectivo" || tipoNidal === "aviario") && (
-                  <div className="avi-field">
-                    <label className="avi-label">
-                      {tipoNidal === "aviario" ? "Superficie de zona de puesta" : "Superficie de nidales colectivos"}
-                    </label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="4.2" min={0.1} step="0.1" required
-                        value={instV.superficie_nidales_m2 ?? ""}
-                        onChange={(e) => setInst((v) => ({ ...v, superficie_nidales_m2: e.target.value }))} />
-                      <span className="avi-unit">m²</span>
-                    </div>
-                  </div>
-                )}
-
-                {esExterior && (
+                {!esJaulas && (
                   <>
-                    <div className="avi-sep"><span>Zona exterior</span></div>
-                    <div className="avi-row">
-                      <div className="avi-field">
-                        <label className="avi-label">Superficie exterior</label>
-                        <div className="avi-input-wrap">
-                          <input type="number" className="avi-input has-unit" placeholder="4000" min={1} required
-                            value={instV.superficie_exterior_m2 ?? ""}
-                            onChange={(e) => setInst((v) => ({ ...v, superficie_exterior_m2: e.target.value }))} />
-                          <span className="avi-unit">m²</span>
-                        </div>
-                      </div>
-                      <div className="avi-field">
-                        <label className="avi-label">Ancho total de salidas</label>
-                        <div className="avi-input-wrap">
-                          <input type="number" className="avi-input has-unit" placeholder="400" min={1} required
-                            value={instV.ancho_total_salidas_cm ?? ""}
-                            onChange={(e) => setInst((v) => ({ ...v, ancho_total_salidas_cm: e.target.value }))} />
-                          <span className="avi-unit">cm</span>
-                        </div>
-                      </div>
+                    <div className="avi-sep"><span>Zona de puesta</span></div>
+                    <div className="avi-field">
+                      <label className="avi-label">Tipo de nidal</label>
+                      <select className="avi-select" required value={instV.tipo_nidal ?? ""}
+                        onChange={(e) => setInst((v) => ({ ...v, tipo_nidal: e.target.value }))}>
+                        <option value="" disabled>Selecciona tipo</option>
+                        <option value="individual">Nidal individual (1 por cada 7 gallinas)</option>
+                        <option value="colectivo">Nidal colectivo (1 m² por cada 120 gallinas)</option>
+                      </select>
                     </div>
                   </>
                 )}
 
                 <div className="avi-btn-row">
-                  <button type="submit" className="avi-btn-primary" disabled={!tipoNidal}>
+                  <button type="submit" className="avi-btn-primary"
+                    disabled={!instV.superficie_nave_m2 || (!esJaulas && !tipoNidal)}>
                     Calcular requisitos
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
@@ -395,7 +307,7 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* ── Result ── */}
+          {/* Result */}
           {step === "result" && (() => {
             if (!resultado) return (
               <div key={`result-${animKey}`} className="avi-step">
@@ -405,14 +317,12 @@ export default function ChatInterface() {
             );
 
             const { informe, analisis_legal } = resultado;
-            const { veredicto, capacidad, requisitos: reqText } = parseAnalisis(analisis_legal);
-            const okCount   = informe.verificaciones.filter((v) => v.cumple).length;
-            const failCount = informe.num_fallos;
+            const okCount   = informe.verificaciones_nave.filter((v) => v.cumple).length;
+            const failCount = informe.verificaciones_nave.filter((v) => !v.cumple).length;
             const cumple    = informe.cumple_nave;
-
-            const bg     = cumple ? "#1E4D2B" : "#4D1E1E";
-            const accent = cumple ? "#3A9B5C" : "#C0392B";
-            const tint   = cumple ? "#A8F0BC" : "#F5B8B8";
+            const bg        = cumple ? "#1E4D2B" : "#4D1E1E";
+            const accent    = cumple ? "#3A9B5C" : "#C0392B";
+            const tint      = cumple ? "#A8F0BC" : "#F5B8B8";
 
             return (
               <div key={`result-${animKey}`} className="avi-step">
@@ -437,7 +347,7 @@ export default function ChatInterface() {
                     ))}
                   </div>
 
-                  {/* Verificación nave */}
+                  {/* Verificaciones nave */}
                   <div className="avi-table-block">
                     <div className="avi-table-head">
                       <span className="avi-table-label">Verificación de la nave</span>
@@ -446,14 +356,14 @@ export default function ChatInterface() {
                         {failCount > 0 && <span className="avi-stat fail">{failCount} fallo{failCount > 1 ? "s" : ""}</span>}
                       </div>
                     </div>
-                    {informe.verificaciones.map((v) => {
-                      const ok = v.cumple;
+                    {informe.verificaciones_nave.map((v) => {
+                      const ok  = v.cumple;
                       const sym = v.tipo_limite === "minimo" ? "≥" : "≤";
                       const diff = ok
-                        ? `+${Math.abs(v.diferencia).toLocaleString("es-ES", { maximumFractionDigits: 1 })} margen`
+                        ? `+${Math.abs(v.valor_real - v.valor_limite).toLocaleString("es-ES", { maximumFractionDigits: 1 })} margen`
                         : v.tipo_limite === "minimo"
-                          ? `−${Math.abs(v.diferencia).toLocaleString("es-ES", { maximumFractionDigits: 1 })} falta`
-                          : `+${Math.abs(v.diferencia).toLocaleString("es-ES", { maximumFractionDigits: 1 })} exceso`;
+                          ? `−${Math.abs(v.valor_limite - v.valor_real).toLocaleString("es-ES", { maximumFractionDigits: 1 })} falta`
+                          : `+${Math.abs(v.valor_real - v.valor_limite).toLocaleString("es-ES", { maximumFractionDigits: 1 })} exceso`;
                       return (
                         <div key={v.parametro} className="avi-check-row">
                           <div className={`avi-check-icon ${ok ? "ok" : "fail"}`}>
@@ -464,9 +374,9 @@ export default function ChatInterface() {
                           </div>
                           <span className="avi-check-name">{v.parametro}</span>
                           <div className="avi-check-vals">
-                            <span className="real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 1 })}</span>
+                            <span className="real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })}</span>
                             <span className="sep">/</span>
-                            <span className="ref">{sym} {v.valor_referencia.toLocaleString("es-ES", { maximumFractionDigits: 1 })} {v.unidad}</span>
+                            <span className="ref">{sym} {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 1 })} {v.unidad}</span>
                           </div>
                           <span className={`avi-diff ${ok ? "ok" : "fail"}`}>{diff}</span>
                         </div>
@@ -474,7 +384,7 @@ export default function ChatInterface() {
                     })}
                   </div>
 
-                  {/* Equipamiento calculado */}
+                  {/* Requisitos calculados */}
                   <div className="avi-table-block" style={{ borderTop: "2px solid #EDE9DF" }}>
                     <div className="avi-table-head">
                       <span className="avi-table-label">Equipamiento mínimo requerido</span>
@@ -495,40 +405,30 @@ export default function ChatInterface() {
                     ))}
                   </div>
 
+                  {/* Advertencias */}
+                  {informe.advertencias.length > 0 && (
+                    <div className="avi-warn-block">
+                      <div className="avi-warn-head">
+                        <span className="avi-warn-label">⚠ Requisitos adicionales</span>
+                      </div>
+                      {informe.advertencias.map((w, i) => (
+                        <div key={i} className="avi-warn-row">
+                          <span className="avi-warn-text">{w}</span>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
                   {/* Análisis legal */}
-                  <div className="avi-sections">
+                  <div className="avi-analysis-block">
                     <div className="avi-analysis-head">
                       <span className="avi-analysis-label">Análisis normativo</span>
                     </div>
-                    <div className="avi-section">
-                      <div className="avi-section-head">
-                        <span className="avi-section-num slate">01</span>
-                        <span className="avi-section-title">Veredicto</span>
-                      </div>
-                      <div className="avi-section-body" dangerouslySetInnerHTML={{ __html: renderMd(veredicto) }} />
-                    </div>
-                    {capacidad && (
-                      <div className="avi-section">
-                        <div className="avi-section-head">
-                          <span className="avi-section-num green">02</span>
-                          <span className="avi-section-title">Qué sí puedes hacer</span>
-                        </div>
-                        <div className="avi-section-body" dangerouslySetInnerHTML={{ __html: renderMd(capacidad) }} />
-                      </div>
-                    )}
-                    {reqText && (
-                      <div className="avi-section">
-                        <div className="avi-section-head">
-                          <span className="avi-section-num amber">03</span>
-                          <span className="avi-section-title">Recomendaciones adicionales</span>
-                        </div>
-                        <div className="avi-section-body" dangerouslySetInnerHTML={{ __html: renderMd(reqText) }} />
-                      </div>
-                    )}
+                    <div className="avi-analysis-body" dangerouslySetInnerHTML={{ __html: renderMd(analisis_legal) }} />
                   </div>
 
                   <div className="avi-result-footer">
-                    Basado en RD 3/2002 · Directiva 1999/74/CE · Regl. CE 589/2008 · Regl. UE 2018/848
+                    Basado en RD 3/2002 · Directiva 1999/74/CE · RD 637/2021 · Regl. UE 2018/848
                   </div>
                 </div>
 

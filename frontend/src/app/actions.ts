@@ -1,6 +1,6 @@
 "use server";
 
-export type Sistema = "suelo" | "campero" | "ecologico";
+export type Sistema = "suelo" | "campero" | "ecologico" | "jaulas";
 export type TipoNidal = "individual" | "colectivo" | "aviario";
 
 export interface DatosCalculadora {
@@ -52,6 +52,59 @@ export interface CalcularResponse {
 export async function calcularGranja(datos: DatosCalculadora): Promise<CalcularResponse> {
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8003";
   const res = await fetch(`${backendUrl}/calcular`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datos }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
+// ── Intake ──────────────────────────────────────────────────────────────────
+
+export interface DatosIntake {
+  num_gallinas: number;
+  sistema: Sistema;
+  superficie_nave_m2: number;
+  tipo_nidal?: "individual" | "colectivo";
+}
+
+export interface VerificacionNave {
+  parametro: string;
+  cumple: boolean;
+  valor_real: number;
+  valor_limite: number;
+  unidad: string;
+  tipo_limite: "minimo" | "maximo";
+  articulo: string;
+}
+
+export interface RequisitoCalculado {
+  nombre: string;
+  valor_minimo: number;
+  unidad: string;
+  formula: string;
+  articulo: string;
+}
+
+export interface InformeIntake {
+  sistema: string;
+  num_gallinas: number;
+  verificaciones_nave: VerificacionNave[];
+  requisitos: RequisitoCalculado[];
+  cumple_nave: boolean;
+  advertencias: string[];
+  consulta_rag: string;
+}
+
+export interface IntakeResponse {
+  informe: InformeIntake;
+  analisis_legal: string;
+}
+
+export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8003";
+  const res = await fetch(`${backendUrl}/intake`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ datos }),
