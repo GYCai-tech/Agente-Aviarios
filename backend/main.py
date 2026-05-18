@@ -10,10 +10,11 @@ logging.basicConfig(
 )
 
 from fastapi import FastAPI
-from schemas.pydantic_models import QueryRequest, QueryResponse, ValidarRequest, ValidarResponse, CalcularRequest, CalcularResponse
+from schemas.pydantic_models import QueryRequest, QueryResponse, ValidarRequest, ValidarResponse, CalcularRequest, CalcularResponse, IntakeRequest, IntakeResponse
 from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
+from agentes.intake import generar_informe
 
 app = FastAPI()
 
@@ -44,6 +45,16 @@ def calcular(request: CalcularRequest):
     informe = calcular_granja(request.datos)
     resultado_rag = grafo.invoke({"query": informe.consulta_rag})
     return CalcularResponse(
+        informe=informe,
+        analisis_legal=resultado_rag["answer"],
+    )
+
+
+@app.post("/intake", response_model=IntakeResponse)
+def intake(request: IntakeRequest):
+    informe = generar_informe(request.datos)
+    resultado_rag = grafo.invoke({"query": informe.consulta_rag})
+    return IntakeResponse(
         informe=informe,
         analisis_legal=resultado_rag["answer"],
     )
