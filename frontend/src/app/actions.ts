@@ -50,7 +50,7 @@ export interface CalcularResponse {
 }
 
 export async function calcularGranja(datos: DatosCalculadora): Promise<CalcularResponse> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8003";
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
   const res = await fetch(`${backendUrl}/calcular`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -62,10 +62,38 @@ export async function calcularGranja(datos: DatosCalculadora): Promise<CalcularR
 
 // ── Intake ──────────────────────────────────────────────────────────────────
 
+export type TipoZona = "nidal_colectivo" | "aviario";
+
+export interface DatosRecomendacion {
+  num_gallinas: number;
+  sistema: Sistema;
+  superficie_nave_m2: number;
+  altura_nave_cm: number;
+}
+
+export interface Recomendacion {
+  tipo_zona: TipoZona;
+  niveles: number;
+  razon: string;
+}
+
 export interface DatosIntake {
   num_gallinas: number;
   sistema: Sistema;
   superficie_nave_m2: number;
+  altura_nave_cm: number;
+  tipo_zona: TipoZona;
+}
+
+export async function pedirRecomendacion(datos: DatosRecomendacion): Promise<Recomendacion> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/recomendar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datos }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
 }
 
 export interface VerificacionNave {
@@ -99,10 +127,12 @@ export interface InformeIntake {
 export interface IntakeResponse {
   informe: InformeIntake;
   analisis_legal: string;
+  argumentario_ventas: string;
+  argumentos_producto: string[];
 }
 
 export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8003";
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
   const res = await fetch(`${backendUrl}/intake`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
