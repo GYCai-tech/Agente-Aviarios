@@ -5,12 +5,68 @@ from pydantic import BaseModel
 
 Sistema = Literal["suelo", "campero", "ecologico", "jaulas"]
 TipoNidal = Literal["individual", "colectivo"]
+TipoZona = Literal["nidal_colectivo", "aviario"]
+
+
+class DatosRecomendacion(BaseModel):
+    num_gallinas: int
+    sistema: Sistema
+    superficie_nave_m2: float
+    altura_nave_cm: float
+
+
+class Recomendacion(BaseModel):
+    tipo_zona: TipoZona
+    niveles: int
+    razon: str
+
+
+def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
+    altura_util = datos.altura_nave_cm - 25
+    niveles_posibles = min(math.floor(altura_util / 45), 4)
+    densidad = datos.num_gallinas / datos.superficie_nave_m2
+
+    if niveles_posibles < 2:
+        return Recomendacion(
+            tipo_zona="nidal_colectivo",
+            niveles=1,
+            razon=f"Con {datos.altura_nave_cm:.0f} cm de altura solo caben {niveles_posibles} nivel(es). "
+                  "Se necesita al menos 115 cm útiles para instalar un aviario de 2 niveles.",
+        )
+
+    densidad_con_aviario = densidad / niveles_posibles
+    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+
+    if densidad > densidad_max:
+        return Recomendacion(
+            tipo_zona="aviario",
+            niveles=niveles_posibles,
+            razon=(
+                f"La densidad de suelo es {densidad:.1f} gal/m² (límite {densidad_max:.0f} para sistema {datos.sistema}). "
+                f"Un aviario de {niveles_posibles} niveles reduce la densidad efectiva a "
+                f"{densidad_con_aviario:.1f} gal/m² al computar todos los niveles como superficie útil "
+                "(Directiva 1999/74/CE Art. 4.3.a)."
+            ),
+        )
+
+    return Recomendacion(
+        tipo_zona="nidal_colectivo",
+        niveles=1,
+        razon=(
+            f"La densidad de {densidad:.1f} gal/m² está dentro del límite de {densidad_max:.0f} gal/m² "
+            f"para sistema {datos.sistema}. "
+            f"Con un aviario de {niveles_posibles} niveles la densidad efectiva bajaría a "
+            f"{densidad_con_aviario:.1f} gal/m², pero no es necesario dado el tamaño de la nave."
+        ),
+    )
 
 
 class DatosIntake(BaseModel):
     num_gallinas: int
     sistema: Sistema
     superficie_nave_m2: float
+    altura_nave_cm: float
+    tipo_zona: TipoZona
 
 
 class RequisitoCalculado(BaseModel):
@@ -46,12 +102,11 @@ def generar_informe(datos: DatosIntake) -> InformeIntake:
     verificaciones: list[VerificacionNave] = []
     requisitos: list[RequisitoCalculado] = []
     advertencias: list[str] = []
-    tipo_nidal: TipoNidal = "individual" if n <= 100 else "colectivo"
 
     if datos.sistema == "jaulas":
         _informe_jaulas(n, datos, verificaciones, requisitos, advertencias)
     else:
-        _informe_alternativo(n, datos, tipo_nidal, verificaciones, requisitos, advertencias)
+        _informe_alternativo(n, datos, datos.tipo_zona, verificaciones, requisitos, advertencias)
 
     fallos = [v for v in verificaciones if not v.cumple]
 
@@ -114,46 +169,137 @@ def _informe_jaulas(n, datos, verificaciones, requisitos, advertencias):
         )
 
 
-def _informe_alternativo(n, datos, tipo_nidal, verificaciones, requisitos, advertencias):
+def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advertencias):
     densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
-    densidad_real = n / datos.superficie_nave_m2
+
+    if tipo_zona == "aviario":
+        altura_util = datos.altura_nave_cm - 25
+        niveles = min(math.floor(altura_util / 45), 4)
+        niveles = max(niveles, 1)
+        sup_efectiva = datos.superficie_nave_m2 * niveles
+        densidad_real = n / sup_efectiva
+        parametro_label = f"Densidad interior (aviario {niveles} niveles — sup. efectiva {sup_efectiva:.0f} m²)"
+        articulo_densidad = "Directiva 1999/74/CE Art. 4.3.a + RD 3/2002 Anexo IV"
+    else:
+        niveles = 1
+        num_modulos = math.ceil(n / 144)
+        sup_modulos = round(num_modulos * 1.20 * 3, 2)   # 3,6 m² por módulo
+        sup_efectiva = round(datos.superficie_nave_m2 - sup_modulos, 2)
+        densidad_real = n / sup_efectiva if sup_efectiva > 0 else float("inf")
+        parametro_label = (
+            f"Densidad interior (sup. real {sup_efectiva:.1f} m² — "
+            f"descontados {sup_modulos:.1f} m² de {num_modulos} módulos)"
+        )
+        articulo_densidad = "RD 3/2002 Anexo IV" + (" + Regl. UE 2018/848" if datos.sistema == "ecologico" else "")
 
     verificaciones.append(VerificacionNave(
-        parametro="Densidad interior",
+        parametro=parametro_label,
         cumple=densidad_real <= densidad_max,
         valor_real=round(densidad_real, 2),
         valor_limite=densidad_max,
         unidad="gallinas/m²",
         tipo_limite="maximo",
-        articulo="RD 3/2002 Anexo IV" + (" + Regl. UE 2018/848" if datos.sistema == "ecologico" else ""),
+        articulo=articulo_densidad,
     ))
+
+    # Módulos de nidal (solo nidal_colectivo)
+    if tipo_zona == "nidal_colectivo":
+        requisitos.append(RequisitoCalculado(
+            nombre="Número de módulos de nidal",
+            valor_minimo=float(num_modulos),
+            unidad="módulos",
+            formula=f"⌈{n} / 144⌉ = {num_modulos} módulo(s) × 1,20 m × 3 m = {sup_modulos} m² ocupados",
+            articulo="Diseño A-Nida Plus (Gómez y Crespo)",
+        ))
+        requisitos.append(RequisitoCalculado(
+            nombre="Superficie disponible (descontados módulos)",
+            valor_minimo=sup_efectiva,
+            unidad="m²",
+            formula=f"{datos.superficie_nave_m2} m² nave − {num_modulos} × 3,6 m² = {sup_efectiva} m²",
+            articulo="Cálculo interno",
+        ))
 
     # Yacija
     yacija_min_m2 = round(n * 250 / 10_000, 2)
     yacija_minima_tercio = round(datos.superficie_nave_m2 / 3, 2)
-    yacija_real_min = max(yacija_min_m2, yacija_minima_tercio)
+    yacija_requerida = max(yacija_min_m2, yacija_minima_tercio)
 
-    requisitos.append(RequisitoCalculado(
-        nombre="Zona de yacija (área de escarbar)",
-        valor_minimo=yacija_real_min,
-        unidad="m²",
-        formula=(
-            f"máx({n} × 250 cm² = {yacija_min_m2} m²  |  "
-            f"1/3 de nave = {yacija_minima_tercio} m²)"
-        ),
-        articulo="RD 3/2002 Anexo IV",
-    ))
-
-    # Nidales
-    if tipo_nidal == "individual":
-        nidales_min = math.ceil(n / 7)
-        requisitos.append(RequisitoCalculado(
-            nombre="Nidales individuales",
-            valor_minimo=float(nidales_min),
-            unidad="unidades",
-            formula=f"⌈{n} / 7⌉ = {nidales_min}",
+    if tipo_zona == "nidal_colectivo":
+        # Slot acoplado al módulo: 1,20 m × 3 m adicionales por módulo
+        sup_slot = round(num_modulos * 1.20 * 3, 2)
+        sup_yacija_disponible = round(datos.superficie_nave_m2 - sup_modulos - sup_slot, 2)
+        verificaciones.append(VerificacionNave(
+            parametro=(
+                f"Superficie yacija real ({sup_yacija_disponible:.1f} m² — "
+                f"descontados {sup_modulos} m² módulos + {sup_slot} m² slots)"
+            ),
+            cumple=sup_yacija_disponible >= yacija_requerida,
+            valor_real=sup_yacija_disponible,
+            valor_limite=yacija_requerida,
+            unidad="m²",
+            tipo_limite="minimo",
             articulo="RD 3/2002 Anexo IV",
         ))
+        requisitos.append(RequisitoCalculado(
+            nombre="Zona de yacija mínima requerida",
+            valor_minimo=yacija_requerida,
+            unidad="m²",
+            formula=(
+                f"máx({n} × 250 cm² = {yacija_min_m2} m²  |  "
+                f"1/3 nave = {yacija_minima_tercio} m²)"
+            ),
+            articulo="RD 3/2002 Anexo IV",
+        ))
+        requisitos.append(RequisitoCalculado(
+            nombre="Superficie yacija disponible",
+            valor_minimo=sup_yacija_disponible,
+            unidad="m²",
+            formula=(
+                f"{datos.superficie_nave_m2} m² nave "
+                f"− {sup_modulos} m² módulos ({num_modulos} × 3,6 m²) "
+                f"− {sup_slot} m² slots ({num_modulos} × 3,6 m²) "
+                f"= {sup_yacija_disponible} m²"
+            ),
+            articulo="Cálculo interno",
+        ))
+    else:
+        # Aviario: todo el suelo es yacija
+        requisitos.append(RequisitoCalculado(
+            nombre="Zona de yacija (área de escarbar)",
+            valor_minimo=yacija_requerida,
+            unidad="m²",
+            formula=(
+                f"máx({n} × 250 cm² = {yacija_min_m2} m²  |  "
+                f"1/3 de nave = {yacija_minima_tercio} m²)"
+            ),
+            articulo="RD 3/2002 Anexo IV",
+        ))
+
+    # Zona de puesta
+    if tipo_zona == "aviario":
+        altura_util = datos.altura_nave_cm - 25
+        niveles = min(math.floor(altura_util / 45), 4)
+        sup_nidal_min = round(n / 120, 2)
+        requisitos.append(RequisitoCalculado(
+            nombre=f"Aviario multinivel — niveles recomendados",
+            valor_minimo=float(niveles),
+            unidad="niveles",
+            formula=f"floor(({datos.altura_nave_cm:.0f} cm - 25 margen) / 45 cm) = {niveles}, máx 4",
+            articulo="Directiva 1999/74/CE Art. 4.3.a",
+        ))
+        requisitos.append(RequisitoCalculado(
+            nombre="Superficie zona de puesta por nivel",
+            valor_minimo=sup_nidal_min,
+            unidad="m²",
+            formula=f"{n} gallinas / 120 = {sup_nidal_min} m²",
+            articulo="RD 3/2002 Anexo IV",
+        ))
+        advertencias.append(
+            f"Aviario multinivel: altura libre entre niveles ≥ 45 cm, "
+            "comederos y bebederos distribuidos en cada nivel, "
+            "sistema que impida caída de excrementos sobre niveles inferiores "
+            "(Directiva 1999/74/CE Art. 4.3.a)."
+        )
     else:
         sup_nidal_min = round(n / 120, 2)
         requisitos.append(RequisitoCalculado(
@@ -242,6 +388,26 @@ def _informe_alternativo(n, datos, tipo_nidal, verificaciones, requisitos, adver
         "Requisitos fijos independientemente del tamaño: registro en REGA, "
         "Sistema Integral de Gestión (SIGE), plan sanitario, veterinario de explotación "
         "y vallado perimetral (RD 637/2021)."
+    )
+
+
+def consulta_ventas(datos: DatosIntake, requisitos: list[RequisitoCalculado]) -> str:
+    sistema_label = {
+        "suelo": "en suelo", "campero": "campero",
+        "ecologico": "ecológico", "jaulas": "en jaulas enriquecidas"
+    }[datos.sistema]
+    zona_label = "aviario multinivel" if datos.tipo_zona == "aviario" else "nidal colectivo"
+    reqs_txt = "; ".join(
+        f"{r.nombre}: {r.valor_minimo} {r.unidad}" for r in requisitos
+    )
+    return (
+        f"Eres asesor comercial de Gómez y Crespo, empresa especializada en equipamiento avícola. "
+        f"Una granja de {datos.num_gallinas} gallinas ponedoras en sistema {sistema_label} "
+        f"con zona de puesta tipo {zona_label} necesita el siguiente equipamiento mínimo: {reqs_txt}. "
+        f"Redacta un argumentario de ventas en 3 párrafos cortos que justifique por qué Gómez y Crespo "
+        f"es la mejor opción para cubrir estas necesidades. "
+        f"Destaca: productos A-Nida Plus, cumplimiento normativo garantizado, rentabilidad a largo plazo "
+        f"y servicio técnico especializado. Tono profesional y persuasivo."
     )
 
 
