@@ -1,6 +1,6 @@
 from pydantic import BaseModel
 from agentes.validador_legal import DatosGranja, InformeConformidad, DatosCalculadora, InformeCalculadora
-from agentes.intake import DatosIntake, InformeIntake
+from agentes.intake import DatosIntake, InformeIntake, DatosRecomendacion, Recomendacion, consulta_ventas
 
 
 class QueryRequest(BaseModel):
@@ -29,6 +29,10 @@ class CalcularResponse(BaseModel):
     analisis_legal: str
 
 
+class RecomendacionRequest(BaseModel):
+    datos: DatosRecomendacion
+
+
 class IntakeRequest(BaseModel):
     datos: DatosIntake
 
@@ -36,3 +40,5 @@ class IntakeRequest(BaseModel):
 class IntakeResponse(BaseModel):
     informe: InformeIntake
     analisis_legal: str
+    argumentario_ventas: str
+    argumentos_producto: list[str]

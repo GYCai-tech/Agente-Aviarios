@@ -3,12 +3,15 @@
 import { useState } from "react";
 import {
   solicitarIntake,
+  pedirRecomendacion,
   type DatosIntake,
   type IntakeResponse,
+  type Recomendacion,
+  type TipoZona,
   type Sistema,
 } from "./actions";
 
-type Step = "main" | "instalacion" | "loading" | "result";
+type Step = "main" | "loading_rec" | "recomendacion" | "loading" | "result";
 
 const SISTEMAS_LABEL = ["En suelo", "Campero", "Ecológico", "Jaulas enriquecidas"] as const;
 type SistemaLabel = (typeof SISTEMAS_LABEL)[number];
@@ -21,24 +24,35 @@ const SISTEMA_MAP: Record<SistemaLabel, Sistema> = {
 };
 
 const STEPS = [
-  { key: "main",        label: "Proyecto" },
-  { key: "instalacion", label: "Instalación" },
-  { key: "result",      label: "Informe" },
+  { key: "main",          label: "Proyecto" },
+  { key: "recomendacion", label: "Sistema" },
+  { key: "result",        label: "Informe" },
 ] as const;
+
+const SECTION_LABELS: Record<string, string> = {
+  VEREDICTO: "Veredicto",
+  CAPACIDAD: "Capacidad",
+  REQUISITOS: "Requisitos adicionales",
+};
 
 function renderMd(text: string): string {
   return text
+    .replace(/##(\w+)##/g, (_, key) => {
+      const label = SECTION_LABELS[key] ?? key;
+      return `<span style="display:block;font-size:0.7rem;font-weight:700;letter-spacing:0.1em;text-transform:uppercase;color:#6B7060;margin-top:1.2rem;margin-bottom:0.3rem">${label}</span>`;
+    })
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
     .replace(/\n/g, "<br/>");
 }
 
 export default function ChatInterface() {
-  const [step, setStep]     = useState<Step>("main");
-  const [mainV, setMain]    = useState<Record<string, string>>({});
-  const [instV, setInst]    = useState<Record<string, string>>({});
-  const [resultado, setRes] = useState<IntakeResponse | null>(null);
-  const [animKey, setAnim]  = useState(0);
+  const [step, setStep]           = useState<Step>("main");
+  const [mainV, setMain]          = useState<Record<string, string>>({});
+  const [rec, setRec]             = useState<Recomendacion | null>(null);
+  const [tipoZona, setTipoZona]   = useState<TipoZona | null>(null);
+  const [resultado, setRes]       = useState<IntakeResponse | null>(null);
+  const [animKey, setAnim]        = useState(0);
 
   const sistemaLabel = mainV.sistema as SistemaLabel | undefined;
   const sistemaApi   = sistemaLabel ? SISTEMA_MAP[sistemaLabel] : undefined;
@@ -46,25 +60,68 @@ export default function ChatInterface() {
 
   function go(next: Step) { setAnim((k) => k + 1); setStep(next); }
 
-  async function onInstSubmit(e: { preventDefault: () => void }) {
+  async function onMainSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
+    if (esJaulas) {
+      go("loading");
+      try {
+        const datos: DatosIntake = {
+          num_gallinas:       parseInt(mainV.gallinas),
+          sistema:            sistemaApi!,
+          superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
+          altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
+          tipo_zona:          "nidal_colectivo",
+        };
+        setRes(await solicitarIntake(datos));
+      } catch { setRes(null); }
+      go("result");
+      return;
+    }
+    go("loading_rec");
+    try {
+      const r = await pedirRecomendacion({
+        num_gallinas:       parseInt(mainV.gallinas),
+        sistema:            sistemaApi!,
+        superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
+        altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
+      });
+      setRec(r);
+      setTipoZona(r.tipo_zona);
+    } catch { setRec(null); }
+    go("recomendacion");
+  }
+
+  async function onConfirmar(zona: TipoZona) {
     go("loading");
     try {
       const datos: DatosIntake = {
         num_gallinas:       parseInt(mainV.gallinas),
         sistema:            sistemaApi!,
-        superficie_nave_m2: parseFloat(instV.superficie_nave_m2),
+        superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
+        altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
+        tipo_zona:          zona,
       };
-      setRes(await solicitarIntake(datos));
-    } catch {
-      setRes(null);
-    }
+      const res = await solicitarIntake(datos);
+      setRes(res);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("gc_propuesta", JSON.stringify({
+          informe: res.informe,
+          argumentario_ventas: res.argumentario_ventas,
+          argumentos_producto: res.argumentos_producto ?? [],
+          gallinas: mainV.gallinas,
+          sistema: sistemaApi,
+          superficie: mainV.superficie_nave_m2,
+          altura: mainV.altura_nave_cm,
+          tipo_zona: zona,
+        }));
+      }
+    } catch { setRes(null); }
     go("result");
   }
 
-  function reset() { setMain({}); setInst({}); setRes(null); go("main"); }
+  function reset() { setMain({}); setRec(null); setTipoZona(null); setRes(null); go("main"); }
 
-  const stepIdx = { main: 0, instalacion: 1, loading: 2, result: 2 }[step];
+  const stepIdx = { main: 0, loading_rec: 1, recomendacion: 1, loading: 2, result: 2 }[step];
 
   return (
     <>
@@ -212,9 +269,17 @@ export default function ChatInterface() {
           {step === "main" && (
             <div key={`main-${animKey}`} className="avi-step">
               <div className="avi-form-title">Datos del proyecto</div>
-              <p className="avi-form-subtitle">Define el número de gallinas y el sistema de alojamiento.</p>
-              <form onSubmit={(e) => { e.preventDefault(); setInst({}); go("instalacion"); }}>
+              <p className="avi-form-subtitle">Introduce el sistema de alojamiento y las dimensiones de la nave.</p>
+              <form onSubmit={onMainSubmit}>
                 <div className="avi-row">
+                  <div className="avi-field">
+                    <label className="avi-label">Sistema de alojamiento</label>
+                    <select className="avi-select" required value={mainV.sistema ?? ""}
+                      onChange={(e) => setMain((v) => ({ ...v, sistema: e.target.value }))}>
+                      <option value="" disabled>Selecciona sistema</option>
+                      {SISTEMAS_LABEL.map((s) => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                  </div>
                   <div className="avi-field">
                     <label className="avi-label">Gallinas a alojar</label>
                     <div className="avi-input-wrap">
@@ -224,18 +289,31 @@ export default function ChatInterface() {
                       <span className="avi-unit">aves</span>
                     </div>
                   </div>
+                </div>
+                <div className="avi-row">
                   <div className="avi-field">
-                    <label className="avi-label">Sistema de alojamiento</label>
-                    <select className="avi-select" required value={mainV.sistema ?? ""}
-                      onChange={(e) => setMain((v) => ({ ...v, sistema: e.target.value }))}>
-                      <option value="" disabled>Selecciona sistema</option>
-                      {SISTEMAS_LABEL.map((s) => <option key={s} value={s}>{s}</option>)}
-                    </select>
+                    <label className="avi-label">Superficie útil de la nave</label>
+                    <div className="avi-input-wrap">
+                      <input type="number" className="avi-input has-unit" placeholder="200" min={1} step="0.1" required
+                        value={mainV.superficie_nave_m2 ?? ""}
+                        onChange={(e) => setMain((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
+                      <span className="avi-unit">m²</span>
+                    </div>
+                  </div>
+                  <div className="avi-field">
+                    <label className="avi-label">Altura libre de la nave</label>
+                    <div className="avi-input-wrap">
+                      <input type="number" className="avi-input has-unit" placeholder="250" min={50} step="1" required
+                        value={mainV.altura_nave_cm ?? ""}
+                        onChange={(e) => setMain((v) => ({ ...v, altura_nave_cm: e.target.value }))} />
+                      <span className="avi-unit">cm</span>
+                    </div>
                   </div>
                 </div>
                 <div className="avi-btn-row">
-                  <button type="submit" className="avi-btn-primary" disabled={!mainV.gallinas || !mainV.sistema}>
-                    Siguiente
+                  <button type="submit" className="avi-btn-primary"
+                    disabled={!mainV.gallinas || !mainV.sistema || !mainV.superficie_nave_m2 || !mainV.altura_nave_cm}>
+                    Calcular
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 </div>
@@ -243,41 +321,111 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Step 2: Instalación */}
-          {step === "instalacion" && (
-            <div key={`inst-${animKey}`} className="avi-step">
+          {/* Loading recomendación */}
+          {step === "loading_rec" && (
+            <div key={`loading_rec-${animKey}`} className="avi-step">
+              <div className="avi-loading">
+                <div className="avi-loading-dots"><span /><span /><span /></div>
+                <p className="avi-loading-text">Analizando la nave...</p>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2: Recomendación zona de puesta */}
+          {step === "recomendacion" && rec && (
+            <div key={`rec-${animKey}`} className="avi-step">
               <button className="avi-back" onClick={() => go("main")}>
                 <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
-              <div className="avi-badge">{sistemaLabel} · {mainV.gallinas} aves</div>
-              <div className="avi-form-title">Dimensiones de la instalación</div>
-              <p className="avi-form-subtitle">
-                {esJaulas
-                  ? "Introduce la superficie útil total de jaulas. El sistema calculará los requisitos de equipamiento."
-                  : "Introduce la superficie útil y el tipo de zona de puesta. El sistema calculará todo lo demás."}
-              </p>
-              <form onSubmit={onInstSubmit}>
-                <div className="avi-field">
-                  <label className="avi-label">Superficie útil de la nave</label>
-                  <div className="avi-input-wrap">
-                    <input type="number" className="avi-input has-unit" placeholder="60" min={1} step="0.1" required
-                      value={instV.superficie_nave_m2 ?? ""}
-                      onChange={(e) => setInst((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
-                    <span className="avi-unit">m²</span>
+              <div className="avi-badge">{sistemaLabel} · {mainV.gallinas} aves · {mainV.superficie_nave_m2} m²</div>
+              <div className="avi-form-title">Sistema de puesta recomendado</div>
+              <p className="avi-form-subtitle">Basado en la densidad y la altura disponible de la nave.</p>
+
+              <div style={{ background: "#FFFFFF", border: "1px solid #C8C2B0", borderRadius: "8px", padding: "1.5rem 1.75rem", marginBottom: "1.5rem" }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem" }}>
+                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: rec.tipo_zona === "aviario" ? "#E8F0E3" : "#EAE6DB", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+                    {rec.tipo_zona === "aviario"
+                      ? <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="3" rx="1" fill="#4A7C59"/><rect x="2" y="9" width="16" height="3" rx="1" fill="#4A7C59" opacity=".7"/><rect x="2" y="14" width="16" height="3" rx="1" fill="#4A7C59" opacity=".4"/></svg>
+                      : <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="8" rx="1" fill="#6B7060"/><path d="M7 7V5a3 3 0 016 0v2" stroke="#6B7060" strokeWidth="1.5" fill="none"/></svg>
+                    }
+                  </div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "1.15rem", fontWeight: 700, marginBottom: "0.25rem" }}>
+                      {rec.tipo_zona === "aviario" ? `Aviario multinivel (${rec.niveles} niveles)` : "Nidal colectivo"}
+                    </div>
+                    <p style={{ fontSize: "0.88rem", color: "#5A5A4E", lineHeight: 1.6, margin: 0 }}>{rec.razon}</p>
                   </div>
                 </div>
+              </div>
 
+              {/* Argumentación comparativa */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem", marginBottom: "1.5rem" }}>
+                {[
+                  {
+                    tipo: "aviario" as TipoZona,
+                    titulo: "Aviario multinivel",
+                    puntos: [
+                      "Multiplica la superficie útil por número de niveles",
+                      "Permite mayor densidad de aves dentro del límite legal",
+                      "Mejor bienestar: movimiento vertical y entorno más complejo",
+                      "Mayor productividad por m² de suelo construido",
+                    ],
+                  },
+                  {
+                    tipo: "nidal_colectivo" as TipoZona,
+                    titulo: "Nidal colectivo",
+                    puntos: [
+                      "Menor inversión inicial y menor complejidad técnica",
+                      "Gestión y limpieza más sencillas",
+                      "Idóneo para densidades bajas o naves de poca altura",
+                      "Solución probada y de fácil mantenimiento",
+                    ],
+                  },
+                ].map(({ tipo, titulo, puntos }) => {
+                  const esRecomendado = rec.tipo_zona === tipo;
+                  const alturaOk = Math.floor((parseFloat(mainV.altura_nave_cm) - 25) / 45) >= 2;
+                  const disponible = tipo === "nidal_colectivo" || alturaOk;
+                  return (
+                    <div key={tipo} style={{
+                      border: `1.5px solid ${esRecomendado ? "#4A7C59" : "#DDD8CC"}`,
+                      borderRadius: 8,
+                      padding: "1rem 1.1rem",
+                      background: esRecomendado ? "#F0F6F0" : "#FAFAF7",
+                      position: "relative",
+                    }}>
+                      {esRecomendado && (
+                        <span style={{ position: "absolute", top: -10, left: 12, background: "#4A7C59", color: "#fff", fontSize: "0.65rem", fontWeight: 700, letterSpacing: "0.08em", padding: "0.15rem 0.6rem", borderRadius: 20 }}>RECOMENDADO</span>
+                      )}
+                      <div style={{ fontFamily: "'Playfair Display', serif", fontSize: "0.95rem", fontWeight: 700, marginBottom: "0.6rem", color: "#1C2418" }}>{titulo}</div>
+                      <ul style={{ margin: 0, padding: "0 0 0 1rem", listStyle: "none" }}>
+                        {puntos.map((p) => (
+                          <li key={p} style={{ fontSize: "0.8rem", color: "#4A4A3E", lineHeight: 1.55, marginBottom: "0.3rem", paddingLeft: "0.75rem", position: "relative" }}>
+                            <span style={{ position: "absolute", left: 0, color: esRecomendado ? "#4A7C59" : "#9A9486" }}>›</span>
+                            {p}
+                          </li>
+                        ))}
+                      </ul>
+                      {!esRecomendado && disponible && (
+                        <button style={{ marginTop: "0.75rem", background: "none", border: "1px solid #C8C2B0", borderRadius: 4, color: "#6B7060", fontSize: "0.78rem", padding: "0.35rem 0.75rem", cursor: "pointer", fontFamily: "inherit", width: "100%" }}
+                          onClick={() => onConfirmar(tipo)}>
+                          Elegir esta opción
+                        </button>
+                      )}
+                      {!esRecomendado && !disponible && (
+                        <p style={{ marginTop: "0.75rem", fontSize: "0.75rem", color: "#B0A898", fontStyle: "italic", margin: "0.75rem 0 0" }}>No disponible: altura insuficiente</p>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
 
-                <div className="avi-btn-row">
-                  <button type="submit" className="avi-btn-primary"
-                    disabled={!instV.superficie_nave_m2}>
-                    Calcular requisitos
-                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                  </button>
-                  <button type="button" className="avi-btn-ghost" onClick={() => go("main")}>Cancelar</button>
-                </div>
-              </form>
+              <div className="avi-btn-row">
+                <button className="avi-btn-primary" onClick={() => onConfirmar(tipoZona ?? rec.tipo_zona)}>
+                  Confirmar y calcular requisitos
+                  <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                </button>
+              </div>
             </div>
           )}
 
@@ -416,7 +564,14 @@ export default function ChatInterface() {
                   </div>
                 </div>
 
-                <button className="avi-btn-primary" onClick={reset}>Nueva consulta</button>
+                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
+                  <a href="/propuesta" target="_blank"
+                    style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "#C8A84B", color: "#1C2418", border: "none", borderRadius: "4px", padding: "0.78rem 1.75rem", fontFamily: "'Source Sans 3', sans-serif", fontSize: "0.9rem", fontWeight: 700, cursor: "pointer", letterSpacing: "0.04em", textDecoration: "none" }}>
+                    Ver propuesta comercial
+                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  </a>
+                  <button className="avi-btn-ghost" onClick={reset}>Nueva consulta</button>
+                </div>
               </div>
             );
           })()}
