@@ -21,17 +21,25 @@ class Recomendacion(BaseModel):
     razon: str
 
 
+def _niveles_aviario(altura_cm: float) -> int:
+    """Niveles del módulo A-Nida Plus según altura libre de nave."""
+    if altura_cm >= 400:
+        return 3
+    if altura_cm >= 300:
+        return 2
+    return 1
+
+
 def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
-    altura_util = datos.altura_nave_cm - 25
-    niveles_posibles = min(math.floor(altura_util / 45), 4)
+    niveles_posibles = _niveles_aviario(datos.altura_nave_cm)
     densidad = datos.num_gallinas / datos.superficie_nave_m2
 
     if niveles_posibles < 2:
         return Recomendacion(
             tipo_zona="nidal_colectivo",
             niveles=1,
-            razon=f"Con {datos.altura_nave_cm:.0f} cm de altura solo caben {niveles_posibles} nivel(es). "
-                  "Se necesita al menos 115 cm útiles para instalar un aviario de 2 niveles.",
+            razon=f"Con {datos.altura_nave_cm:.0f} cm de altura libre solo cabe 1 nivel. "
+                  "Se necesitan ≥ 300 cm para instalar un aviario de 2 niveles.",
         )
 
     densidad_con_aviario = densidad / niveles_posibles
@@ -173,9 +181,7 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
     densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
 
     if tipo_zona == "aviario":
-        altura_util = datos.altura_nave_cm - 25
-        niveles = min(math.floor(altura_util / 45), 4)
-        niveles = max(niveles, 1)
+        niveles = _niveles_aviario(datos.altura_nave_cm)
         sup_efectiva = datos.superficie_nave_m2 * niveles
         densidad_real = n / sup_efectiva
         parametro_label = f"Densidad interior (aviario {niveles} niveles — sup. efectiva {sup_efectiva:.0f} m²)"
@@ -277,14 +283,12 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
 
     # Zona de puesta
     if tipo_zona == "aviario":
-        altura_util = datos.altura_nave_cm - 25
-        niveles = min(math.floor(altura_util / 45), 4)
         sup_nidal_min = round(n / 120, 2)
         requisitos.append(RequisitoCalculado(
             nombre=f"Aviario multinivel — niveles recomendados",
             valor_minimo=float(niveles),
             unidad="niveles",
-            formula=f"floor(({datos.altura_nave_cm:.0f} cm - 25 margen) / 45 cm) = {niveles}, máx 4",
+            formula=f"{'≥400 cm → 3' if datos.altura_nave_cm >= 400 else '≥300 cm → 2' if datos.altura_nave_cm >= 300 else '<300 cm → 1'} (altura nave: {datos.altura_nave_cm:.0f} cm)",
             articulo="Directiva 1999/74/CE Art. 4.3.a",
         ))
         requisitos.append(RequisitoCalculado(
