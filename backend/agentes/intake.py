@@ -183,7 +183,7 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
     else:
         niveles = 1
         num_modulos = math.ceil(n / 144)
-        sup_modulos = round(num_modulos * 1.20 * 3, 2)   # 3,6 m² por módulo
+        sup_modulos = round(num_modulos * 1.20 * 1.40, 2)  # 1,68 m² por módulo (planta 1,2×1,4)
         sup_efectiva = round(datos.superficie_nave_m2 - sup_modulos, 2)
         densidad_real = n / sup_efectiva if sup_efectiva > 0 else float("inf")
         parametro_label = (
@@ -208,14 +208,14 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             nombre="Número de módulos de nidal",
             valor_minimo=float(num_modulos),
             unidad="módulos",
-            formula=f"⌈{n} / 144⌉ = {num_modulos} módulo(s) × 1,20 m × 3 m = {sup_modulos} m² ocupados",
+            formula=f"⌈{n} / 144⌉ = {num_modulos} módulo(s) × 1,20 m × 1,40 m = {sup_modulos} m² ocupados",
             articulo="Diseño A-Nida Plus (Gómez y Crespo)",
         ))
         requisitos.append(RequisitoCalculado(
             nombre="Superficie disponible (descontados módulos)",
             valor_minimo=sup_efectiva,
             unidad="m²",
-            formula=f"{datos.superficie_nave_m2} m² nave − {num_modulos} × 3,6 m² = {sup_efectiva} m²",
+            formula=f"{datos.superficie_nave_m2} m² nave − {num_modulos} × 1,68 m² = {sup_efectiva} m²",
             articulo="Cálculo interno",
         ))
 
@@ -256,7 +256,7 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             unidad="m²",
             formula=(
                 f"{datos.superficie_nave_m2} m² nave "
-                f"− {sup_modulos} m² módulos ({num_modulos} × 3,6 m²) "
+                f"− {sup_modulos} m² módulos ({num_modulos} × 1,68 m²) "
                 f"− {sup_slot} m² slots ({num_modulos} × 3,6 m²) "
                 f"= {sup_yacija_disponible} m²"
             ),
