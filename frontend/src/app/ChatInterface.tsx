@@ -3,28 +3,32 @@
 import { useState } from "react";
 import {
   solicitarIntake,
-  pedirRecomendacion,
+  pedirFactibilidad,
+  pedirRecomendacionConRespuestas,
   type DatosIntake,
   type IntakeResponse,
   type Recomendacion,
+  type FactibilidadResponse,
+  type Pregunta,
   type TipoZona,
   type Sistema,
 } from "./actions";
 
-type Step = "main" | "loading_rec" | "recomendacion" | "loading" | "result";
+type Step = "main" | "loading_fact" | "factibilidad" | "loading_rec" | "recomendacion" | "loading" | "result";
 
 const SISTEMAS_LABEL = ["En suelo", "Campero", "Ecológico", "Jaulas enriquecidas"] as const;
 type SistemaLabel = (typeof SISTEMAS_LABEL)[number];
 
 const SISTEMA_MAP: Record<SistemaLabel, Sistema> = {
-  "En suelo":           "suelo",
-  "Campero":            "campero",
-  "Ecológico":          "ecologico",
-  "Jaulas enriquecidas":"jaulas",
+  "En suelo":            "suelo",
+  "Campero":             "campero",
+  "Ecológico":           "ecologico",
+  "Jaulas enriquecidas": "jaulas",
 };
 
 const STEPS = [
   { key: "main",          label: "Proyecto" },
+  { key: "factibilidad",  label: "Análisis" },
   { key: "recomendacion", label: "Sistema" },
   { key: "result",        label: "Informe" },
 ] as const;
@@ -39,7 +43,7 @@ function renderMd(text: string): string {
   return text
     .replace(/##(\w+)##/g, (_, key) => {
       const label = SECTION_LABELS[key] ?? key;
-      return `<span style="display:block;font-size:0.68rem;font-weight:700;letter-spacing:0.12em;text-transform:uppercase;color:#4F764D;margin-top:1.4rem;margin-bottom:0.35rem;font-family:'Montserrat',sans-serif">${label}</span>`;
+      return `<span class="md-section-label">${label}</span>`;
     })
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
     .replace(/\*(.+?)\*/g, "<em>$1</em>")
@@ -47,12 +51,15 @@ function renderMd(text: string): string {
 }
 
 export default function ChatInterface() {
-  const [step, setStep]           = useState<Step>("main");
-  const [mainV, setMain]          = useState<Record<string, string>>({});
-  const [rec, setRec]             = useState<Recomendacion | null>(null);
-  const [tipoZona, setTipoZona]   = useState<TipoZona | null>(null);
-  const [resultado, setRes]       = useState<IntakeResponse | null>(null);
-  const [animKey, setAnim]        = useState(0);
+  const [step, setStep]               = useState<Step>("main");
+  const [mainV, setMain]              = useState<Record<string, string>>({});
+  const [factResult, setFactResult]   = useState<FactibilidadResponse | null>(null);
+  const [respuestas, setRespuestas]   = useState<Record<string, string>>({});
+  const [preguntaIdx, setPreguntaIdx] = useState(0);
+  const [rec, setRec]                 = useState<Recomendacion | null>(null);
+  const [tipoZona, setTipoZona]       = useState<TipoZona | null>(null);
+  const [resultado, setRes]           = useState<IntakeResponse | null>(null);
+  const [animKey, setAnim]            = useState(0);
 
   const sistemaLabel = mainV.sistema as SistemaLabel | undefined;
   const sistemaApi   = sistemaLabel ? SISTEMA_MAP[sistemaLabel] : undefined;
@@ -60,31 +67,40 @@ export default function ChatInterface() {
 
   function go(next: Step) { setAnim((k) => k + 1); setStep(next); }
 
+  function datosBásicos() {
+    return {
+      num_gallinas:       parseInt(mainV.gallinas),
+      sistema:            sistemaApi!,
+      superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
+      altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
+    };
+  }
+
   async function onMainSubmit(e: { preventDefault: () => void }) {
     e.preventDefault();
     if (esJaulas) {
       go("loading");
       try {
-        const datos: DatosIntake = {
-          num_gallinas:       parseInt(mainV.gallinas),
-          sistema:            sistemaApi!,
-          superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
-          altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
-          tipo_zona:          "nidal_colectivo",
-        };
+        const datos: DatosIntake = { ...datosBásicos(), tipo_zona: "nidal_colectivo" };
         setRes(await solicitarIntake(datos));
       } catch { setRes(null); }
       go("result");
       return;
     }
+    go("loading_fact");
+    try {
+      const fact = await pedirFactibilidad(datosBásicos());
+      setFactResult(fact);
+      setRespuestas({});
+      setPreguntaIdx(0);
+    } catch { setFactResult(null); }
+    go("factibilidad");
+  }
+
+  async function onFactibilidadSubmit() {
     go("loading_rec");
     try {
-      const r = await pedirRecomendacion({
-        num_gallinas:       parseInt(mainV.gallinas),
-        sistema:            sistemaApi!,
-        superficie_nave_m2: parseFloat(mainV.superficie_nave_m2),
-        altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
-      });
+      const r = await pedirRecomendacionConRespuestas(datosBásicos(), respuestas);
       setRec(r);
       setTipoZona(r.tipo_zona);
     } catch { setRec(null); }
@@ -113,218 +129,111 @@ export default function ChatInterface() {
           superficie: mainV.superficie_nave_m2,
           altura: mainV.altura_nave_cm,
           tipo_zona: zona,
+          niveles: rec?.niveles ?? 1,
         }));
       }
     } catch { setRes(null); }
     go("result");
   }
 
-  function reset() { setMain({}); setRec(null); setTipoZona(null); setRes(null); go("main"); }
+  function reset() {
+    setMain({}); setFactResult(null); setRespuestas({});
+    setRec(null); setTipoZona(null); setRes(null); go("main");
+  }
 
-  const stepIdx = { main: 0, loading_rec: 1, recomendacion: 1, loading: 2, result: 2 }[step];
+  const stepIdx = { main: 0, loading_fact: 1, factibilidad: 1, loading_rec: 2, recomendacion: 2, loading: 3, result: 3 }[step];
 
   return (
     <>
-      <style>{`
-        @import url('https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Source+Sans+3:wght@300;400;500;600&display=swap');
+      <style>{CHAT_CSS}</style>
 
-        /* ── GYC brand tokens ── */
-        :root {
-          --gyc-green:       #4F764D;
-          --gyc-green-hover: #3d5e3b;
-          --gyc-blue:        #0274BE;
-          --gyc-text:        #808285;
-          --gyc-dark:        #3a3a3a;
-          --gyc-border:      #e7e7e7;
-          --gyc-bg:          #ffffff;
-          --gyc-bg-alt:      #f5f5f5;
-        }
+      {/* ── HEADER ── */}
+      <header className="chat-hdr">
+        <div className="chat-hdr-inner">
+          <img src="/gyc-logo.png" alt="Gómez y Crespo" className="chat-logo" />
+          <a href="/propuesta" target="_blank" className="chat-hdr-link">
+            Ver propuesta
+            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
+              <path d="M1 4h8M5 1l4 3-4 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
+            </svg>
+          </a>
+        </div>
+      </header>
 
-        .avi-root { font-family: 'Source Sans 3', 'Source Sans Pro', sans-serif; background: var(--gyc-bg); min-height: 100vh; color: var(--gyc-text); }
-        .avi-header { padding: 2.5rem 2rem 0; max-width: 760px; margin: 0 auto; }
-        .avi-eyebrow { font-size: 0.72rem; color: var(--gyc-green); margin-bottom: 0.4rem; font-weight: 600; letter-spacing: 0.12em; text-transform: uppercase; }
-        .avi-title { font-family: 'Montserrat', sans-serif; font-size: clamp(1.8rem, 4vw, 2.5rem); font-weight: 800; color: var(--gyc-dark); letter-spacing: -0.01em; line-height: 1em; }
-        .avi-tagline { font-size: 1rem; color: var(--gyc-text); margin-top: 0.6rem; font-weight: 300; line-height: 1.65; }
-        .avi-divider { height: 2px; background: var(--gyc-green); width: 48px; margin: 1.25rem 0 1.5rem; }
-        .avi-main { max-width: 760px; margin: 0 auto; padding: 0 2rem 4rem; }
+      <div className="chat-root">
+        {/* ── Page intro ── */}
+        <div className="chat-intro">
+          <div className="chat-eyebrow">Granja avícola — Producción de huevo</div>
+          <h1 className="chat-title">Agente Aviario</h1>
+          <p className="chat-tagline">Introduce los datos de tu instalación y obtén los requisitos mínimos exigidos por la normativa.</p>
+          <div className="chat-divider" />
+        </div>
 
-        @keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .avi-step { animation: stepIn 0.24s ease forwards; }
-
-        .avi-progress { display: flex; align-items: center; margin-bottom: 2.5rem; }
-        .avi-prog-item { display: flex; align-items: center; gap: 0.5rem; }
-        .avi-prog-circle { width: 26px; height: 26px; border-radius: 50%; border: 1.5px solid var(--gyc-border); background: #fff; font-size: 0.68rem; font-weight: 700; color: #bbb; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s; }
-        .avi-prog-circle.active { border-color: var(--gyc-dark); background: var(--gyc-dark); color: #fff; }
-        .avi-prog-circle.done   { border-color: var(--gyc-green); background: var(--gyc-green); color: #fff; }
-        .avi-prog-label { font-size: 0.7rem; color: #bbb; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 600; }
-        .avi-prog-label.active { color: var(--gyc-dark); }
-        .avi-prog-line { flex: 1; height: 1px; background: var(--gyc-border); margin: 0 0.6rem; min-width: 16px; }
-
-        .avi-form-title    { font-family: 'Montserrat', sans-serif; font-size: 1.3rem; font-weight: 800; color: var(--gyc-dark); margin-bottom: 0.3rem; line-height: 1em; }
-        .avi-form-subtitle { font-size: 0.92rem; color: var(--gyc-text); margin-bottom: 1.75rem; font-weight: 300; line-height: 1.65; }
-        .avi-field { margin-bottom: 1.1rem; }
-        .avi-label { display: block; font-size: 0.72rem; font-weight: 700; color: var(--gyc-dark); margin-bottom: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
-        .avi-input-wrap { position: relative; display: flex; align-items: center; }
-        .avi-unit { position: absolute; right: 0.9rem; font-size: 0.82rem; color: #bbb; pointer-events: none; }
-        .avi-select, .avi-input { width: 100%; background: #fff; border: 1px solid var(--gyc-border); border-radius: 2px; padding: 0.7rem 0.9rem; font-family: 'Source Sans 3', sans-serif; font-size: 0.95rem; color: var(--gyc-dark); outline: none; transition: border-color 0.15s, box-shadow 0.15s; box-sizing: border-box; }
-        .avi-input.has-unit { padding-right: 3.5rem; }
-        .avi-select { appearance: none; -webkit-appearance: none; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23808285' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 0.9rem center; padding-right: 2.2rem; }
-        .avi-select:focus, .avi-input:focus { border-color: var(--gyc-green); box-shadow: 0 0 0 3px rgba(79,118,77,0.1); }
-        .avi-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
-        @media (max-width: 520px) { .avi-row { grid-template-columns: 1fr; } }
-        .avi-sep { display: flex; align-items: center; gap: 0.75rem; margin: 1.5rem 0 1.1rem; }
-        .avi-sep span { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #bbb; white-space: nowrap; }
-        .avi-sep::before, .avi-sep::after { content: ""; flex: 1; height: 1px; background: var(--gyc-border); }
-
-        .avi-btn-row { display: flex; align-items: center; gap: 1rem; margin-top: 2rem; flex-wrap: wrap; }
-        .avi-btn-primary { background: var(--gyc-green); color: #fff; border: none; border-radius: 0; padding: 0.85rem 1.9rem; font-family: 'Source Sans 3', sans-serif; font-size: 0.9rem; font-weight: 600; cursor: pointer; letter-spacing: 0.05em; text-transform: uppercase; transition: background 0.15s; display: inline-flex; align-items: center; gap: 0.5rem; }
-        .avi-btn-primary:hover { background: var(--gyc-green-hover); }
-        .avi-btn-primary:disabled { opacity: 0.4; cursor: default; }
-        .avi-btn-ghost { background: transparent; border: 1px solid var(--gyc-border); color: var(--gyc-text); border-radius: 0; padding: 0.85rem 1.4rem; font-family: 'Source Sans 3', sans-serif; font-size: 0.9rem; cursor: pointer; letter-spacing: 0.04em; transition: border-color 0.15s, color 0.15s; }
-        .avi-btn-ghost:hover { border-color: var(--gyc-dark); color: var(--gyc-dark); }
-        .avi-back { display: inline-flex; align-items: center; gap: 0.45rem; font-size: 0.72rem; color: var(--gyc-text); cursor: pointer; border: none; background: none; padding: 0; margin-bottom: 1.75rem; transition: color 0.15s; font-family: 'Source Sans 3', sans-serif; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 600; }
-        .avi-back:hover { color: var(--gyc-green); }
-        .avi-badge { display: inline-block; padding: 0.25rem 0.75rem; background: #edf3ec; color: var(--gyc-green); border-radius: 0; font-size: 0.75rem; font-weight: 600; margin-bottom: 1.5rem; letter-spacing: 0.04em; }
-
-        @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
-        .avi-loading { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5rem 2rem; gap: 1.5rem; }
-        .avi-loading-dots { display: flex; gap: 10px; }
-        .avi-loading-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--gyc-green); animation: pulse 1.3s ease infinite; }
-        .avi-loading-dots span:nth-child(2) { animation-delay: 0.2s; }
-        .avi-loading-dots span:nth-child(3) { animation-delay: 0.4s; }
-        .avi-loading-text { font-size: 0.88rem; color: var(--gyc-text); font-style: italic; }
-
-        .avi-result-wrap { overflow: hidden; border: 1px solid var(--gyc-border); margin-bottom: 1.5rem; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
-
-        .avi-summary-bar { padding: 1.4rem 1.75rem; display: flex; align-items: center; gap: 1.25rem; }
-        .avi-summary-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .avi-summary-text strong { font-size: 0.68rem; letter-spacing: 0.12em; text-transform: uppercase; display: block; opacity: 0.7; margin-bottom: 0.2rem; font-family: 'Source Sans 3', sans-serif; }
-        .avi-summary-text span { font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
-        .avi-meta-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.75rem; background: rgba(0,0,0,0.15); }
-        .avi-meta-pill { font-size: 0.74rem; font-weight: 500; padding: 0.2rem 0.65rem; border-radius: 0; background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); letter-spacing: 0.03em; }
-
-        .avi-table-block { background: #fff; }
-        .avi-table-head { padding: 0.8rem 1.75rem; background: var(--gyc-bg-alt); border-bottom: 1px solid var(--gyc-border); display: flex; align-items: center; justify-content: space-between; }
-        .avi-table-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gyc-text); }
-        .avi-stats { display: flex; gap: 0.6rem; }
-        .avi-stat { font-size: 0.72rem; font-weight: 700; padding: 0.15rem 0.55rem; border-radius: 0; letter-spacing: 0.04em; }
-        .avi-stat.ok   { background: #edf3ec; color: #2E6B35; }
-        .avi-stat.fail { background: #fdecea; color: #C0392B; }
-
-        .avi-check-row { display: flex; align-items: center; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--gyc-border); gap: 0.75rem; }
-        .avi-check-row:last-child { border-bottom: none; }
-        .avi-check-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-        .avi-check-icon.ok   { background: #edf3ec; }
-        .avi-check-icon.fail { background: #fdecea; }
-        .avi-check-name { flex: 1; font-size: 0.9rem; color: var(--gyc-dark); font-weight: 400; }
-        .avi-check-vals { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; flex-shrink: 0; }
-        .avi-check-vals .real { color: var(--gyc-dark); font-weight: 600; }
-        .avi-check-vals .sep  { color: var(--gyc-border); }
-        .avi-check-vals .ref  { color: var(--gyc-text); }
-        .avi-diff { font-size: 0.72rem; font-weight: 700; padding: 0.13rem 0.5rem; border-radius: 0; flex-shrink: 0; white-space: nowrap; letter-spacing: 0.03em; }
-        .avi-diff.ok   { background: #edf3ec; color: #2E6B35; }
-        .avi-diff.fail { background: #fdecea; color: #C0392B; }
-
-        .avi-req-row { display: flex; align-items: flex-start; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--gyc-border); gap: 0.75rem; }
-        .avi-req-row:last-child { border-bottom: none; }
-        .avi-req-icon { width: 22px; height: 22px; border-radius: 50%; background: var(--gyc-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 1px; }
-        .avi-req-body { flex: 1; min-width: 0; }
-        .avi-req-name { font-size: 0.9rem; color: var(--gyc-dark); font-weight: 400; }
-        .avi-req-formula { font-size: 0.78rem; color: #bbb; margin-top: 0.1rem; font-style: italic; }
-        .avi-req-value { font-size: 0.9rem; font-weight: 700; color: var(--gyc-dark); flex-shrink: 0; white-space: nowrap; }
-
-        .avi-warn-block { background: #fffdf0; border-top: 2px solid #f5e580; }
-        .avi-warn-head { padding: 0.8rem 1.75rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
-        .avi-warn-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6500; }
-        .avi-warn-row { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.75rem; border-bottom: 1px solid #f0e070; }
-        .avi-warn-row:last-child { border-bottom: none; }
-        .avi-warn-text { font-size: 0.88rem; color: #5a4a00; line-height: 1.65; }
-
-        .avi-analysis-block { background: #fff; border-top: 1px solid var(--gyc-border); }
-        .avi-analysis-head { padding: 0.8rem 1.75rem; background: var(--gyc-bg-alt); border-bottom: 1px solid var(--gyc-border); }
-        .avi-analysis-label { font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--gyc-text); }
-        .avi-analysis-body { padding: 1.4rem 1.75rem; font-size: 0.95rem; line-height: 1.75; color: var(--gyc-text); }
-        .avi-analysis-body strong { font-weight: 600; color: var(--gyc-dark); }
-        .avi-analysis-body em { font-style: italic; }
-
-        .avi-result-footer { font-size: 0.72rem; color: #bbb; font-style: italic; padding: 0.85rem 1.75rem; background: var(--gyc-bg-alt); border-top: 1px solid var(--gyc-border); }
-        .avi-error { padding: 2rem; background: #fdecea; border: 1px solid #f5b8b8; color: #C0392B; font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; }
-      `}</style>
-
-      <div className="avi-root">
-        <header className="avi-header">
-          <img src="/gyc-logo.png" alt="Gómez y Crespo" style={{ maxWidth: 200, marginBottom: "1.75rem", display: "block" }} />
-          <div className="avi-eyebrow">Granja avícola — Producción de huevo</div>
-          <h1 className="avi-title">Agente Aviario</h1>
-          <p className="avi-tagline">Introduce los datos de tu instalación y obtén los requisitos mínimos exigidos por la normativa.</p>
-          <div className="avi-divider" />
-        </header>
-
-        <main className="avi-main">
-          {/* Progress */}
-          <div className="avi-progress">
+        <main className="chat-main">
+          {/* ── Progress ── */}
+          <div className="prog-bar">
             {STEPS.map(({ key, label }, i) => (
-              <div key={key} style={{ display: "flex", alignItems: "center", flex: i < STEPS.length - 1 ? 1 : "none" }}>
-                <div className="avi-prog-item">
-                  <div className={`avi-prog-circle ${stepIdx > i ? "done" : stepIdx === i ? "active" : ""}`}>
+              <div key={key} className={`prog-step-outer${i < STEPS.length - 1 ? " prog-step-outer--flex" : ""}`}>
+                <div className="prog-step">
+                  <div className={`prog-circle${stepIdx > i ? " is-done" : stepIdx === i ? " is-active" : ""}`}>
                     {stepIdx > i
                       ? <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                       : i + 1}
                   </div>
-                  <span className={`avi-prog-label ${stepIdx === i ? "active" : ""}`}>{label}</span>
+                  <span className={`prog-label${stepIdx === i ? " is-active" : ""}`}>{label}</span>
                 </div>
-                {i < STEPS.length - 1 && <div className="avi-prog-line" />}
+                {i < STEPS.length - 1 && <div className="prog-line" />}
               </div>
             ))}
           </div>
 
-          {/* Step 1: Proyecto */}
+          {/* ── Step 1: Proyecto ── */}
           {step === "main" && (
-            <div key={`main-${animKey}`} className="avi-step">
-              <div className="avi-form-title">Datos del proyecto</div>
-              <p className="avi-form-subtitle">Introduce el sistema de alojamiento y las dimensiones de la nave.</p>
+            <div key={`main-${animKey}`} className="step-anim">
+              <div className="form-title">Datos del proyecto</div>
+              <p className="form-subtitle">Introduce el sistema de alojamiento y las dimensiones de la nave.</p>
               <form onSubmit={onMainSubmit}>
-                <div className="avi-row">
-                  <div className="avi-field">
-                    <label className="avi-label">Sistema de alojamiento</label>
-                    <select className="avi-select" required value={mainV.sistema ?? ""}
+                <div className="field-row">
+                  <div className="field">
+                    <label className="field-label">Sistema de alojamiento</label>
+                    <select className="field-select" required value={mainV.sistema ?? ""}
                       onChange={(e) => setMain((v) => ({ ...v, sistema: e.target.value }))}>
                       <option value="" disabled>Selecciona sistema</option>
                       {SISTEMAS_LABEL.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
-                  <div className="avi-field">
-                    <label className="avi-label">Gallinas a alojar</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="500" min={1} required
+                  <div className="field">
+                    <label className="field-label">Gallinas a alojar</label>
+                    <div className="field-input-wrap">
+                      <input type="number" className="field-input field-input--unit" placeholder="500" min={1} required
                         value={mainV.gallinas ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, gallinas: e.target.value }))} />
-                      <span className="avi-unit">aves</span>
+                      <span className="field-unit">aves</span>
                     </div>
                   </div>
                 </div>
-                <div className="avi-row">
-                  <div className="avi-field">
-                    <label className="avi-label">Superficie útil de la nave</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="200" min={1} step="0.1" required
+                <div className="field-row">
+                  <div className="field">
+                    <label className="field-label">Superficie útil de la nave</label>
+                    <div className="field-input-wrap">
+                      <input type="number" className="field-input field-input--unit" placeholder="200" min={1} step="0.1" required
                         value={mainV.superficie_nave_m2 ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
-                      <span className="avi-unit">m²</span>
+                      <span className="field-unit">m²</span>
                     </div>
                   </div>
-                  <div className="avi-field">
-                    <label className="avi-label">Altura libre de la nave</label>
-                    <div className="avi-input-wrap">
-                      <input type="number" className="avi-input has-unit" placeholder="250" min={50} step="1" required
+                  <div className="field">
+                    <label className="field-label">Altura libre de la nave</label>
+                    <div className="field-input-wrap">
+                      <input type="number" className="field-input field-input--unit" placeholder="250" min={50} step="1" required
                         value={mainV.altura_nave_cm ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, altura_nave_cm: e.target.value }))} />
-                      <span className="avi-unit">cm</span>
+                      <span className="field-unit">cm</span>
                     </div>
                   </div>
                 </div>
-                <div className="avi-btn-row">
-                  <button type="submit" className="avi-btn-primary"
+                <div className="btn-row">
+                  <button type="submit" className="btn-pill"
                     disabled={!mainV.gallinas || !mainV.sistema || !mainV.superficie_nave_m2 || !mainV.altura_nave_cm}>
                     Calcular
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
@@ -334,46 +243,168 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Loading recomendación */}
-          {step === "loading_rec" && (
-            <div key={`loading_rec-${animKey}`} className="avi-step">
-              <div className="avi-loading">
-                <div className="avi-loading-dots"><span /><span /><span /></div>
-                <p className="avi-loading-text">Analizando la nave...</p>
+          {/* ── Loading factibilidad ── */}
+          {step === "loading_fact" && (
+            <div key={`loading_fact-${animKey}`} className="step-anim">
+              <div className="loading-wrap">
+                <div className="loading-dots"><span /><span /><span /></div>
+                <p className="loading-text">Analizando la nave...</p>
               </div>
             </div>
           )}
 
-          {/* Step 2: Recomendación zona de puesta */}
-          {step === "recomendacion" && rec && (
-            <div key={`rec-${animKey}`} className="avi-step">
-              <button className="avi-back" onClick={() => go("main")}>
+          {/* ── Step 2: Factibilidad ── */}
+          {step === "factibilidad" && factResult && (
+            <div key={`fact-${animKey}`} className="step-anim">
+              <button className="btn-back" onClick={() => go("main")}>
                 <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
-              <div className="avi-badge">{sistemaLabel} · {mainV.gallinas} aves · {mainV.superficie_nave_m2} m²</div>
-              <div className="avi-form-title">Sistema de puesta recomendado</div>
-              <p className="avi-form-subtitle">Basado en la densidad y la altura disponible de la nave.</p>
 
-              <div style={{ background: "#fff", border: "1px solid #e7e7e7", borderRadius: "0", padding: "1.5rem 1.75rem", marginBottom: "1.5rem" }}>
-                <div style={{ display: "flex", alignItems: "flex-start", gap: "1rem" }}>
-                  <div style={{ width: 44, height: 44, borderRadius: "50%", background: rec.tipo_zona === "aviario" ? "#edf3ec" : "#f5f5f5", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
-                    {rec.tipo_zona === "aviario"
-                      ? <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="3" rx="1" fill="#4A7C59"/><rect x="2" y="9" width="16" height="3" rx="1" fill="#4A7C59" opacity=".7"/><rect x="2" y="14" width="16" height="3" rx="1" fill="#4A7C59" opacity=".4"/></svg>
-                      : <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="8" rx="1" fill="#6B7060"/><path d="M7 7V5a3 3 0 016 0v2" stroke="#6B7060" strokeWidth="1.5" fill="none"/></svg>
+              {/* Resultado factibilidad */}
+              <div className={`fact-box ${factResult.factibilidad.factible ? "is-ok" : "is-fail"}`}>
+                <div className="fact-box-inner">
+                  <div className={`fact-icon ${factResult.factibilidad.factible ? "is-ok" : "is-fail"}`}>
+                    {factResult.factibilidad.factible
+                      ? <svg width="16" height="14" viewBox="0 0 16 14" fill="none"><path d="M1 7l5 5 9-9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
                     }
                   </div>
-                  <div style={{ flex: 1 }}>
-                    <div style={{ fontFamily: "'Montserrat', sans-serif", fontSize: "1.1rem", fontWeight: 800, marginBottom: "0.25rem", color: "#3a3a3a" }}>
-                      {rec.tipo_zona === "aviario" ? `Aviario multinivel (${rec.niveles} niveles)` : "Nidal colectivo"}
+                  <div className="fact-text">
+                    <div className="fact-heading">
+                      {factResult.factibilidad.factible ? "Instalación viable" : "Instalación no viable"}
                     </div>
-                    <p style={{ fontSize: "0.9rem", color: "#808285", lineHeight: 1.65, margin: 0 }}>{rec.razon}</p>
+                    <p className="fact-msg">{factResult.factibilidad.mensaje}</p>
                   </div>
+                </div>
+
+                {/* Densidades */}
+                <div className="density-grid">
+                  {[
+                    { label: "Densidad con nidal",   value: factResult.factibilidad.densidad_actual.toFixed(1),       unit: "gal/m²", warn: factResult.factibilidad.densidad_actual > factResult.factibilidad.densidad_max },
+                    { label: "Densidad con aviario",  value: factResult.factibilidad.densidad_min_aviario.toFixed(1),  unit: "gal/m²", warn: factResult.factibilidad.densidad_min_aviario > factResult.factibilidad.densidad_max },
+                    { label: "Límite normativo",      value: factResult.factibilidad.densidad_max.toFixed(0),          unit: "gal/m²", warn: false },
+                  ].map(s => (
+                    <div key={s.label} className={`density-card ${s.warn ? "is-warn" : ""}`}>
+                      <div className="density-label">{s.label}</div>
+                      <div className={`density-val ${s.warn ? "is-warn" : ""}`}>{s.value}</div>
+                      <div className="density-unit">{s.unit}</div>
+                    </div>
+                  ))}
                 </div>
               </div>
 
-              {/* Argumentación comparativa */}
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.85rem", marginBottom: "1.5rem" }}>
+              {/* Preguntas dinámicas */}
+              {factResult.factibilidad.factible && factResult.preguntas.length > 0 && (
+                <div className="questions-wrap">
+                  {factResult.preguntas.map((p: Pregunta, i: number) => {
+                    if (i > preguntaIdx) return null;
+                    const answered = respuestas[p.id];
+                    const isActive = i === preguntaIdx;
+
+                    if (answered && !isActive) {
+                      const opcionTexto = p.opciones.find(o => o.id === answered)?.texto ?? answered;
+                      return (
+                        <div key={p.id} className="q-answered">
+                          <div className="q-answered-inner">
+                            <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><path d="M1 6l4 4 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            <span className="q-answered-text">{opcionTexto}</span>
+                          </div>
+                          <button className="q-change-btn"
+                            onClick={() => {
+                              const ids = factResult.preguntas.slice(i).map((q: Pregunta) => q.id);
+                              setRespuestas(r => {
+                                const next = { ...r };
+                                ids.forEach((id: string) => delete next[id]);
+                                return next;
+                              });
+                              setPreguntaIdx(i);
+                            }}>
+                            Cambiar
+                          </button>
+                        </div>
+                      );
+                    }
+
+                    return (
+                      <div key={p.id} className="q-active step-anim">
+                        <div className="q-active-label">
+                          <span className="q-num">{i + 1}</span>
+                          {p.texto}
+                        </div>
+                        <div className="q-options">
+                          {p.opciones.map(op => (
+                            <button key={op.id} type="button" className="q-option"
+                              onClick={() => {
+                                setRespuestas(r => ({ ...r, [p.id]: op.id }));
+                                setPreguntaIdx(i + 1);
+                              }}>
+                              <span className="q-option-dot" />
+                              <span className="q-option-text">{op.texto}</span>
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
+              {factResult.factibilidad.factible ? (
+                <div className="btn-row">
+                  {!factResult.preguntas.some((p: Pregunta) => !respuestas[p.id]) && (
+                    <button className="btn-pill step-anim" onClick={onFactibilidadSubmit}>
+                      Ver recomendación
+                      <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="btn-row">
+                  <button className="btn-pill" onClick={() => go("main")}>Modificar datos</button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ── Loading recomendación ── */}
+          {step === "loading_rec" && (
+            <div key={`loading_rec-${animKey}`} className="step-anim">
+              <div className="loading-wrap">
+                <div className="loading-dots"><span /><span /><span /></div>
+                <p className="loading-text">Calculando recomendación...</p>
+              </div>
+            </div>
+          )}
+
+          {/* ── Step 3: Recomendación ── */}
+          {step === "recomendacion" && rec && (
+            <div key={`rec-${animKey}`} className="step-anim">
+              <button className="btn-back" onClick={() => go("main")}>
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                Volver
+              </button>
+              <div className="rec-badge">{sistemaLabel} · {mainV.gallinas} aves · {mainV.superficie_nave_m2} m²</div>
+              <div className="form-title">Sistema de puesta recomendado</div>
+              <p className="form-subtitle">Basado en la densidad y la altura disponible de la nave.</p>
+
+              <div className="rec-result-card">
+                <div className={`rec-result-icon ${rec.tipo_zona === "aviario" ? "is-aviario" : "is-nidal"}`}>
+                  {rec.tipo_zona === "aviario"
+                    ? <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="3" rx="1" fill="currentColor"/><rect x="2" y="9" width="16" height="3" rx="1" fill="currentColor" opacity=".65"/><rect x="2" y="14" width="16" height="3" rx="1" fill="currentColor" opacity=".35"/></svg>
+                    : <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="8" rx="1" fill="currentColor"/><path d="M7 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                  }
+                </div>
+                <div className="rec-result-body">
+                  <div className="rec-result-name">
+                    {rec.tipo_zona === "aviario" ? `Aviario multinivel (${rec.niveles} niveles)` : "Nidal colectivo"}
+                  </div>
+                  <p className="rec-result-reason">{rec.razon}</p>
+                </div>
+              </div>
+
+              {/* Comparativa */}
+              <div className="rec-compare">
                 {[
                   {
                     tipo: "aviario" as TipoZona,
@@ -400,41 +431,32 @@ export default function ChatInterface() {
                   const alturaOk = Math.floor((parseFloat(mainV.altura_nave_cm) - 25) / 45) >= 2;
                   const disponible = tipo === "nidal_colectivo" || alturaOk;
                   return (
-                    <div key={tipo} style={{
-                      border: `1.5px solid ${esRecomendado ? "#4F764D" : "#e7e7e7"}`,
-                      borderRadius: 0,
-                      padding: "1rem 1.1rem",
-                      background: esRecomendado ? "#edf3ec" : "#fafafa",
-                      position: "relative",
-                    }}>
-                      {esRecomendado && (
-                        <span style={{ position: "absolute", top: -10, left: 12, background: "#4F764D", color: "#fff", fontSize: "0.63rem", fontWeight: 700, letterSpacing: "0.1em", padding: "0.15rem 0.6rem", borderRadius: 0 }}>RECOMENDADO</span>
-                      )}
-                      <div style={{ fontFamily: "'Montserrat', sans-serif", fontSize: "0.92rem", fontWeight: 800, marginBottom: "0.6rem", color: "#3a3a3a" }}>{titulo}</div>
-                      <ul style={{ margin: 0, padding: "0 0 0 1rem", listStyle: "none" }}>
+                    <div key={tipo} className={`rec-card ${esRecomendado ? "is-recommended" : ""}`}>
+                      {esRecomendado && <span className="rec-card-badge">Recomendado</span>}
+                      <div className="rec-card-title">{titulo}</div>
+                      <ul className="rec-card-list">
                         {puntos.map((p) => (
-                          <li key={p} style={{ fontSize: "0.82rem", color: "#808285", lineHeight: 1.6, marginBottom: "0.3rem", paddingLeft: "0.75rem", position: "relative" }}>
-                            <span style={{ position: "absolute", left: 0, color: esRecomendado ? "#4F764D" : "#bbb" }}>›</span>
+                          <li key={p} className="rec-card-item">
+                            <span className={`rec-card-bullet ${esRecomendado ? "is-primary" : ""}`}>›</span>
                             {p}
                           </li>
                         ))}
                       </ul>
                       {!esRecomendado && disponible && (
-                        <button style={{ marginTop: "0.75rem", background: "none", border: "1px solid #e7e7e7", borderRadius: 0, color: "#808285", fontSize: "0.78rem", padding: "0.35rem 0.75rem", cursor: "pointer", fontFamily: "inherit", width: "100%", letterSpacing: "0.04em" }}
-                          onClick={() => onConfirmar(tipo)}>
+                        <button className="btn-outline rec-card-choose" onClick={() => onConfirmar(tipo)}>
                           Elegir esta opción
                         </button>
                       )}
                       {!esRecomendado && !disponible && (
-                        <p style={{ marginTop: "0.75rem", fontSize: "0.75rem", color: "#bbb", fontStyle: "italic", margin: "0.75rem 0 0" }}>No disponible: altura insuficiente</p>
+                        <p className="rec-card-unavailable">No disponible: altura insuficiente</p>
                       )}
                     </div>
                   );
                 })}
               </div>
 
-              <div className="avi-btn-row">
-                <button className="avi-btn-primary" onClick={() => onConfirmar(tipoZona ?? rec.tipo_zona)}>
+              <div className="btn-row">
+                <button className="btn-pill" onClick={() => onConfirmar(tipoZona ?? rec.tipo_zona)}>
                   Confirmar y calcular requisitos
                   <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
@@ -442,22 +464,22 @@ export default function ChatInterface() {
             </div>
           )}
 
-          {/* Loading */}
+          {/* ── Loading final ── */}
           {step === "loading" && (
-            <div key={`loading-${animKey}`} className="avi-step">
-              <div className="avi-loading">
-                <div className="avi-loading-dots"><span /><span /><span /></div>
-                <p className="avi-loading-text">Calculando requisitos normativos...</p>
+            <div key={`loading-${animKey}`} className="step-anim">
+              <div className="loading-wrap">
+                <div className="loading-dots"><span /><span /><span /></div>
+                <p className="loading-text">Calculando requisitos normativos...</p>
               </div>
             </div>
           )}
 
-          {/* Result */}
+          {/* ── Result ── */}
           {step === "result" && (() => {
             if (!resultado) return (
-              <div key={`result-${animKey}`} className="avi-step">
-                <div className="avi-error">Error al conectar con el servidor. Inténtalo de nuevo.</div>
-                <button className="avi-btn-primary" onClick={reset}>Nueva consulta</button>
+              <div key={`result-${animKey}`} className="step-anim">
+                <div className="error-box">Error al conectar con el servidor. Inténtalo de nuevo.</div>
+                <button className="btn-pill" onClick={reset}>Nueva consulta</button>
               </div>
             );
 
@@ -465,40 +487,39 @@ export default function ChatInterface() {
             const okCount   = informe.verificaciones_nave.filter((v) => v.cumple).length;
             const failCount = informe.verificaciones_nave.filter((v) => !v.cumple).length;
             const cumple    = informe.cumple_nave;
-            const bg        = cumple ? "#1E4D2B" : "#4D1E1E";
-            const accent    = cumple ? "#3A9B5C" : "#C0392B";
-            const tint      = cumple ? "#A8F0BC" : "#F5B8B8";
 
             return (
-              <div key={`result-${animKey}`} className="avi-step">
-                <div className="avi-result-wrap">
+              <div key={`result-${animKey}`} className="step-anim">
+                <div className="result-wrap">
 
                   {/* Banner */}
-                  <div className="avi-summary-bar" style={{ background: bg }}>
-                    <div className="avi-summary-icon" style={{ background: accent }}>
+                  <div className={`result-banner ${cumple ? "is-ok" : "is-fail"}`}>
+                    <div className={`result-banner-icon ${cumple ? "is-ok" : "is-fail"}`}>
                       {cumple
                         ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                         : <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
                       }
                     </div>
-                    <div className="avi-summary-text" style={{ color: "#FFF" }}>
-                      <strong style={{ color: tint }}>Verificación de la instalación</strong>
-                      <span>{cumple ? "La nave cumple los parámetros básicos" : `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}</span>
+                    <div className="result-banner-text">
+                      <strong className="result-banner-supra">Verificación de la instalación</strong>
+                      <span className="result-banner-main">
+                        {cumple ? "La nave cumple los parámetros básicos" : `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}
+                      </span>
                     </div>
                   </div>
-                  <div className="avi-meta-strip" style={{ background: `${bg}CC` }}>
+                  <div className={`result-meta-strip ${cumple ? "is-ok" : "is-fail"}`}>
                     {[`${informe.num_gallinas} gallinas`, informe.sistema, "RD 3/2002"].map((p) => (
-                      <span key={p} className="avi-meta-pill">{p}</span>
+                      <span key={p} className="result-meta-pill">{p}</span>
                     ))}
                   </div>
 
                   {/* Verificaciones nave */}
-                  <div className="avi-table-block">
-                    <div className="avi-table-head">
-                      <span className="avi-table-label">Verificación de la nave</span>
-                      <div className="avi-stats">
-                        <span className="avi-stat ok">{okCount} OK</span>
-                        {failCount > 0 && <span className="avi-stat fail">{failCount} fallo{failCount > 1 ? "s" : ""}</span>}
+                  <div className="result-block">
+                    <div className="result-block-head">
+                      <span className="result-block-label">Verificación de la nave</span>
+                      <div className="result-stats">
+                        <span className="result-stat is-ok">{okCount} OK</span>
+                        {failCount > 0 && <span className="result-stat is-fail">{failCount} fallo{failCount > 1 ? "s" : ""}</span>}
                       </div>
                     </div>
                     {informe.verificaciones_nave.map((v) => {
@@ -510,41 +531,41 @@ export default function ChatInterface() {
                           ? `−${Math.abs(v.valor_limite - v.valor_real).toLocaleString("es-ES", { maximumFractionDigits: 1 })} falta`
                           : `+${Math.abs(v.valor_real - v.valor_limite).toLocaleString("es-ES", { maximumFractionDigits: 1 })} exceso`;
                       return (
-                        <div key={v.parametro} className="avi-check-row">
-                          <div className={`avi-check-icon ${ok ? "ok" : "fail"}`}>
+                        <div key={v.parametro} className="check-row">
+                          <div className={`check-icon ${ok ? "is-ok" : "is-fail"}`}>
                             {ok
-                              ? <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5 6.5-7" stroke="#2E7D4F" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              : <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="#C0392B" strokeWidth="2" strokeLinecap="round"/></svg>
+                              ? <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              : <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                             }
                           </div>
-                          <span className="avi-check-name">{v.parametro}</span>
-                          <div className="avi-check-vals">
-                            <span className="real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })}</span>
-                            <span className="sep">/</span>
-                            <span className="ref">{sym} {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 1 })} {v.unidad}</span>
+                          <span className="check-name">{v.parametro}</span>
+                          <div className="check-vals">
+                            <span className="check-real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })}</span>
+                            <span className="check-sep">/</span>
+                            <span className="check-ref">{sym} {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 1 })} {v.unidad}</span>
                           </div>
-                          <span className={`avi-diff ${ok ? "ok" : "fail"}`}>{diff}</span>
+                          <span className={`check-diff ${ok ? "is-ok" : "is-fail"}`}>{diff}</span>
                         </div>
                       );
                     })}
                   </div>
 
                   {/* Requisitos calculados */}
-                  <div className="avi-table-block" style={{ borderTop: "2px solid #EDE9DF" }}>
-                    <div className="avi-table-head">
-                      <span className="avi-table-label">Equipamiento mínimo requerido</span>
+                  <div className="result-block result-block--sep">
+                    <div className="result-block-head">
+                      <span className="result-block-label">Equipamiento mínimo requerido</span>
                     </div>
                     {informe.requisitos.map((r) => (
-                      <div key={r.nombre} className="avi-req-row">
-                        <div className="avi-req-icon">
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="3" stroke="#6B7060" strokeWidth="1.5"/></svg>
+                      <div key={r.nombre} className="req-row">
+                        <div className="req-icon">
+                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
                         </div>
-                        <div className="avi-req-body">
-                          <div className="avi-req-name">{r.nombre}</div>
-                          <div className="avi-req-formula">{r.formula}</div>
+                        <div className="req-body">
+                          <div className="req-name">{r.nombre}</div>
+                          <div className="req-formula">{r.formula}</div>
                         </div>
-                        <div className="avi-req-value">
-                          {r.valor_minimo.toLocaleString("es-ES")} <span style={{ fontWeight: 400, fontSize: "0.78rem", color: "#6B7060" }}>{r.unidad}</span>
+                        <div className="req-value">
+                          {r.valor_minimo.toLocaleString("es-ES")} <span className="req-unit">{r.unidad}</span>
                         </div>
                       </div>
                     ))}
@@ -552,38 +573,37 @@ export default function ChatInterface() {
 
                   {/* Advertencias */}
                   {informe.advertencias.length > 0 && (
-                    <div className="avi-warn-block">
-                      <div className="avi-warn-head">
-                        <span className="avi-warn-label">⚠ Requisitos adicionales</span>
+                    <div className="warn-block">
+                      <div className="warn-head">
+                        <span className="warn-label">⚠ Requisitos adicionales</span>
                       </div>
                       {informe.advertencias.map((w, i) => (
-                        <div key={i} className="avi-warn-row">
-                          <span className="avi-warn-text">{w}</span>
+                        <div key={i} className="warn-row">
+                          <span className="warn-text">{w}</span>
                         </div>
                       ))}
                     </div>
                   )}
 
                   {/* Análisis legal */}
-                  <div className="avi-analysis-block">
-                    <div className="avi-analysis-head">
-                      <span className="avi-analysis-label">Análisis normativo</span>
+                  <div className="analysis-block">
+                    <div className="analysis-head">
+                      <span className="analysis-label">Análisis normativo</span>
                     </div>
-                    <div className="avi-analysis-body" dangerouslySetInnerHTML={{ __html: renderMd(analisis_legal) }} />
+                    <div className="analysis-body" dangerouslySetInnerHTML={{ __html: renderMd(analisis_legal) }} />
                   </div>
 
-                  <div className="avi-result-footer">
+                  <div className="result-footer">
                     Basado en RD 3/2002 · Directiva 1999/74/CE · RD 637/2021 · Regl. UE 2018/848
                   </div>
                 </div>
 
-                <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }}>
-                  <a href="/propuesta" target="_blank"
-                    style={{ display: "inline-flex", alignItems: "center", gap: "0.5rem", background: "#4F764D", color: "#fff", border: "none", borderRadius: "0", padding: "0.85rem 1.9rem", fontFamily: "'Source Sans 3', sans-serif", fontSize: "0.9rem", fontWeight: 600, cursor: "pointer", letterSpacing: "0.05em", textDecoration: "none", textTransform: "uppercase" }}>
+                <div className="btn-row">
+                  <a href="/propuesta" target="_blank" className="btn-pill">
                     Ver propuesta comercial
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </a>
-                  <button className="avi-btn-ghost" onClick={reset}>Nueva consulta</button>
+                  <button className="btn-outline" onClick={reset}>Nueva consulta</button>
                 </div>
               </div>
             );
@@ -593,3 +613,325 @@ export default function ChatInterface() {
     </>
   );
 }
+
+// ── CSS ───────────────────────────────────────────────────────────────────────
+
+const CHAT_CSS = `
+  @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&family=Montserrat:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap');
+
+  :root {
+    --c-primary:    #4f764d;
+    --c-primary-dk: #234926;
+    --c-title:      #000823;
+    --c-body:       #484e62;
+    --c-bg-alt:     #F6F7F8;
+    --c-bg:         #ffffff;
+    --c-border:     #dddddd;
+    --c-ok-bg:      #eaf5ea;
+    --c-ok-text:    #1d6b22;
+    --c-ok-icon:    #2E7D4F;
+    --c-fail-bg:    #fdecea;
+    --c-fail-text:  #b5261e;
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Source Sans Pro', sans-serif;
+    font-size: 1rem; line-height: 1.65;
+    background: var(--c-bg); color: var(--c-body);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* ── HEADER ── */
+  .chat-hdr {
+    background: var(--c-title);
+    position: sticky; top: 0; z-index: 100;
+    border-bottom: 1px solid rgba(255,255,255,0.06);
+  }
+  .chat-hdr-inner {
+    max-width: 760px; margin: 0 auto; padding: 0 2rem;
+    height: 54px; display: flex; align-items: center; gap: 0.75rem;
+  }
+  .chat-logo {
+    height: 30px; width: auto; display: block;
+    filter: brightness(0) invert(1); flex-shrink: 0;
+  }
+  .chat-hdr-brand { display: flex; flex-direction: column; gap: 2px; flex: 1; }
+  .chat-hdr-name { font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.85); letter-spacing: 0.14em; text-transform: uppercase; line-height: 1; }
+  .chat-hdr-sub  { font-size: 0.58rem; color: rgba(255,255,255,0.35); letter-spacing: 0.1em; text-transform: uppercase; }
+  .chat-hdr-link {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none;
+    color: rgba(255,255,255,0.45); transition: color 0.15s; white-space: nowrap;
+  }
+  .chat-hdr-link:hover { color: rgba(255,255,255,0.85); }
+
+  /* ── ROOT ── */
+  .chat-root { max-width: 760px; margin: 0 auto; }
+
+  /* ── INTRO ── */
+  .chat-intro { padding: 2.5rem 2rem 0; }
+  .chat-eyebrow { font-size: 0.72rem; color: var(--c-primary); margin-bottom: 0.4rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'Montserrat', sans-serif; }
+  .chat-title { font-family: 'Montserrat', sans-serif; font-size: clamp(1.8rem, 4vw, 2.82rem); font-weight: 800; color: var(--c-title); letter-spacing: -0.02em; line-height: 1; }
+  .chat-tagline { font-size: 1rem; color: var(--c-body); margin-top: 0.6rem; font-weight: 300; line-height: 1.65; }
+  .chat-divider { height: 3px; background: var(--c-primary); width: 48px; margin: 1.25rem 0 1.5rem; border-radius: 2px; }
+
+  /* ── MAIN ── */
+  .chat-main { padding: 0 2rem 4rem; }
+
+  /* ── PROGRESS ── */
+  .prog-bar { display: flex; align-items: center; margin-bottom: 2.5rem; }
+  .prog-step-outer { display: flex; align-items: center; }
+  .prog-step-outer--flex { flex: 1; }
+  .prog-step { display: flex; align-items: center; gap: 0.5rem; }
+  .prog-circle {
+    width: 28px; height: 28px; border-radius: 50%;
+    border: 2px solid var(--c-border); background: var(--c-bg);
+    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; color: #bbb;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;
+  }
+  .prog-circle.is-active { border-color: var(--c-title); background: var(--c-title); color: #fff; }
+  .prog-circle.is-done   { border-color: var(--c-primary); background: var(--c-primary); color: #fff; }
+  .prog-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; color: #bbb; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
+  .prog-label.is-active  { color: var(--c-title); }
+  .prog-line { flex: 1; height: 1px; background: var(--c-border); margin: 0 0.6rem; min-width: 12px; }
+
+  @keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+  .step-anim { animation: stepIn 0.22s ease forwards; }
+
+  /* ── FORM ── */
+  .form-title    { font-family: 'Montserrat', sans-serif; font-size: 1.52rem; font-weight: 800; color: var(--c-title); margin-bottom: 0.3rem; line-height: 1.1; }
+  .form-subtitle { font-size: 0.95rem; color: var(--c-body); margin-bottom: 1.75rem; font-weight: 300; line-height: 1.65; }
+  .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
+  .field { margin-bottom: 1.1rem; }
+  .field-label { display: block; font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .field-input-wrap { position: relative; display: flex; align-items: center; }
+  .field-unit { position: absolute; right: 0.9rem; font-size: 0.82rem; color: #bbb; pointer-events: none; }
+  .field-select, .field-input {
+    width: 100%; background: var(--c-bg); border: 1px solid var(--c-border);
+    border-radius: 2px; padding: 0.7rem 0.9rem;
+    font-family: 'Source Sans Pro', sans-serif; font-size: 0.95rem;
+    color: var(--c-title); outline: none;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .field-input--unit { padding-right: 3.5rem; }
+  .field-select {
+    appearance: none; -webkit-appearance: none; cursor: pointer;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%23484e62' stroke-width='1.5' fill='none' stroke-linecap='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat; background-position: right 0.9rem center; padding-right: 2.2rem;
+  }
+  .field-select:focus, .field-input:focus { border-color: var(--c-primary); box-shadow: 0 0 0 3px rgba(79,118,77,0.1); }
+
+  /* ── BUTTONS ── */
+  .btn-row { display: flex; align-items: center; gap: 1rem; margin-top: 2rem; flex-wrap: wrap; }
+  .btn-pill {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: var(--c-primary); color: #ffffff;
+    border: none; border-radius: 30px;
+    padding: 0.75rem 1.75rem; font-family: 'Source Sans Pro', sans-serif;
+    font-size: 0.9rem; font-weight: 700; cursor: pointer;
+    letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
+    transition: background 0.15s;
+  }
+  .btn-pill:hover  { background: var(--c-primary-dk); }
+  .btn-pill:disabled { opacity: 0.4; cursor: default; }
+  .btn-outline {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    background: transparent; color: var(--c-primary);
+    border: 2px solid var(--c-primary); border-radius: 30px;
+    padding: 0.7rem 1.5rem; font-family: 'Source Sans Pro', sans-serif;
+    font-size: 0.9rem; font-weight: 600; cursor: pointer;
+    letter-spacing: 0.04em; text-decoration: none;
+    transition: background 0.15s, color 0.15s;
+  }
+  .btn-outline:hover { background: var(--c-primary); color: #ffffff; }
+  .btn-back {
+    display: inline-flex; align-items: center; gap: 0.45rem;
+    font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700;
+    color: var(--c-body); cursor: pointer; border: none; background: none;
+    padding: 0; margin-bottom: 1.75rem; letter-spacing: 0.08em; text-transform: uppercase;
+    transition: color 0.15s;
+  }
+  .btn-back:hover { color: var(--c-primary); }
+
+  /* ── LOADING ── */
+  @keyframes pulse { 0%,100%{opacity:.3} 50%{opacity:1} }
+  .loading-wrap { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 5rem 2rem; gap: 1.5rem; }
+  .loading-dots { display: flex; gap: 10px; }
+  .loading-dots span { width: 10px; height: 10px; border-radius: 50%; background: var(--c-primary); animation: pulse 1.3s ease infinite; }
+  .loading-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .loading-dots span:nth-child(3) { animation-delay: 0.4s; }
+  .loading-text { font-size: 0.9rem; color: var(--c-body); font-style: italic; }
+
+  /* ── FACTIBILIDAD ── */
+  .fact-box {
+    border: 2px solid; border-radius: 2px;
+    padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;
+  }
+  .fact-box.is-ok   { border-color: var(--c-primary); background: var(--c-ok-bg); }
+  .fact-box.is-fail { border-color: var(--c-fail-text); background: var(--c-fail-bg); }
+  .fact-box-inner { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
+  .fact-icon {
+    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .fact-icon.is-ok   { background: var(--c-primary); }
+  .fact-icon.is-fail { background: var(--c-fail-text); }
+  .fact-heading { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1rem; color: var(--c-title); margin-bottom: 0.35rem; }
+  .fact-msg { font-size: 0.9rem; color: var(--c-body); line-height: 1.65; margin: 0; }
+  .density-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.25rem; }
+  .density-card { background: var(--c-bg); padding: 0.75rem 1rem; border: 1px solid var(--c-border); }
+  .density-card.is-warn { border-color: #f5b8b8; }
+  .density-label { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.3rem; }
+  .density-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.4rem; color: var(--c-title); line-height: 1; }
+  .density-val.is-warn { color: var(--c-fail-text); }
+  .density-unit { font-size: 0.72rem; color: var(--c-body); margin-top: 0.15rem; }
+
+  /* ── PREGUNTAS ── */
+  .questions-wrap { margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
+  .q-answered {
+    display: flex; align-items: center; justify-content: space-between; gap: 0.75rem;
+    padding: 0.75rem 1rem;
+    border: 2px solid var(--c-primary); background: var(--c-ok-bg);
+  }
+  .q-answered-inner { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; color: var(--c-primary); }
+  .q-answered-text { font-size: 0.85rem; color: var(--c-primary); font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .q-change-btn { background: none; border: none; color: var(--c-primary); font-size: 0.72rem; cursor: pointer; font-family: 'Montserrat', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; padding: 0.2rem 0.4rem; flex-shrink: 0; }
+  .q-change-btn:hover { text-decoration: underline; }
+  .q-active { }
+  .q-active-label { font-family: 'Montserrat', sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
+  .q-num { background: var(--c-title); color: #fff; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; flex-shrink: 0; }
+  .q-options { display: flex; flex-direction: column; gap: 0.45rem; }
+  .q-option {
+    display: flex; align-items: center; gap: 0.75rem;
+    padding: 0.8rem 1rem; text-align: left;
+    border: 2px solid var(--c-border); background: var(--c-bg);
+    border-radius: 2px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+    font-family: 'Source Sans Pro', sans-serif; width: 100%;
+  }
+  .q-option:hover { border-color: var(--c-primary); background: var(--c-ok-bg); }
+  .q-option-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--c-border); flex-shrink: 0; }
+  .q-option:hover .q-option-dot { border-color: var(--c-primary); }
+  .q-option-text { font-size: 0.92rem; color: var(--c-title); }
+
+  /* ── RECOMENDACIÓN ── */
+  .rec-badge { display: inline-block; padding: 0.25rem 0.85rem; background: var(--c-ok-bg); color: var(--c-primary); border-radius: 30px; font-size: 0.75rem; font-weight: 700; margin-bottom: 1.25rem; letter-spacing: 0.04em; font-family: 'Montserrat', sans-serif; }
+  .rec-result-card { background: var(--c-bg); border: 1px solid var(--c-border); padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
+  .rec-result-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .rec-result-icon.is-aviario { background: var(--c-ok-bg); color: var(--c-primary); }
+  .rec-result-icon.is-nidal   { background: var(--c-bg-alt); color: var(--c-body); }
+  .rec-result-name { font-family: 'Montserrat', sans-serif; font-size: 1.17rem; font-weight: 800; margin-bottom: 0.25rem; color: var(--c-title); }
+  .rec-result-reason { font-size: 0.92rem; color: var(--c-body); line-height: 1.65; margin: 0; }
+  .rec-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.5rem; }
+  .rec-card {
+    border: 2px solid var(--c-border); padding: 1rem 1.1rem;
+    background: var(--c-bg-alt); position: relative;
+  }
+  .rec-card.is-recommended { border-color: var(--c-primary); background: var(--c-ok-bg); }
+  .rec-card-badge {
+    position: absolute; top: -11px; left: 12px;
+    background: var(--c-primary); color: #fff;
+    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    padding: 0.15rem 0.7rem; border-radius: 30px;
+  }
+  .rec-card-title { font-family: 'Montserrat', sans-serif; font-size: 0.92rem; font-weight: 800; margin-bottom: 0.65rem; color: var(--c-title); }
+  .rec-card-list { margin: 0; padding: 0; list-style: none; }
+  .rec-card-item { font-size: 0.82rem; color: var(--c-body); line-height: 1.6; margin-bottom: 0.3rem; padding-left: 1rem; position: relative; }
+  .rec-card-bullet { position: absolute; left: 0; color: var(--c-border); }
+  .rec-card-bullet.is-primary { color: var(--c-primary); }
+  .rec-card-choose {
+    margin-top: 0.85rem; background: none; border: 1px solid var(--c-border);
+    border-radius: 30px; color: var(--c-body); font-size: 0.78rem; padding: 0.35rem 0.85rem;
+    cursor: pointer; font-family: 'Source Sans Pro', sans-serif; width: 100%;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .rec-card-choose:hover { border-color: var(--c-primary); color: var(--c-primary); }
+  .rec-card-unavailable { margin-top: 0.75rem; font-size: 0.75rem; color: #bbb; font-style: italic; }
+
+  /* ── RESULT ── */
+  .result-wrap { border: 1px solid var(--c-border); margin-bottom: 1.5rem; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.07); }
+  .result-banner { padding: 1.4rem 1.75rem; display: flex; align-items: center; gap: 1.25rem; }
+  .result-banner.is-ok   { background: #1E4D2B; }
+  .result-banner.is-fail { background: #4D1E1E; }
+  .result-banner-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .result-banner.is-ok   .result-banner-icon { background: #2E7D4F; }
+  .result-banner.is-fail .result-banner-icon { background: #C0392B; }
+  .result-banner-text { color: #fff; display: flex; flex-direction: column; gap: 0.2rem; }
+  .result-banner-supra { font-family: 'Montserrat', sans-serif; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; display: block; font-weight: 700; }
+  .result-banner.is-ok   .result-banner-supra { color: #A8F0BC; }
+  .result-banner.is-fail .result-banner-supra { color: #F5B8B8; }
+  .result-banner-main { font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
+  .result-meta-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.75rem; }
+  .result-meta-strip.is-ok   { background: rgba(30,77,43,0.85); }
+  .result-meta-strip.is-fail { background: rgba(77,30,30,0.85); }
+  .result-meta-pill { font-size: 0.74rem; font-weight: 500; padding: 0.2rem 0.65rem; background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); letter-spacing: 0.03em; border-radius: 30px; }
+
+  .result-block { background: var(--c-bg); }
+  .result-block--sep { border-top: 2px solid var(--c-bg-alt); }
+  .result-block-head { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); display: flex; align-items: center; justify-content: space-between; }
+  .result-block-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .result-stats { display: flex; gap: 0.5rem; }
+  .result-stat { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 30px; letter-spacing: 0.04em; }
+  .result-stat.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
+  .result-stat.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
+
+  .check-row { display: flex; align-items: center; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--c-border); gap: 0.75rem; }
+  .check-row:last-child { border-bottom: none; }
+  .check-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .check-icon.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-icon); }
+  .check-icon.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
+  .check-name { flex: 1; font-size: 0.9rem; color: var(--c-title); font-weight: 400; }
+  .check-vals { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; flex-shrink: 0; }
+  .check-real { color: var(--c-title); font-weight: 600; }
+  .check-sep  { color: var(--c-border); }
+  .check-ref  { color: var(--c-body); }
+  .check-diff { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
+  .check-diff.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
+  .check-diff.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
+
+  .req-row { display: flex; align-items: flex-start; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--c-border); gap: 0.75rem; }
+  .req-row:last-child { border-bottom: none; }
+  .req-icon { width: 22px; height: 22px; border-radius: 50%; background: var(--c-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; color: var(--c-body); }
+  .req-body { flex: 1; min-width: 0; }
+  .req-name { font-size: 0.9rem; color: var(--c-title); font-weight: 400; }
+  .req-formula { font-size: 0.78rem; color: #bbb; margin-top: 0.1rem; font-style: italic; }
+  .req-value { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 700; color: var(--c-title); flex-shrink: 0; white-space: nowrap; }
+  .req-unit { font-weight: 400; font-size: 0.78rem; color: var(--c-body); }
+
+  .warn-block { background: #fffdf0; border-top: 2px solid #f5e580; }
+  .warn-head  { padding: 0.8rem 1.75rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
+  .warn-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6500; }
+  .warn-row   { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.75rem; border-bottom: 1px solid #f0e070; }
+  .warn-row:last-child { border-bottom: none; }
+  .warn-text  { font-size: 0.88rem; color: #5a4a00; line-height: 1.65; }
+
+  .analysis-block { background: var(--c-bg); border-top: 1px solid var(--c-border); }
+  .analysis-head  { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); }
+  .analysis-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .analysis-body  { padding: 1.4rem 1.75rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
+  .analysis-body strong { font-weight: 700; color: var(--c-title); }
+  .analysis-body em { font-style: italic; }
+  .md-section-label {
+    display: block; font-family: 'Montserrat', sans-serif;
+    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--c-primary);
+    margin-top: 1.4rem; margin-bottom: 0.35rem;
+  }
+
+  .result-footer { font-size: 0.72rem; color: #bbb; font-style: italic; padding: 0.85rem 1.75rem; background: var(--c-bg-alt); border-top: 1px solid var(--c-border); }
+  .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 2px; }
+
+  /* ── RESPONSIVE ── */
+  @media (max-width: 520px) {
+    .chat-intro, .chat-main { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .field-row { grid-template-columns: 1fr; }
+    .rec-compare { grid-template-columns: 1fr; }
+    .density-grid { grid-template-columns: 1fr 1fr; }
+    .check-row { flex-wrap: wrap; }
+    .check-vals, .check-diff { font-size: 0.75rem; }
+    .chat-hdr-link { display: none; }
+  }
+`;

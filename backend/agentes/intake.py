@@ -8,11 +8,15 @@ TipoNidal = Literal["individual", "colectivo"]
 TipoZona = Literal["nidal_colectivo", "aviario"]
 
 
-class DatosRecomendacion(BaseModel):
+class DatosBasicos(BaseModel):
     num_gallinas: int
     sistema: Sistema
     superficie_nave_m2: float
     altura_nave_cm: float
+
+
+# Mantener alias para no romper código existente
+DatosRecomendacion = DatosBasicos
 
 
 class Recomendacion(BaseModel):
@@ -21,8 +25,156 @@ class Recomendacion(BaseModel):
     razon: str
 
 
+# ── Factibilidad ──────────────────────────────────────────────────────────────
+
+class ResultadoFactibilidad(BaseModel):
+    factible: bool
+    densidad_actual: float          # gal/m² con nidal (sin aviario)
+    densidad_max: float             # límite legal según sistema
+    densidad_min_aviario: float     # densidad si se instala aviario máximo posible
+    niveles_posibles: int           # 0 si altura insuficiente
+    modulos_caben: int              # módulos de aviario que caben físicamente
+    mensaje: str                    # resumen legible para el cliente
+
+
+def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
+    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    niveles = _niveles_aviario(datos.altura_nave_cm)
+
+    # Densidad con nidal (descontando solo cuerpo del módulo)
+    num_mod_nidal = math.ceil(datos.num_gallinas / 144)
+    sup_cuerpo = round(num_mod_nidal * 1.20 * 1.40, 2)
+    sup_nidal = max(datos.superficie_nave_m2 - sup_cuerpo, 0.01)
+    densidad_nidal = round(datos.num_gallinas / sup_nidal, 2)
+
+    # Densidad mínima alcanzable (aviario con todos los módulos que caben)
+    if niveles >= 2:
+        num_mod_avi, sup_disp, _ = _sup_util_aviario(datos.superficie_nave_m2, niveles)
+        densidad_avi = round(datos.num_gallinas / sup_disp, 2) if sup_disp > 0 else float("inf")
+    else:
+        num_mod_avi = 0
+        densidad_avi = densidad_nidal
+
+    # Factible = al menos el aviario máximo cumple la densidad legal
+    factible = densidad_avi <= densidad_max
+
+    if not factible:
+        mensaje = (
+            f"Con {datos.num_gallinas} gallinas en {datos.superficie_nave_m2} m² "
+            f"la densidad mínima alcanzable es {densidad_avi:.1f} gal/m², "
+            f"por encima del límite de {densidad_max:.0f} gal/m² para sistema {datos.sistema}. "
+            f"Necesitarías ampliar la nave o reducir el número de gallinas."
+        )
+    elif densidad_nidal <= densidad_max:
+        mensaje = (
+            f"La nave puede alojar {datos.num_gallinas} gallinas con nidal colectivo "
+            f"(densidad {densidad_nidal:.1f} gal/m², límite {densidad_max:.0f}). "
+            f"Un aviario bajaría la densidad a {densidad_avi:.1f} gal/m²."
+        )
+    else:
+        mensaje = (
+            f"La nave no puede alojar {datos.num_gallinas} gallinas solo con nidal colectivo "
+            f"(densidad {densidad_nidal:.1f} gal/m², límite {densidad_max:.0f}). "
+            f"Un aviario de {niveles} plantas reduce la densidad a {densidad_avi:.1f} gal/m²."
+        )
+
+    return ResultadoFactibilidad(
+        factible=factible,
+        densidad_actual=densidad_nidal,
+        densidad_max=densidad_max,
+        densidad_min_aviario=densidad_avi,
+        niveles_posibles=niveles,
+        modulos_caben=num_mod_avi,
+        mensaje=mensaje,
+    )
+
+
+# ── Preguntas dinámicas ───────────────────────────────────────────────────────
+
+class Opcion(BaseModel):
+    id: str
+    texto: str
+
+class Pregunta(BaseModel):
+    id: str
+    texto: str
+    tipo: Literal["opcion_unica", "booleano"]
+    opciones: list[Opcion]
+
+class RespuestasCliente(BaseModel):
+    respuestas: dict[str, str]   # {pregunta_id: opcion_id}
+
+class DatosRecomendacionConRespuestas(BaseModel):
+    datos: DatosBasicos
+    respuestas: dict[str, str]
+
+
+def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
+    """
+    Genera las preguntas al cliente solo cuando tanto nidal como aviario son viables.
+    Si una sola opción es técnicamente posible, no se pregunta y se recomienda directamente.
+    """
+    preguntas: list[Pregunta] = []
+
+    nidal_viable  = factibilidad.densidad_actual <= factibilidad.densidad_max
+    aviario_viable = (
+        factibilidad.niveles_posibles >= 2
+        and factibilidad.densidad_min_aviario <= factibilidad.densidad_max
+    )
+
+    if not (nidal_viable and aviario_viable):
+        return preguntas
+
+    # P1 — Gestión de estiércol: bloqueo duro si no tienen capacidad
+    preguntas.append(Pregunta(
+        id="gestion_estiercol",
+        texto=(
+            "El aviario exige retirar el estiércol cada 2-3 días. "
+            "¿Dispone de sistema o personal para hacerlo con esa frecuencia?"
+        ),
+        tipo="booleano",
+        opciones=[
+            Opcion(id="si", texto="Sí, tenemos capacidad para gestionarlo"),
+            Opcion(id="no", texto="No, preferimos una limpieza menos frecuente"),
+        ],
+    ))
+
+    # P2 — Carga de mantenimiento
+    preguntas.append(Pregunta(
+        id="mantenimiento",
+        texto="¿Cómo valora la carga de mantenimiento y limpieza de la instalación?",
+        tipo="opcion_unica",
+        opciones=[
+            Opcion(id="minima",  texto="Priorizo un mantenimiento sencillo y poco frecuente"),
+            Opcion(id="acepto",  texto="Acepto mayor dedicación si mejora la rentabilidad"),
+        ],
+    ))
+
+    # P3 — Objetivo principal
+    preguntas.append(Pregunta(
+        id="objetivo",
+        texto="¿Cuál es su prioridad principal para esta instalación?",
+        tipo="opcion_unica",
+        opciones=[
+            Opcion(id="maximizar_produccion", texto="Maximizar el número de gallinas por m²"),
+            Opcion(id="bienestar",            texto="Priorizar el bienestar animal y la calidad del huevo"),
+            Opcion(id="minima_inversion",     texto="Minimizar la inversión inicial"),
+        ],
+    ))
+
+    return preguntas
+
+
+# ── Constantes físicas del módulo Aviario Industrial (cod 10007) ─────────────
+_AVI_HUELLA_M2    = round(3.735 * 1.20, 4)  # 4.482 m² — huella para encaje en nave
+
+# Superficie por módulo según número de plantas (datos del diseñador)
+# "disponible" = excluye zona de puesta, es la que computa para densidad normativa
+_AVI_SUP_TOTAL = {2: 15.270, 3: 19.328}   # m² superficie total por módulo
+_AVI_SUP_DISP  = {2: 13.180, 3: 16.194}   # m² superficie disponible (sin puesta)
+
+
 def _niveles_aviario(altura_cm: float) -> int:
-    """Niveles del módulo A-Nida Plus según altura libre de nave."""
     if altura_cm >= 400:
         return 3
     if altura_cm >= 300:
@@ -30,7 +182,16 @@ def _niveles_aviario(altura_cm: float) -> int:
     return 1
 
 
-def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
+def _sup_util_aviario(nave_m2: float, niveles: int) -> tuple[int, float, float]:
+    """Devuelve (num_modulos_caben, sup_disponible_total, sup_total_total)."""
+    num_modulos = math.floor(nave_m2 / _AVI_HUELLA_M2)
+    sup_disp  = round(num_modulos * _AVI_SUP_DISP[niveles], 2)
+    sup_total = round(num_modulos * _AVI_SUP_TOTAL[niveles], 2)
+    return num_modulos, sup_disp, sup_total
+
+
+def recomendar_zona(datos: DatosRecomendacion, respuestas: dict[str, str] | None = None) -> Recomendacion:
+    respuestas = respuestas or {}
     niveles_posibles = _niveles_aviario(datos.altura_nave_cm)
     densidad_bruta = datos.num_gallinas / datos.superficie_nave_m2
     densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
@@ -51,7 +212,13 @@ def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
                   "Se necesitan ≥ 300 cm para instalar un aviario de 2 niveles.",
         )
 
-    densidad_con_aviario = densidad_bruta / niveles_posibles
+    num_modulos_caben, sup_disp_aviario, _ = _sup_util_aviario(datos.superficie_nave_m2, niveles_posibles)
+    densidad_con_aviario = (
+        datos.num_gallinas / sup_disp_aviario if sup_disp_aviario > 0 else float("inf")
+    )
+    modulos_necesarios = math.ceil(
+        datos.num_gallinas / (densidad_max * _AVI_SUP_DISP[niveles_posibles])
+    )
 
     # Aviario necesario si la densidad bruta supera el límite O si la densidad
     # efectiva con nidal (descontando módulos) excede el límite legal.
@@ -64,9 +231,49 @@ def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
                 f"(superficie real {sup_efectiva_nidal:.1f} m² tras descontar {sup_modulos:.1f} m² "
                 f"de {num_modulos} módulo{'s' if num_modulos > 1 else ''}), "
                 f"superando el límite de {densidad_max:.0f} gal/m² para sistema {datos.sistema}. "
-                f"Un aviario de {niveles_posibles} niveles reduce la densidad efectiva a "
-                f"{densidad_con_aviario:.1f} gal/m² computando todos los niveles como superficie útil "
-                "(Directiva 1999/74/CE Art. 4.3.a)."
+                f"Necesitas {modulos_necesarios} módulo{'s' if modulos_necesarios > 1 else ''} "
+                f"de aviario {niveles_posibles} plantas "
+                f"({_AVI_SUP_DISP[niveles_posibles]} m² disponibles/módulo). "
+                f"En tu nave caben {num_modulos_caben} módulos ({sup_disp_aviario:.1f} m² disponibles), "
+                f"lo que da una densidad de {densidad_con_aviario:.1f} gal/m² "
+                f"(límite {densidad_max:.0f} — Directiva 1999/74/CE Art. 4.3.a)."
+            ),
+        )
+
+    # Ambas opciones son viables — decidir por las respuestas del cliente
+    gestion  = respuestas.get("gestion_estiercol", "")
+    mant     = respuestas.get("mantenimiento", "")
+    objetivo = respuestas.get("objetivo", "")
+
+    # Bloqueo duro: sin capacidad de gestión de estiércol → nidal siempre
+    if gestion == "no":
+        return Recomendacion(
+            tipo_zona="nidal_colectivo",
+            niveles=1,
+            razon=(
+                f"El aviario requiere retirar el estiércol cada 2-3 días. "
+                f"Sin esa capacidad operativa el nidal colectivo es la opción adecuada: "
+                f"ciclos de limpieza mucho menos frecuentes y mantenimiento más sencillo. "
+                f"Densidad con nidal: {densidad_nidal:.1f} gal/m², dentro del límite de {densidad_max:.0f} gal/m²."
+            ),
+        )
+
+    # Puntuación: señales a favor del aviario (+) o del nidal (-)
+    score = 0
+    if objetivo == "maximizar_produccion": score += 2
+    if objetivo in ("bienestar", "minima_inversion"): score -= 1
+    if mant == "acepto": score += 1
+    if mant == "minima": score -= 1
+
+    if score > 0:
+        return Recomendacion(
+            tipo_zona="aviario",
+            niveles=niveles_posibles,
+            razon=(
+                f"Aviario de {niveles_posibles} plantas: {modulos_necesarios} módulo{'s' if modulos_necesarios > 1 else ''} necesarios "
+                f"(caben {num_modulos_caben}), densidad {densidad_con_aviario:.1f} gal/m² "
+                f"sobre {sup_disp_aviario:.1f} m² disponibles. "
+                f"El cliente dispone de sistema de gestión de estiércol y prioriza la rentabilidad."
             ),
         )
 
@@ -74,11 +281,11 @@ def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
         tipo_zona="nidal_colectivo",
         niveles=1,
         razon=(
-            f"La densidad efectiva con nidal colectivo es {densidad_nidal:.1f} gal/m² "
-            f"(descontados {sup_modulos:.1f} m² de {num_modulos} módulo{'s' if num_modulos > 1 else ''}), "
-            f"dentro del límite de {densidad_max:.0f} gal/m² para sistema {datos.sistema}. "
-            f"Con un aviario de {niveles_posibles} niveles la densidad bajaría a "
-            f"{densidad_con_aviario:.1f} gal/m², pero no es necesario."
+            f"La densidad con nidal colectivo es {densidad_nidal:.1f} gal/m² "
+            f"({num_modulos} módulo{'s' if num_modulos > 1 else ''}, {sup_modulos:.1f} m² ocupados), "
+            f"dentro del límite de {densidad_max:.0f} gal/m². "
+            f"El perfil del cliente (mantenimiento sencillo / menor inversión / bienestar animal) "
+            f"encaja mejor con el nidal colectivo A-Nida."
         ),
     )
 
@@ -196,9 +403,15 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
 
     if tipo_zona == "aviario":
         niveles = _niveles_aviario(datos.altura_nave_cm)
-        sup_efectiva = datos.superficie_nave_m2 * niveles
-        densidad_real = n / sup_efectiva
-        parametro_label = f"Densidad interior (aviario {niveles} niveles — sup. efectiva {sup_efectiva:.0f} m²)"
+        densidad_max_avi = 6.0 if datos.sistema == "ecologico" else 9.0
+        num_modulos_caben, sup_disp, sup_total = _sup_util_aviario(datos.superficie_nave_m2, niveles)
+        modulos_necesarios = math.ceil(n / (densidad_max_avi * _AVI_SUP_DISP[niveles]))
+        densidad_real = n / sup_disp if sup_disp > 0 else float("inf")
+        parametro_label = (
+            f"Densidad interior aviario {niveles} plantas — "
+            f"{num_modulos_caben} módulos caben · {_AVI_SUP_DISP[niveles]} m² disp./módulo"
+            f" = {sup_disp:.1f} m² disponibles"
+        )
         articulo_densidad = "Directiva 1999/74/CE Art. 4.3.a + RD 3/2002 Anexo IV"
     else:
         niveles = 1
@@ -299,11 +512,26 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
     if tipo_zona == "aviario":
         sup_nidal_min = round(n / 120, 2)
         requisitos.append(RequisitoCalculado(
-            nombre=f"Aviario multinivel — niveles recomendados",
-            valor_minimo=float(niveles),
-            unidad="niveles",
-            formula=f"{'≥400 cm → 3' if datos.altura_nave_cm >= 400 else '≥300 cm → 2' if datos.altura_nave_cm >= 300 else '<300 cm → 1'} (altura nave: {datos.altura_nave_cm:.0f} cm)",
+            nombre="Módulos de aviario necesarios",
+            valor_minimo=float(modulos_necesarios),
+            unidad="módulos",
+            formula=(
+                f"⌈{n} / ({densidad_max_avi:.0f} gal/m² × {_AVI_SUP_DISP[niveles]} m²)⌉ "
+                f"= {modulos_necesarios} módulo{'s' if modulos_necesarios > 1 else ''} "
+                f"({niveles} plantas · {_AVI_SUP_DISP[niveles]} m² disp./módulo)"
+            ),
             articulo="Directiva 1999/74/CE Art. 4.3.a",
+        ))
+        requisitos.append(RequisitoCalculado(
+            nombre="Módulos que caben en la nave",
+            valor_minimo=float(num_modulos_caben),
+            unidad="módulos",
+            formula=(
+                f"⌊{datos.superficie_nave_m2} m² / {_AVI_HUELLA_M2} m² huella⌋ "
+                f"= {num_modulos_caben} módulos · {_AVI_SUP_TOTAL[niveles]} m² totales/módulo "
+                f"= {sup_total:.1f} m² totales"
+            ),
+            articulo="Diseño Aviario Industrial (Gómez y Crespo)",
         ))
         requisitos.append(RequisitoCalculado(
             nombre="Superficie zona de puesta por nivel",
@@ -414,7 +642,11 @@ def consulta_ventas(datos: DatosIntake, requisitos: list[RequisitoCalculado]) ->
         "suelo": "en suelo", "campero": "campero",
         "ecologico": "ecológico", "jaulas": "en jaulas enriquecidas"
     }[datos.sistema]
-    zona_label = "aviario multinivel" if datos.tipo_zona == "aviario" else "nidal colectivo"
+    if datos.tipo_zona == "aviario":
+        niveles = _niveles_aviario(datos.altura_nave_cm)
+        zona_label = f"aviario multinivel de {niveles} niveles"
+    else:
+        zona_label = "nidal colectivo"
     reqs_txt = "; ".join(
         f"{r.nombre}: {r.valor_minimo} {r.unidad}" for r in requisitos
     )

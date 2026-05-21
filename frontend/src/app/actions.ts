@@ -77,6 +77,60 @@ export interface Recomendacion {
   razon: string;
 }
 
+// ── Factibilidad ─────────────────────────────────────────────────────────────
+
+export interface ResultadoFactibilidad {
+  factible: boolean;
+  densidad_actual: number;
+  densidad_max: number;
+  densidad_min_aviario: number;
+  niveles_posibles: number;
+  modulos_caben: number;
+  mensaje: string;
+}
+
+export interface Opcion {
+  id: string;
+  texto: string;
+}
+
+export interface Pregunta {
+  id: string;
+  texto: string;
+  tipo: "opcion_unica" | "booleano";
+  opciones: Opcion[];
+}
+
+export interface FactibilidadResponse {
+  factibilidad: ResultadoFactibilidad;
+  preguntas: Pregunta[];
+}
+
+export async function pedirFactibilidad(datos: DatosRecomendacion): Promise<FactibilidadResponse> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/factibilidad`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datos }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
+export async function pedirRecomendacionConRespuestas(
+  datos: DatosRecomendacion,
+  respuestas: Record<string, string>,
+): Promise<Recomendacion> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/recomendar-con-respuestas`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datos, respuestas }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
 export interface DatosIntake {
   num_gallinas: number;
   sistema: Sistema;

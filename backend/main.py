@@ -11,11 +11,16 @@ logging.basicConfig(
 )
 
 from fastapi import FastAPI
-from schemas.pydantic_models import QueryRequest, QueryResponse, ValidarRequest, ValidarResponse, CalcularRequest, CalcularResponse, IntakeRequest, IntakeResponse, RecomendacionRequest
+from schemas.pydantic_models import (
+    QueryRequest, QueryResponse, ValidarRequest, ValidarResponse,
+    CalcularRequest, CalcularResponse, IntakeRequest, IntakeResponse,
+    RecomendacionRequest, FactibilidadRequest, FactibilidadResponse,
+    RecomendacionConRespuestasRequest,
+)
 from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
-from agentes.intake import generar_informe, recomendar_zona, consulta_ventas
+from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas
 from clients import qdrant_client
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -54,9 +59,21 @@ def calcular(request: CalcularRequest):
     )
 
 
+@app.post("/factibilidad", response_model=FactibilidadResponse)
+def factibilidad(request: FactibilidadRequest):
+    fact = calcular_factibilidad(request.datos)
+    preguntas = preguntas_dinamicas(fact)
+    return FactibilidadResponse(factibilidad=fact, preguntas=preguntas)
+
+
 @app.post("/recomendar")
 def recomendar(request: RecomendacionRequest):
     return recomendar_zona(request.datos)
+
+
+@app.post("/recomendar-con-respuestas")
+def recomendar_con_respuestas(request: RecomendacionConRespuestasRequest):
+    return recomendar_zona(request.datos, respuestas=request.respuestas)
 
 
 def _argumentos_brief() -> list[str]:

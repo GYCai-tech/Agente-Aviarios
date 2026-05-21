@@ -1,6 +1,10 @@
 from pydantic import BaseModel
 from agentes.validador_legal import DatosGranja, InformeConformidad, DatosCalculadora, InformeCalculadora
-from agentes.intake import DatosIntake, InformeIntake, DatosRecomendacion, Recomendacion, consulta_ventas
+from agentes.intake import (
+    DatosIntake, InformeIntake, DatosRecomendacion, DatosBasicos,
+    Recomendacion, ResultadoFactibilidad, Pregunta,
+    DatosRecomendacionConRespuestas, consulta_ventas,
+)
 
 
 class QueryRequest(BaseModel):
@@ -29,8 +33,19 @@ class CalcularResponse(BaseModel):
     analisis_legal: str
 
 
+class FactibilidadRequest(BaseModel):
+    datos: DatosBasicos
+
+class FactibilidadResponse(BaseModel):
+    factibilidad: ResultadoFactibilidad
+    preguntas: list[Pregunta]
+
 class RecomendacionRequest(BaseModel):
     datos: DatosRecomendacion
+
+class RecomendacionConRespuestasRequest(BaseModel):
+    datos: DatosBasicos
+    respuestas: dict[str, str]
 
 
 class IntakeRequest(BaseModel):
