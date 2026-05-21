@@ -32,7 +32,16 @@ def _niveles_aviario(altura_cm: float) -> int:
 
 def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
     niveles_posibles = _niveles_aviario(datos.altura_nave_cm)
-    densidad = datos.num_gallinas / datos.superficie_nave_m2
+    densidad_bruta = datos.num_gallinas / datos.superficie_nave_m2
+    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+
+    # Densidad efectiva con nidal colectivo: descontar huella real de módulos
+    num_modulos = math.ceil(datos.num_gallinas / 144)
+    sup_modulos = round(num_modulos * 1.20 * 1.40, 2)
+    sup_efectiva_nidal = datos.superficie_nave_m2 - sup_modulos
+    densidad_nidal = (
+        datos.num_gallinas / sup_efectiva_nidal if sup_efectiva_nidal > 0 else float("inf")
+    )
 
     if niveles_posibles < 2:
         return Recomendacion(
@@ -42,17 +51,21 @@ def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
                   "Se necesitan ≥ 300 cm para instalar un aviario de 2 niveles.",
         )
 
-    densidad_con_aviario = densidad / niveles_posibles
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    densidad_con_aviario = densidad_bruta / niveles_posibles
 
-    if densidad > densidad_max:
+    # Aviario necesario si la densidad bruta supera el límite O si la densidad
+    # efectiva con nidal (descontando módulos) excede el límite legal.
+    if densidad_bruta > densidad_max or densidad_nidal > densidad_max:
         return Recomendacion(
             tipo_zona="aviario",
             niveles=niveles_posibles,
             razon=(
-                f"La densidad de suelo es {densidad:.1f} gal/m² (límite {densidad_max:.0f} para sistema {datos.sistema}). "
+                f"La densidad efectiva con nidal colectivo sería {densidad_nidal:.1f} gal/m² "
+                f"(superficie real {sup_efectiva_nidal:.1f} m² tras descontar {sup_modulos:.1f} m² "
+                f"de {num_modulos} módulo{'s' if num_modulos > 1 else ''}), "
+                f"superando el límite de {densidad_max:.0f} gal/m² para sistema {datos.sistema}. "
                 f"Un aviario de {niveles_posibles} niveles reduce la densidad efectiva a "
-                f"{densidad_con_aviario:.1f} gal/m² al computar todos los niveles como superficie útil "
+                f"{densidad_con_aviario:.1f} gal/m² computando todos los niveles como superficie útil "
                 "(Directiva 1999/74/CE Art. 4.3.a)."
             ),
         )
@@ -61,10 +74,11 @@ def recomendar_zona(datos: DatosRecomendacion) -> Recomendacion:
         tipo_zona="nidal_colectivo",
         niveles=1,
         razon=(
-            f"La densidad de {densidad:.1f} gal/m² está dentro del límite de {densidad_max:.0f} gal/m² "
-            f"para sistema {datos.sistema}. "
-            f"Con un aviario de {niveles_posibles} niveles la densidad efectiva bajaría a "
-            f"{densidad_con_aviario:.1f} gal/m², pero no es necesario dado el tamaño de la nave."
+            f"La densidad efectiva con nidal colectivo es {densidad_nidal:.1f} gal/m² "
+            f"(descontados {sup_modulos:.1f} m² de {num_modulos} módulo{'s' if num_modulos > 1 else ''}), "
+            f"dentro del límite de {densidad_max:.0f} gal/m² para sistema {datos.sistema}. "
+            f"Con un aviario de {niveles_posibles} niveles la densidad bajaría a "
+            f"{densidad_con_aviario:.1f} gal/m², pero no es necesario."
         ),
     )
 
@@ -410,8 +424,10 @@ def consulta_ventas(datos: DatosIntake, requisitos: list[RequisitoCalculado]) ->
         f"con zona de puesta tipo {zona_label} necesita el siguiente equipamiento mínimo: {reqs_txt}. "
         f"Redacta un argumentario de ventas en 3 párrafos cortos que justifique por qué Gómez y Crespo "
         f"es la mejor opción para cubrir estas necesidades. "
-        f"Destaca: productos A-Nida Plus, cumplimiento normativo garantizado, rentabilidad a largo plazo "
-        f"y servicio técnico especializado. Tono profesional y persuasivo."
+        f"Destaca: productos A-Nida Plus, calidad de materiales (acero galvanizado y polímeros de alta "
+        f"resistencia, rejillas triple galvanizado tres veces más resistentes a la corrosión), "
+        f"cumplimiento normativo garantizado, rentabilidad a largo plazo y servicio técnico especializado. "
+        f"Tono profesional y persuasivo."
     )
 
 
