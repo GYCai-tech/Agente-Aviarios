@@ -52,8 +52,14 @@ class IntakeRequest(BaseModel):
     datos: DatosIntake
 
 
+class Objecion(BaseModel):
+    pregunta: str
+    respuesta: str
+
+
 class IntakeResponse(BaseModel):
     informe: InformeIntake
     analisis_legal: str
     argumentario_ventas: str
     argumentos_producto: list[str]
+    objeciones: list[Objecion]

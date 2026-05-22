@@ -15,7 +15,7 @@ from schemas.pydantic_models import (
     QueryRequest, QueryResponse, ValidarRequest, ValidarResponse,
     CalcularRequest, CalcularResponse, IntakeRequest, IntakeResponse,
     RecomendacionRequest, FactibilidadRequest, FactibilidadResponse,
-    RecomendacionConRespuestasRequest,
+    RecomendacionConRespuestasRequest, Objecion,
 )
 from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
@@ -109,17 +109,82 @@ def _argumentos_brief() -> list[str]:
         return []
 
 
+_OBJECIONES_FALLBACK = {
+    "aviario": [
+        Objecion(pregunta="¿No es demasiado costosa la inversión inicial?",
+                 respuesta="El ROI medio es inferior a 3 años: la superficie extra por m² de nave amortiza la inversión en el primer ciclo productivo ampliado."),
+        Objecion(pregunta="¿Cómo se gestiona el mantenimiento con varios niveles?",
+                 respuesta="Las bandejas extractables permiten retirar los residuos nivel a nivel sin detener la producción. Nuestro equipo ofrece formación in situ."),
+        Objecion(pregunta="¿Cumple el aviario la normativa de bienestar animal?",
+                 respuesta="Sí. Certificado para producción campero y ecológico, cumple la Directiva 1999/74/CE en todos sus niveles operativos."),
+    ],
+    "nidal_colectivo": [
+        Objecion(pregunta="¿No ocupan demasiado espacio en la nave?",
+                 respuesta="El cuerpo del módulo solo ocupa 1,68 m². El slot acoplado es zona habitable que computa para densidad normativa."),
+        Objecion(pregunta="¿Es difícil la limpieza y desinfección?",
+                 respuesta="El diseño abierto en chapa permite limpiar sin desmontar. Las superficies minimizan zonas ocultas donde prolifera el ácaro rojo."),
+        Objecion(pregunta="¿Es rentable desde el primer módulo?",
+                 respuesta="Desde 144 gallinas ya es rentable. El sistema es modular: se amplía añadiendo módulos sin obras ni parada de producción."),
+    ],
+}
+
+
+def _parse_objeciones(texto: str) -> list[Objecion]:
+    import re
+    objeciones = []
+    bloques = re.split(r'OBJECION:\s*', texto, flags=re.IGNORECASE)
+    for bloque in bloques[1:]:
+        partes = re.split(r'RESPUESTA:\s*', bloque, flags=re.IGNORECASE, maxsplit=1)
+        if len(partes) == 2:
+            pregunta = partes[0].strip().strip('"').strip()
+            respuesta = re.split(r'\nOBJECION:', partes[1], flags=re.IGNORECASE)[0].strip()
+            if len(pregunta) > 5 and len(respuesta) > 5:
+                objeciones.append(Objecion(pregunta=pregunta, respuesta=respuesta))
+    return objeciones[:3]
+
+
+def _objeciones_producto(datos) -> list[Objecion]:
+    sistema_label = {
+        "suelo": "en suelo", "campero": "campero",
+        "ecologico": "ecológico", "jaulas": "en jaulas enriquecidas",
+    }[datos.sistema]
+    zona_label = "aviario multinivel" if datos.tipo_zona == "aviario" else "nidal colectivo A-Nida"
+    query = (
+        f"Eres asesor comercial de Gómez y Crespo. Un granjero con {datos.num_gallinas} gallinas "
+        f"en sistema {sistema_label}, nave de {datos.superficie_nave_m2} m², "
+        f"está considerando instalar {zona_label}. "
+        f"Genera exactamente 3 objeciones de venta típicas de este perfil y su respuesta comercial. "
+        f"Formato estricto sin texto adicional:\n"
+        f"OBJECION: [texto corto de la objeción]\n"
+        f"RESPUESTA: [respuesta en 1-2 frases]\n"
+        f"OBJECION: [segunda objeción]\n"
+        f"RESPUESTA: [respuesta]\n"
+        f"OBJECION: [tercera objeción]\n"
+        f"RESPUESTA: [respuesta]"
+    )
+    try:
+        resultado = grafo.invoke({"query": query})
+        parsed = _parse_objeciones(resultado["answer"])
+        if len(parsed) >= 2:
+            return parsed
+    except Exception as e:
+        logging.error(f"Error generando objeciones: {e}")
+    return _OBJECIONES_FALLBACK.get(datos.tipo_zona, [])
+
+
 @app.post("/intake", response_model=IntakeResponse)
 def intake(request: IntakeRequest):
     informe = generar_informe(request.datos)
     resultado_rag = grafo.invoke({"query": informe.consulta_rag})
     resultado_ventas = grafo.invoke({"query": consulta_ventas(request.datos, informe.requisitos)})
     argumentos = _argumentos_brief()
+    objeciones = _objeciones_producto(request.datos)
     return IntakeResponse(
         informe=informe,
         analisis_legal=resultado_rag["answer"],
         argumentario_ventas=resultado_ventas["answer"],
         argumentos_producto=argumentos,
+        objeciones=objeciones,
     )
 
 

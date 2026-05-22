@@ -178,11 +178,17 @@ export interface InformeIntake {
   consulta_rag: string;
 }
 
+export interface Objecion {
+  pregunta: string;
+  respuesta: string;
+}
+
 export interface IntakeResponse {
   informe: InformeIntake;
   analisis_legal: string;
   argumentario_ventas: string;
   argumentos_producto: string[];
+  objeciones: Objecion[];
 }
 
 export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {

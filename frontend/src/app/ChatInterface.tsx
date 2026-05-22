@@ -124,6 +124,7 @@ export default function ChatInterface() {
           informe: res.informe,
           argumentario_ventas: res.argumentario_ventas,
           argumentos_producto: res.argumentos_producto ?? [],
+          objeciones: res.objeciones ?? [],
           gallinas: mainV.gallinas,
           sistema: sistemaApi,
           superficie: mainV.superficie_nave_m2,

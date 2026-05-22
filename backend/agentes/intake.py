@@ -129,7 +129,7 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
     preguntas.append(Pregunta(
         id="gestion_estiercol",
         texto=(
-            "El aviario exige retirar el estiércol cada 2-3 días. "
+            "El aviario exige retirar los residuos cada 2-3 días. "
             "¿Dispone de sistema o personal para hacerlo con esa frecuencia?"
         ),
         tipo="booleano",
@@ -251,7 +251,7 @@ def recomendar_zona(datos: DatosRecomendacion, respuestas: dict[str, str] | None
             tipo_zona="nidal_colectivo",
             niveles=1,
             razon=(
-                f"El aviario requiere retirar el estiércol cada 2-3 días. "
+                f"El aviario requiere retirar los residuos cada 2-3 días. "
                 f"Sin esa capacidad operativa el nidal colectivo es la opción adecuada: "
                 f"ciclos de limpieza mucho menos frecuentes y mantenimiento más sencillo. "
                 f"Densidad con nidal: {densidad_nidal:.1f} gal/m², dentro del límite de {densidad_max:.0f} gal/m²."

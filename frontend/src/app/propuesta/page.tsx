@@ -77,13 +77,13 @@ function NaveSchematic({
 }) {
   const isAviario = tipoZona === "aviario";
   const numModulos = Math.ceil(gallinas / (isAviario ? 60 : 144));
-  const modAncho  = isAviario ? 3.735 : 1.20;
-  const modFondo  = isAviario ? 1.20  : 1.40;
-  const slotFondo = isAviario ? 1.20  : 3.00;
+  const modAncho = isAviario ? 3.735 : 1.20;
+  const modFondo = isAviario ? 1.20 : 1.40;
+  const slotFondo = isAviario ? 1.20 : 3.00;
   const naveAnchoM = numModulos * modAncho;
   const naveFondoM = superficie / naveAnchoM;
-  const bloqueM    = modFondo + 2 * slotFondo;
-  const yacijaM    = Math.max(0.3, (naveFondoM - bloqueM) / 2);
+  const bloqueM = modFondo + 2 * slotFondo;
+  const yacijaM = Math.max(0.3, (naveFondoM - bloqueM) / 2);
 
   const SVG_W = 300, SVG_H = 190, PAD = 14;
   const drawW = SVG_W - PAD * 2;
@@ -91,11 +91,11 @@ function NaveSchematic({
   const sx = drawW / naveAnchoM;
   const sy = drawH / naveFondoM;
 
-  const yYac1  = PAD;              const hYac1  = yacijaM * sy;
-  const ySlot1 = yYac1 + hYac1;   const hSlot  = slotFondo * sy;
-  const yMod   = ySlot1 + hSlot;  const hMod   = modFondo * sy;
-  const ySlot2 = yMod + hMod;     const yYac2  = ySlot2 + hSlot;
-  const hYac2  = yacijaM * sy;    const modPx  = modAncho * sx;
+  const yYac1 = PAD; const hYac1 = yacijaM * sy;
+  const ySlot1 = yYac1 + hYac1; const hSlot = slotFondo * sy;
+  const yMod = ySlot1 + hSlot; const hMod = modFondo * sy;
+  const ySlot2 = yMod + hMod; const yYac2 = ySlot2 + hSlot;
+  const hYac2 = yacijaM * sy; const modPx = modAncho * sx;
 
   const LS = { fontSize: "7", fontFamily: "'Source Sans Pro', sans-serif", fontWeight: "700", letterSpacing: "0.1em" } as const;
 
@@ -103,18 +103,18 @@ function NaveSchematic({
     <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="nave-schematic">
       <rect x={PAD} y={PAD} width={drawW} height={drawH} fill="none" stroke="#dddddd" strokeWidth="1" strokeDasharray="3 2" />
       <rect x={PAD} y={yYac1} width={drawW} height={hYac1} fill="#e8ede8" opacity="0.8" />
-      {hYac1 > 11 && <text x={PAD+5} y={yYac1+hYac1/2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
+      {hYac1 > 11 && <text x={PAD + 5} y={yYac1 + hYac1 / 2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
       <rect x={PAD} y={ySlot1} width={drawW} height={hSlot} fill="#4f764d" opacity="0.15" />
-      {hSlot > 9 && <text x={PAD+5} y={ySlot1+hSlot/2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
+      {hSlot > 9 && <text x={PAD + 5} y={ySlot1 + hSlot / 2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
       {Array.from({ length: numModulos }, (_, i) => (
-        <rect key={i} x={PAD + i*modPx + 0.5} y={yMod} width={Math.max(1, modPx-1)} height={hMod} fill="#000823" rx="1" />
+        <rect key={i} x={PAD + i * modPx + 0.5} y={yMod} width={Math.max(1, modPx - 1)} height={hMod} fill="#000823" rx="1" />
       ))}
-      {hMod > 9 && <text x={PAD+drawW/2} y={yMod+hMod/2} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.85)" {...LS}>{numModulos} {isAviario ? "aviarios" : "módulos"}</text>}
+      {hMod > 9 && <text x={PAD + drawW / 2} y={yMod + hMod / 2} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.85)" {...LS}>{numModulos} {isAviario ? "aviarios" : "módulos"}</text>}
       <rect x={PAD} y={ySlot2} width={drawW} height={hSlot} fill="#4f764d" opacity="0.15" />
-      {hSlot > 9 && <text x={PAD+5} y={ySlot2+hSlot/2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
+      {hSlot > 9 && <text x={PAD + 5} y={ySlot2 + hSlot / 2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
       <rect x={PAD} y={yYac2} width={drawW} height={hYac2} fill="#e8ede8" opacity="0.8" />
-      {hYac2 > 11 && <text x={PAD+5} y={yYac2+hYac2/2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
-      <g transform={`translate(${PAD}, ${PAD+drawH+6})`}>
+      {hYac2 > 11 && <text x={PAD + 5} y={yYac2 + hYac2 / 2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
+      <g transform={`translate(${PAD}, ${PAD + drawH + 6})`}>
         <rect x={0} y={0} width={8} height={8} fill="#000823" rx="1" />
         <text x={11} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="'Source Sans Pro', sans-serif">{isAviario ? "Aviarios" : "Nidales"} ({numModulos})</text>
         <rect x={80} y={0} width={8} height={8} fill="#e8ede8" />
@@ -128,22 +128,32 @@ function NaveSchematic({
 
 // ── Características por producto ──────────────────────────────────────────────
 
+
+const FEATURES_GENERIC = [
+  { icon: "/icons/galvanizado.svg", titulo: "Rejillas triple galvanizado", desc: "Alambre de ⌀2,8mm con una resistencia a la corrosión tres veces superiro al alambre convencional" },
+  { icon: "/icons/Recurso 23.svg", titulo: "Tubos PosMAC®", desc: "Revestimiento de film químico sobre galvanizado Mg-AL que lo hace cinco veces más resistente y duradero al convencional" },
+  { icon: "/icons/Recurso 22.svg", titulo: "Chapa DX51D+Z275", desc: "Galvanizado de alta calidad con 20 micras de Zinc según ISO9223 y EN10346:2015" },
+
+]
+
 const FEATURES_NIDAL = [
-  { icon: "/icons/recurso-9.svg",    titulo: "144 gallinas / módulo",   desc: "Capacidad óptima con huella mínima. Módulos A-Nida Plus de 1,20 × 1,40 m instalables en línea continua sin obra civil." },
-  { icon: "/icons/galvanizado.svg",  titulo: "Triple galvanizado",       desc: "Rejillas con tres baños de galvanizado en caliente. Resistencia a la corrosión certificada para más de 20 años en ambiente avícola." },
-  { icon: "/icons/escalable.svg",    titulo: "Modular y escalable",      desc: "Amplíe la capacidad añadiendo módulos en cualquier momento, sin detener la producción ni ejecutar obras en la nave." },
-  { icon: "/icons/manejo.svg",       titulo: "Limpieza simplificada",    desc: "Diseño abierto con acceso total a todas las caras del módulo. Reduce el tiempo de limpieza hasta un 60% frente a sistemas convencionales." },
-  { icon: "/icons/recurso-12.svg",   titulo: "Cumplimiento RD 3/2002",   desc: "Diseñado y certificado para sistemas en suelo, campero y ecológico. Cumplimiento garantizado de Directiva 1999/74/CE." },
-  { icon: "/icons/gallinas.svg",     titulo: "−95% huevos en suelo",     desc: "El slot guía a las gallinas al nidal en el momento de la puesta. Drástica reducción de huevos sucios y rotos en suelo." },
+  { icon: "/icons/recurso-9.svg", titulo: "Slats a medida", desc: " Estructura modilar que permote 1,2 o 3 metros por lado de nidal " },
+  { icon: "/icons/Antipiojos.svg", titulo: "Antipiojos", desc: "Diseñado en chapa minimizando zonas ocultas para evitar la proliferación de ácaro rojo" },
+  { icon: "/icons/LimpiezaSimple.svg", titulo: "Limpieza simple", desc: "Diseñado para poder desinfectar y limpiar sin desmontar todo el nidal." },
+  { icon: "/icons/recurso 21.svg", titulo: "Gallinas Felices", desc: "Diseñado y certificado para sistemas en suelo, campero y ecológico. Cumplimiento garantizado de Directiva 1999/74/CE." },
+  { icon: "/icons/Recurso 20.svg", titulo: "Huevo de calidad", desc: "El slot guía a las gallinas al nidal en el momento de la puesta. Drástica reducción de huevos sucios y rotos en suelo." },
+  { icon: "/icons/Recurso 15.svg", titulo: "Alfombras higiénicas", desc: "Nido AstroTurf perforado,evita acumulación de residuos" },
+  { icon: "/icons/Recurso 17.svg", titulo: "Adaptable ", desc: "Sistema modular que permite buscar solución a cada proyecto individual." },
+
 ];
 
 const FEATURES_AVIARIO = [
-  { icon: "/icons/recurso-10.svg",   titulo: "Hasta 3 niveles",          desc: "Multiplica la densidad útil sin ampliar la nave. Cada nivel suma 13,18 m² disponibles para las aves por módulo instalado." },
-  { icon: "/icons/galvanizado.svg",  titulo: "Acero + polímeros",        desc: "Estructura de 532 kg por módulo con polímeros de alta resistencia. Diseñada para más de 20 años de operación continua." },
-  { icon: "/icons/recurso-19.svg",   titulo: "Densidad certificada",     desc: "Superficie disponible validada por el diseñador. Cumple Directiva 1999/74/CE Art. 4.3.a en todos los niveles operativos." },
-  { icon: "/icons/gallinas.svg",     titulo: "Código 0 y código 1",      desc: "Sistema homologado para producción campero y ecológico. Permite el etiquetado de huevo en las categorías de mayor valor." },
-  { icon: "/icons/manejo.svg",       titulo: "Gestión de estiércol",     desc: "Bandejas extractables por nivel con recogida cada 2-3 días. Sin contaminación cruzada entre plantas ni acumulación de amoníaco." },
-  { icon: "/icons/suministros.svg",  titulo: "ROI en < 3 años",          desc: "La superficie extra por metro cuadrado de nave amortiza la inversión en el primer ciclo productivo ampliado." },
+  { icon: "/icons/recurso-10.svg", titulo: "Hasta 3 niveles", desc: "Multiplica la densidad útil sin ampliar la nave. Cada nivel suma 13,18 m² disponibles para las aves por módulo instalado." },
+  { icon: "/icons/galvanizado.svg", titulo: "Acero + polímeros", desc: "Estructura de 532 kg por módulo con polímeros de alta resistencia. Diseñada para más de 20 años de operación continua." },
+  { icon: "/icons/recurso-19.svg", titulo: "Densidad certificada", desc: "Superficie disponible validada por el diseñador. Cumple Directiva 1999/74/CE Art. 4.3.a en todos los niveles operativos." },
+  { icon: "/icons/gallinas.svg", titulo: "Código 0 y código 1", desc: "Sistema homologado para producción campero y ecológico. Permite el etiquetado de huevo en las categorías de mayor valor." },
+  { icon: "/icons/manejo.svg", titulo: "Gestión de estiércol", desc: "Bandejas extractables por nivel con recogida cada 2-3 días. Sin contaminación cruzada entre plantas ni acumulación de amoníaco." },
+  { icon: "/icons/suministros.svg", titulo: "ROI en < 3 años", desc: "La superficie extra por metro cuadrado de nave amortiza la inversión en el primer ciclo productivo ampliado." },
 ];
 
 // ── Página ────────────────────────────────────────────────────────────────────
@@ -156,7 +166,7 @@ export default function PropuestaPage() {
     try {
       const raw = localStorage.getItem("gc_propuesta");
       if (raw) setData(JSON.parse(raw));
-    } catch {}
+    } catch { }
     setMounted(true);
   }, []);
 
@@ -183,10 +193,10 @@ export default function PropuestaPage() {
   const fechaHoy = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
   const numModulos = Math.ceil(parseInt(gallinas) / (isAviario ? 60 : 144));
   const densidadVerif = informe.verificaciones_nave.find(v => v.parametro.toLowerCase().includes("densidad"));
-  const densidadReal  = densidadVerif ? densidadVerif.valor_real.toFixed(1) : "—";
+  const densidadReal = densidadVerif ? densidadVerif.valor_real.toFixed(1) : "—";
   const densidadLimite = densidadVerif ? densidadVerif.valor_limite : 9;
-  const productoNombre    = isAviario ? "Aviario Industrial" : "A-Nida Plus";
-  const productoCodigo    = isAviario ? "COD. 10007 · MULTINIVEL" : "NIDAL COLECTIVO";
+  const productoNombre = isAviario ? "Aviario Industrial" : "A-Nida";
+  const productoCodigo = isAviario ? "COD. 10007 · MULTINIVEL" : "NIDAL COLECTIVO";
   const productoSubtitulo = isAviario
     ? `Sistema aviario de ${nivelesEfectivos} plantas para producción intensiva en altura`
     : "Sistema de nidales colectivos para producción en suelo, campero y ecológico";
@@ -214,7 +224,7 @@ export default function PropuestaPage() {
           </nav>
           <button className="hdr-action" onClick={() => window.print()}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Exportar PDF
           </button>
@@ -222,7 +232,7 @@ export default function PropuestaPage() {
       </header>
 
       {/* ── HERO ───────────────────────────────────────────────────── */}
-      <section className="hero">
+      <section className={`hero ${isAviario ? "hero--aviario" : ""}`}>
         <div className="hero-inner wrap">
           <div className="hero-top">
             <div className="hero-eyebrow-group">
@@ -232,9 +242,9 @@ export default function PropuestaPage() {
             </div>
             <span className={`hero-status ${cumple ? "is-ok" : "is-fail"}`}>
               {cumple ? (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/></svg> Instalación viable</>
+                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable</>
               ) : (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2 2l5 5M7 2L2 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg> Revisar parámetros</>
+                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2 2l5 5M7 2L2 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg> Revisar parámetros</>
               )}
             </span>
           </div>
@@ -408,8 +418,8 @@ export default function PropuestaPage() {
             <div className="arg-layout">
               <div className="arg-aside">
                 <span className="arg-aside-label">Propuesta comercial</span>
-                <h2 className="arg-aside-title">Por qué<br/>Gómez y<br/>Crespo</h2>
-                <p className="arg-aside-desc">Fabricantes de equipamiento avícola con más de 50 años de experiencia.<br/>ISO 9001 · ISO 14001.</p>
+                <h2 className="arg-aside-title">Por qué<br />Gómez y<br />Crespo</h2>
+                <p className="arg-aside-desc">Fabricantes de equipamiento avícola con más de 50 años de experiencia.<br />ISO 9001 · ISO 14001.</p>
               </div>
               <div className="arg-body" dangerouslySetInnerHTML={{ __html: `<p>${renderMd(argumentario_ventas)}</p>` }} />
             </div>
@@ -429,7 +439,7 @@ export default function PropuestaPage() {
               <a href="mailto:info@gomezycrespo.com" className="btn-pill btn-pill--light">
                 Solicitar presupuesto
                 <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
-                  <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                  <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </a>
               <a href="tel:+34988217754" className="btn-outline btn-outline--light">+34 988 217 754</a>
@@ -445,7 +455,7 @@ export default function PropuestaPage() {
           <span className="ftr-norm">RD 3/2002 · Directiva 1999/74/CE · RD 637/2021</span>
           <a href="/" className="ftr-back">
             <svg width="9" height="8" viewBox="0 0 9 8" fill="none">
-              <path d="M4 1L1 4m0 0l3 3M1 4h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+              <path d="M4 1L1 4m0 0l3 3M1 4h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Calculadora
           </a>
@@ -543,11 +553,13 @@ const BASE_CSS = `
   /* ── HERO ── */
   .hero {
     background-color: var(--c-title);
-    background-image: url('/hero-nidal.jpg');
     background-size: cover;
     background-position: center 40%;
     padding: 4rem 0 3.5rem;
     position: relative; overflow: hidden;
+  }
+  .hero:not(.hero--aviario) {
+    background-image: url('/hero-nidal.jpg');
   }
   .hero::before {
     content: "";
