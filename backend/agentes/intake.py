@@ -1,6 +1,8 @@
 import math
 from typing import Literal, Optional
-from pydantic import BaseModel
+import numpy as np
+from scipy.optimize import milp, LinearConstraint, Bounds
+from pydantic import BaseModel, Field
 
 
 Sistema = Literal["suelo", "campero", "ecologico", "jaulas"]
@@ -13,6 +15,8 @@ class DatosBasicos(BaseModel):
     sistema: Sistema
     superficie_nave_m2: float
     altura_nave_cm: float
+    ancho_nave_m: Optional[float] = None
+    largo_nave_m: Optional[float] = None
 
 
 # Mantener alias para no romper código existente
@@ -31,10 +35,16 @@ class ResultadoFactibilidad(BaseModel):
     factible: bool
     densidad_actual: float          # gal/m² con nidal (sin aviario)
     densidad_max: float             # límite legal según sistema
-    densidad_min_aviario: float     # densidad si se instala aviario máximo posible
-    niveles_posibles: int           # 0 si altura insuficiente
+    densidad_min_aviario: float     # densidad si se instala aviario máximo posible (-1 = no aplica)
+    niveles_posibles: int           # 0/1 = altura insuficiente, 2/3 = viable
     modulos_caben: int              # módulos de aviario que caben físicamente
     mensaje: str                    # resumen legible para el cliente
+    # Ajustes cuando nidal excede límite
+    sup_minima_nidal: Optional[float] = None
+    gallinas_max_nidal: Optional[int] = None
+    # Ajustes cuando aviario excede límite (o no cabe)
+    sup_minima_avi: Optional[float] = None
+    gallinas_max_avi: Optional[int] = None
 
 
 def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
@@ -53,10 +63,10 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         densidad_avi = round(datos.num_gallinas / sup_disp, 2) if sup_disp > 0 else float("inf")
     else:
         num_mod_avi = 0
-        densidad_avi = densidad_nidal
+        densidad_avi = -1.0  # altura insuficiente para aviario — no aplica
 
-    # Factible = al menos el aviario máximo cumple la densidad legal
-    factible = densidad_avi <= densidad_max
+    # Factible = nidal cumple solo, o aviario viable cumple
+    factible = (densidad_nidal <= densidad_max) or (niveles >= 2 and densidad_avi <= densidad_max)
 
     if not factible:
         mensaje = (
@@ -78,6 +88,43 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
             f"Un aviario de {niveles} plantas reduce la densidad a {densidad_avi:.1f} gal/m²."
         )
 
+    # Recomendaciones cuando el nidal no cumple normativa
+    sup_minima_nidal: Optional[float] = None
+    gallinas_max_nidal: Optional[int] = None
+    if densidad_nidal > densidad_max:
+        # ¿Cuántos m² necesitaría la nave? (mismas gallinas, mismos módulos)
+        num_mod_nidal = math.ceil(datos.num_gallinas / 144)
+        sup_cuerpo_nidal = round(num_mod_nidal * 1.68, 2)
+        sup_minima_nidal = math.ceil((datos.num_gallinas / densidad_max + sup_cuerpo_nidal) * 10) / 10
+
+        # ¿Cuántas gallinas como máximo en esta nave? (búsqueda binaria)
+        S = datos.superficie_nave_m2
+        lo, hi = 0, datos.num_gallinas
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            mods = math.ceil(mid / 144)
+            sup_efec = S - mods * 1.68
+            if sup_efec > 0 and mid / sup_efec <= densidad_max:
+                lo = mid
+            else:
+                hi = mid - 1
+        gallinas_max_nidal = lo if lo > 0 else None
+
+    # Recomendaciones cuando el aviario no cumple normativa (o no cabe por altura)
+    sup_minima_avi: Optional[float] = None
+    gallinas_max_avi: Optional[int] = None
+    if niveles >= 2 and densidad_avi > densidad_max:
+        sup_util = _AVI_SUP_DISP[niveles]
+        mods_needed = math.ceil(datos.num_gallinas / (densidad_max * sup_util))
+        sup_minima_avi = math.ceil(mods_needed * _AVI_HUELLA_M2 * 10) / 10
+        gallinas_max_avi = int(densidad_max * num_mod_avi * sup_util) if num_mod_avi > 0 else 0
+    elif niveles < 2:
+        # Aviario no viable por altura: calcular cuánto espacio se necesitaría si se pudiera
+        sup_util = _AVI_SUP_DISP[2]  # referencia con 2 niveles
+        mods_needed = math.ceil(datos.num_gallinas / (densidad_max * sup_util))
+        sup_minima_avi = math.ceil(mods_needed * _AVI_HUELLA_M2 * 10) / 10
+        gallinas_max_avi = None  # no aplica si no hay altura suficiente
+
     return ResultadoFactibilidad(
         factible=factible,
         densidad_actual=densidad_nidal,
@@ -86,6 +133,10 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         niveles_posibles=niveles,
         modulos_caben=num_mod_avi,
         mensaje=mensaje,
+        sup_minima_nidal=sup_minima_nidal,
+        gallinas_max_nidal=gallinas_max_nidal,
+        sup_minima_avi=sup_minima_avi,
+        gallinas_max_avi=gallinas_max_avi,
     )
 
 
@@ -166,12 +217,337 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
 
 
 # ── Constantes físicas del módulo Aviario Industrial (cod 10007) ─────────────
-_AVI_HUELLA_M2    = round(3.735 * 1.20, 4)  # 4.482 m² — huella para encaje en nave
+_AVI_MOD_A     = 1.20                      # dimensión paralela al largo de nave (m)
+_AVI_MOD_B     = 3.73                      # dimensión que cruza el ancho de nave (m)
+_AVI_HUELLA_M2 = round(_AVI_MOD_A * _AVI_MOD_B, 4)  # 4.476 m²
+_AVI_CAP       = 144                       # gallinas/módulo (independiente de niveles)
+_AVI_PASILLO   = 1.0                       # pasillo entre pares espalda-con-espalda (m)
+_AVI_SEP       = 1.0                       # separación entre módulos dentro de una fila (m)
+_AVI_PARED     = 4.0                       # clearance mínimo módulo↔pared lateral (m)
 
 # Superficie por módulo según número de plantas (datos del diseñador)
-# "disponible" = excluye zona de puesta, es la que computa para densidad normativa
+# "disponible" = excluye zona de puesta, computa para densidad normativa
 _AVI_SUP_TOTAL = {2: 15.270, 3: 19.328}   # m² superficie total por módulo
 _AVI_SUP_DISP  = {2: 13.180, 3: 16.194}   # m² superficie disponible (sin puesta)
+
+
+class LayoutAviario(BaseModel):
+    orientacion: str      # "transversal" (1.20 cruza ancho) | "longitudinal" (3.73 cruza ancho)
+    mods_por_fila: int
+    num_filas: int
+    descripcion: str      # texto legible para el frontend
+
+
+def _optimizar_layout_aviario(W: float, L: float, H: float, densidad_max: float) -> dict | None:
+    """
+    Prueba ambas orientaciones del módulo con filas espalda-con-espalda y
+    pasillos de _AVI_PASILLO metros entre pares de filas.
+    Devuelve la configuración que maximiza gallinas, o None si H < 300 cm.
+    """
+    if H < 300:
+        return None
+
+    niveles = 2 if H < 400 else 3
+
+    # Orientación fija: 1,20 m paralelo al largo, 3,73 m cruza el ancho
+    # Clearance de 4 m a cada pared lateral, 1 m entre módulos de la misma fila
+    avail_w = W - 2 * _AVI_PARED
+    if avail_w < _AVI_MOD_B:
+        return None
+    mods_per_row = math.floor((avail_w + _AVI_SEP) / (_AVI_MOD_B + _AVI_SEP))
+
+    # Pares espalda-con-espalda + 1 m de pasillo entre cada par
+    unit = 2 * _AVI_MOD_A + _AVI_PASILLO
+    num_pairs = math.floor(L / unit)
+    remainder = L - num_pairs * unit
+    extra = 1 if remainder >= _AVI_MOD_A else 0
+    num_rows = 2 * num_pairs + extra
+
+    if num_rows == 0:
+        return None
+
+    total_mods = mods_per_row * num_rows
+    sup_disp = round(total_mods * _AVI_SUP_DISP[niveles], 2)
+    gallinas = min(_AVI_CAP * total_mods, int(densidad_max * sup_disp))
+
+    best = {
+                "modulos": total_mods,
+                "gallinas": gallinas,
+                "niveles": niveles,
+                "mods_por_fila": mods_per_row,
+                "num_filas": num_rows,
+                "orientacion": "longitudinal",
+                "sup_disp": sup_disp,
+                "densidad_real": round(gallinas / sup_disp, 2) if sup_disp > 0 else 0,
+                "descripcion": f"{mods_per_row} módulos/fila × {num_rows} filas",
+            }
+
+    return best
+
+
+# ── Capacidad máxima ──────────────────────────────────────────────────────────
+
+class RequisitoEquipamiento(BaseModel):
+    nombre: str
+    valor_minimo: float
+    unidad: str
+    formula: str
+    articulo: str
+
+
+def _requisitos_equipamiento(n: int, sistema: str) -> list[RequisitoEquipamiento]:
+    """Requisitos mínimos de equipamiento según RD 3/2002 para n gallinas."""
+    req: list[RequisitoEquipamiento] = []
+    req.append(RequisitoEquipamiento(
+        nombre="Perchas",
+        valor_minimo=round(n * 15.0, 0),
+        unidad="cm lineales",
+        formula=f"{n} × 15 cm/gallina",
+        articulo="RD 3/2002 Anexo II",
+    ))
+    req.append(RequisitoEquipamiento(
+        nombre="Comederos lineales",
+        valor_minimo=round(n * 10.0, 0),
+        unidad="cm lineales",
+        formula=f"{n} × 10 cm/gallina",
+        articulo="RD 3/2002 Anexo II",
+    ))
+    req.append(RequisitoEquipamiento(
+        nombre="Comederos circulares (perímetro)",
+        valor_minimo=round(n * 4.0, 0),
+        unidad="cm de perímetro",
+        formula=f"{n} × 4 cm/gallina",
+        articulo="RD 3/2002 Anexo II",
+    ))
+    req.append(RequisitoEquipamiento(
+        nombre="Bebederos pezón/copa",
+        valor_minimo=float(math.ceil(n / 10)),
+        unidad="unidades",
+        formula=f"⌈{n} / 10⌉ = {math.ceil(n / 10)}",
+        articulo="RD 3/2002 Anexo II",
+    ))
+    req.append(RequisitoEquipamiento(
+        nombre="Bebedero de canal",
+        valor_minimo=round(n * 2.5, 0),
+        unidad="cm de canal",
+        formula=f"{n} × 2,5 cm/gallina",
+        articulo="RD 3/2002 Anexo II",
+    ))
+    if sistema in ("campero", "ecologico"):
+        req.append(RequisitoEquipamiento(
+            nombre="Superficie exterior mínima",
+            valor_minimo=round(n * 4.0, 2),
+            unidad="m²",
+            formula=f"{n} × 4 m²/gallina",
+            articulo="Regl. CE 589/2008 Anexo II",
+        ))
+    return req
+
+
+# ── Constantes módulo A-Nida ─────────────────────────────────────────────────
+_NIDAL_LARGO  = 1.20    # m — va a lo largo de nave; encadenamiento; ancho de la cara de la que salen los slats
+_NIDAL_ANCHO  = 1.40    # m — cruza el ancho de nave; profundidad del cuerpo
+_NIDAL_CUERPO = round(_NIDAL_LARGO * _NIDAL_ANCHO, 4)  # 1.68 m²
+_NIDAL_CAP    = 144     # gallinas/módulo
+
+# Configuraciones de slot (izq, der) en metros, orden de preferencia
+_NIDAL_SLOT_CONFIGS: list[tuple[int, int]] = [
+    (3, 3), (3, 2), (2, 2), (3, 1), (2, 1), (1, 1),
+    (3, 0), (2, 0), (1, 0),
+]
+
+
+class PuntoPareto(BaseModel):
+    num_modulos: int
+    max_gallinas: int
+    sup_yacija_m2: float
+    yacija_pct: float
+    perdida_gallinas: int   # respecto al óptimo de gallinas
+
+
+class OpcionCapacidad(BaseModel):
+    sistema: str                  # "nidal_colectivo" | "aviario_2" | "aviario_3"
+    label: str
+    max_gallinas: int
+    num_modulos: int
+    densidad_real: float
+    densidad_max: float
+    viable: bool
+    sup_disponible_m2: float = 0
+    sup_yacija_m2: float = 0
+    yacija_pct: float = 0
+    yacija_min_m2: float = 0
+    pareto: list[PuntoPareto] = []
+    requisitos: list[RequisitoEquipamiento] = []
+    layout: Optional[LayoutAviario] = None
+    slot_izq: int = 0             # metros de slot lado izquierdo (nidal)
+    slot_der: int = 0             # metros de slot lado derecho (nidal)
+
+
+class ResultadoCapacidad(BaseModel):
+    opciones: list[OpcionCapacidad]
+    densidad_max: float
+
+
+def _optimo_nidal_lp(S: float, densidad_max: float, sup_slot_mod: float) -> tuple[int, int]:
+    """
+    ILP: maximizar n sujeto a capacidad, densidad y yacija.
+    sup_slot_mod = 1.20 × (slot_izq + slot_der)
+    """
+    huella = _NIDAL_CUERPO + sup_slot_mod          # m² descontados de yacija
+    yacija_div = huella * 1.5                       # de: S - m·huella ≥ S/3
+
+    c = np.array([0.0, -1.0])
+    A = np.array([
+        [-float(_NIDAL_CAP),           1.0],
+        [_NIDAL_CUERPO * densidad_max,  1.0],
+        [1.0,                           0.0],
+    ])
+    b = np.array([0.0, densidad_max * S, S / yacija_div])
+
+    result = milp(
+        c,
+        constraints=LinearConstraint(A, -np.inf, b),
+        integrality=np.array([1, 0]),
+        bounds=Bounds(lb=[0.0, 0.0], ub=[np.inf, np.inf]),
+    )
+
+    if not result.success:
+        return 0, 0
+
+    m_opt = int(round(result.x[0]))
+    n_opt = math.floor(min(_NIDAL_CAP * m_opt, (S - _NIDAL_CUERPO * m_opt) * densidad_max))
+    return m_opt, n_opt
+
+
+def _pareto_nidal(S: float, densidad_max: float, m_opt: int, n_opt: int,
+                  sup_slot_mod: float) -> list[PuntoPareto]:
+    huella = _NIDAL_CUERPO + sup_slot_mod
+    yacija_div = huella * 1.5
+    m_max = math.floor(S / yacija_div)
+    frontier: list[PuntoPareto] = []
+    for m in range(m_opt, m_max + 1):
+        n = math.floor(min(_NIDAL_CAP * m, (S - _NIDAL_CUERPO * m) * densidad_max))
+        sup_yacija = round(S - huella * m, 2)
+        frontier.append(PuntoPareto(
+            num_modulos=m,
+            max_gallinas=n,
+            sup_yacija_m2=sup_yacija,
+            yacija_pct=round(sup_yacija / S * 100, 1),
+            perdida_gallinas=n_opt - n,
+        ))
+    return frontier
+
+
+def _cascade_slot_nidal(S: float, densidad_max: float,
+                        ancho_nave: float | None) -> tuple[int, int, int, int, float]:
+    """
+    Prueba configuraciones de slot en orden de preferencia.
+    Restricciones: (1) dimensional: prof_total ≤ ancho_nave;
+                   (2) yacija: implícita en el ILP (n_opt > 0).
+    Devuelve (m_opt, n_opt, slot_izq, slot_der, sup_slot_mod).
+    """
+    for slot_izq, slot_der in _NIDAL_SLOT_CONFIGS:
+        prof_total = _NIDAL_ANCHO + slot_izq + slot_der  # total que cruza el ancho de nave
+        if ancho_nave is not None and prof_total > ancho_nave:
+            continue
+        sup_slot_mod = round(_NIDAL_LARGO * (slot_izq + slot_der), 4)  # 1.20 m × longitud slots
+        m_opt, n_opt = _optimo_nidal_lp(S, densidad_max, sup_slot_mod)
+        if n_opt > 0:
+            return m_opt, n_opt, slot_izq, slot_der, sup_slot_mod
+    return 0, 0, 1, 0, round(_NIDAL_LARGO * 1, 4)
+
+
+def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
+    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    S = datos.superficie_nave_m2
+    opciones: list[OpcionCapacidad] = []
+
+    # ── Nidal colectivo — cascade de slot + ILP + Pareto ──
+    m_opt, n_opt, slot_izq, slot_der, sup_slot_mod = _cascade_slot_nidal(
+        S, densidad_max, datos.ancho_nave_m
+    )
+
+    if n_opt > 0:
+        huella_mod = _NIDAL_CUERPO + sup_slot_mod
+        sup_disp   = round(S - m_opt * _NIDAL_CUERPO, 2)
+        sup_yacija = round(S - m_opt * huella_mod, 2)
+        opciones.append(OpcionCapacidad(
+            sistema="nidal_colectivo",
+            label="Nidal colectivo A-Nida",
+            max_gallinas=n_opt,
+            num_modulos=m_opt,
+            densidad_real=round(n_opt / sup_disp, 2),
+            densidad_max=densidad_max,
+            viable=True,
+            sup_disponible_m2=sup_disp,
+            sup_yacija_m2=sup_yacija,
+            yacija_pct=round(sup_yacija / S * 100, 1),
+            yacija_min_m2=round(S / 3, 1),
+            pareto=_pareto_nidal(S, densidad_max, m_opt, n_opt, sup_slot_mod),
+            requisitos=_requisitos_equipamiento(n_opt, datos.sistema),
+            slot_izq=slot_izq,
+            slot_der=slot_der,
+        ))
+
+    # ── Aviario (por niveles disponibles) ──
+    tiene_dimensiones = datos.ancho_nave_m is not None and datos.largo_nave_m is not None
+
+    for niveles in [2, 3]:
+        altura_min = 300 if niveles == 2 else 400
+        if datos.altura_nave_cm < altura_min:
+            opciones.append(OpcionCapacidad(
+                sistema=f"aviario_{niveles}",
+                label=f"Aviario {niveles} niveles",
+                max_gallinas=0, num_modulos=0,
+                densidad_real=0, densidad_max=densidad_max, viable=False,
+            ))
+            continue
+
+        if tiene_dimensiones:
+            lay = _optimizar_layout_aviario(
+                datos.ancho_nave_m, datos.largo_nave_m,  # type: ignore[arg-type]
+                datos.altura_nave_cm, densidad_max,
+            )
+            if lay is None or lay["niveles"] != niveles:
+                continue
+            num_mod_avi = lay["modulos"]
+            max_avi     = lay["gallinas"]
+            sup_disp    = lay["sup_disp"]
+            dens_avi    = lay["densidad_real"]
+            layout_obj  = LayoutAviario(
+                orientacion=lay["orientacion"],
+                mods_por_fila=lay["mods_por_fila"],
+                num_filas=lay["num_filas"],
+                descripcion=lay["descripcion"],
+            )
+        else:
+            num_mod_avi = math.floor(S / _AVI_HUELLA_M2)
+            if num_mod_avi == 0:
+                continue
+            sup_disp   = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
+            max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
+            dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
+            layout_obj = None
+
+        sup_yacija_av = round(num_mod_avi * _AVI_HUELLA_M2, 2)
+        opciones.append(OpcionCapacidad(
+            sistema=f"aviario_{niveles}",
+            label=f"Aviario {niveles} niveles",
+            max_gallinas=max_avi,
+            num_modulos=num_mod_avi,
+            densidad_real=dens_avi,
+            densidad_max=densidad_max,
+            viable=True,
+            sup_disponible_m2=sup_disp,
+            sup_yacija_m2=sup_yacija_av,
+            yacija_pct=round(sup_yacija_av / S * 100, 1),
+            yacija_min_m2=round(S / 3, 1),
+            requisitos=_requisitos_equipamiento(max_avi, datos.sistema),
+            layout=layout_obj,
+        ))
+
+    return ResultadoCapacidad(opciones=opciones, densidad_max=densidad_max)
 
 
 def _niveles_aviario(altura_cm: float) -> int:
@@ -404,12 +780,13 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
     if tipo_zona == "aviario":
         niveles = _niveles_aviario(datos.altura_nave_cm)
         densidad_max_avi = 6.0 if datos.sistema == "ecologico" else 9.0
-        num_modulos_caben, sup_disp, sup_total = _sup_util_aviario(datos.superficie_nave_m2, niveles)
+        num_modulos_caben, _, sup_total = _sup_util_aviario(datos.superficie_nave_m2, niveles)
         modulos_necesarios = math.ceil(n / (densidad_max_avi * _AVI_SUP_DISP[niveles]))
+        sup_disp = round(modulos_necesarios * _AVI_SUP_DISP[niveles], 2)
         densidad_real = n / sup_disp if sup_disp > 0 else float("inf")
         parametro_label = (
             f"Densidad interior aviario {niveles} plantas — "
-            f"{num_modulos_caben} módulos caben · {_AVI_SUP_DISP[niveles]} m² disp./módulo"
+            f"{modulos_necesarios} módulos necesarios · {_AVI_SUP_DISP[niveles]} m² disp./módulo"
             f" = {sup_disp:.1f} m² disponibles"
         )
         articulo_densidad = "Directiva 1999/74/CE Art. 4.3.a + RD 3/2002 Anexo IV"
@@ -651,15 +1028,18 @@ def consulta_ventas(datos: DatosIntake, requisitos: list[RequisitoCalculado]) ->
         f"{r.nombre}: {r.valor_minimo} {r.unidad}" for r in requisitos
     )
     return (
-        f"Eres asesor comercial de Gómez y Crespo, empresa especializada en equipamiento avícola. "
+        f"Eres asesor comercial senior de Gómez y Crespo, fabricante español de equipamiento avícola "
+        f"con más de 50 años de experiencia. "
         f"Una granja de {datos.num_gallinas} gallinas ponedoras en sistema {sistema_label} "
-        f"con zona de puesta tipo {zona_label} necesita el siguiente equipamiento mínimo: {reqs_txt}. "
-        f"Redacta un argumentario de ventas en 3 párrafos cortos que justifique por qué Gómez y Crespo "
-        f"es la mejor opción para cubrir estas necesidades. "
-        f"Destaca: productos A-Nida Plus, calidad de materiales (acero galvanizado y polímeros de alta "
-        f"resistencia, rejillas triple galvanizado tres veces más resistentes a la corrosión), "
-        f"cumplimiento normativo garantizado, rentabilidad a largo plazo y servicio técnico especializado. "
-        f"Tono profesional y persuasivo."
+        f"necesita instalar {zona_label}. "
+        f"Redacta un argumentario comercial en 3 párrafos cortos para convencer al granjero de elegir "
+        f"Gómez y Crespo. "
+        f"IMPORTANTE: empieza el primer párrafo con una frase de beneficio directo para el granjero "
+        f"(rentabilidad, tranquilidad, liderazgo de mercado...), NUNCA con densidades ni datos técnicos. "
+        f"Destaca: experiencia de 50 años y respaldo técnico, materiales de alta durabilidad "
+        f"(rejillas triple galvanizado tres veces más resistentes, tubos PosMAC®, chapa DX51D+Z275), "
+        f"cumplimiento normativo garantizado y sistema modular escalable. "
+        f"Tono profesional, directo y persuasivo. Sin listas, solo párrafos fluidos."
     )
 
 
