@@ -276,7 +276,7 @@ export async function pedirLayoutNidal(params: {
   sistema: string;
   exterior_m2?: number;
 }): Promise<ResultadoLayoutNidal> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8002";
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
   const res = await fetch(`${backendUrl}/layout-nidal`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

@@ -295,11 +295,13 @@ def disenar_layout_nidal(
     densidad_max = 6.0 if sistema == "ecologico" else 9.0
     yacija_minima = round(nave_m2 / 3, 1)
 
-    llm = ChatGoogleGenerativeAI(
+    _base_llm = ChatGoogleGenerativeAI(
         model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
         google_api_key=os.getenv("GOOGLE_API_KEY"),
         temperature=0,
-    ).bind_tools(_TOOLS)
+    )
+    llm          = _base_llm.bind_tools(_TOOLS)
+    llm_no_tools = _base_llm  # sin herramientas → fuerza respuesta de texto
 
     system_msg = SystemMessage(content=_SYSTEM_PROMPT.format(specs=specs))
     user_msg = HumanMessage(content=f"""
@@ -326,22 +328,41 @@ Devuelve el resultado en el bloque JSON indicado.
 """)
 
     messages = [system_msg, user_msg]
+    _FORCE_STOP_AFTER = 8   # tras N rondas de herramientas, forzar respuesta final
+    _MAX_ITER = 14
 
     try:
-        for _ in range(20):  # max iteraciones del loop
-            response: AIMessage = llm.invoke(messages)
+        for i in range(_MAX_ITER):
+            # Tras _FORCE_STOP_AFTER rondas, desactivar herramientas para forzar respuesta
+            llm_step = llm if i < _FORCE_STOP_AFTER else llm_no_tools
+            response: AIMessage = llm_step.invoke(messages)
             messages.append(response)
 
-            # Si no hay tool calls, el agente terminó
+            # Si no hay tool calls, el agente terminó → parsear
             if not response.tool_calls:
-                # content puede ser str o list[dict] según la versión de langchain
                 content = response.content
                 if isinstance(content, list):
                     content = " ".join(
                         p.get("text", "") if isinstance(p, dict) else str(p)
                         for p in content
                     )
-                return _parsear_resultado(content)
+                resultado = _parsear_resultado(content)
+                # Si el parser falló y aún quedan iteraciones, pedir el JSON explícitamente
+                if resultado.error and "JSON" in (resultado.error or "") and i < _MAX_ITER - 1:
+                    logging.warning("[layout_agent] JSON no encontrado, reintentando con petición explícita")
+                    messages.append(HumanMessage(content=(
+                        "Tu respuesta no contiene el bloque JSON requerido. "
+                        "Responde ÚNICAMENTE con el bloque ```json { ... }``` del resultado, sin texto adicional."
+                    )))
+                    continue
+                return resultado
+
+            # Justo antes de agotar el presupuesto, inyectar mensaje de cierre
+            if i == _FORCE_STOP_AFTER - 1:
+                messages.append(HumanMessage(content=(
+                    "Ya tienes suficiente información. "
+                    "Emite AHORA el bloque JSON final sin más llamadas a herramientas."
+                )))
 
             # Ejecutar las herramientas llamadas
             for tc in response.tool_calls:
@@ -367,19 +388,31 @@ Devuelve el resultado en el bloque JSON indicado.
 
 def _parsear_resultado(output: str) -> ResultadoLayout:
     """Extrae el JSON del output del agente y lo convierte a ResultadoLayout."""
-    # Busca bloque ```json ... ```
-    match = re.search(r"```(?:json)?\s*(\{.*?\})\s*```", output, re.DOTALL)
-    if not match:
-        # Busca JSON raw
-        match = re.search(r"\{.*\}", output, re.DOTALL)
-    if not match:
+    import logging
+    logging.info(f"[layout_agent] output del agente ({len(output)} chars):\n{output[:800]}")
+
+    json_str: str | None = None
+
+    # 1. Busca bloque ```json ... ``` (greedy para capturar JSON con objetos anidados)
+    m = re.search(r"```(?:json)?\s*(\{.*\})\s*```", output, re.DOTALL)
+    if m:
+        json_str = m.group(1)
+    else:
+        # 2. Busca el primer { hasta el último } del string completo
+        start = output.find("{")
+        end = output.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            json_str = output[start:end + 1]
+
+    if not json_str:
+        logging.error(f"[layout_agent] no se encontró JSON en: {output[:300]}")
         return ResultadoLayout(
             viable=False,
             error="No se pudo extraer JSON del resultado del agente",
             explicacion=output,
         )
     try:
-        data = json.loads(match.group(1) if "```" in output else match.group(0))
+        data = json.loads(json_str)
         filas = [FilaLayout(**f) for f in data.get("filas", [])]
         return ResultadoLayout(
             viable=data.get("viable", False),
@@ -394,6 +427,7 @@ def _parsear_resultado(output: str) -> ResultadoLayout:
             explicacion=data.get("explicacion", ""),
         )
     except Exception as e:
+        logging.error(f"[layout_agent] error parseando JSON: {e}\njson_str={json_str[:300]}")
         return ResultadoLayout(
             viable=False,
             error=f"Error parseando JSON: {e}",
