@@ -69,6 +69,8 @@ export interface DatosRecomendacion {
   sistema: Sistema;
   superficie_nave_m2: number;
   altura_nave_cm: number;
+  ancho_nave_m?: number;
+  largo_nave_m?: number;
 }
 
 export interface Recomendacion {
@@ -87,6 +89,10 @@ export interface ResultadoFactibilidad {
   niveles_posibles: number;
   modulos_caben: number;
   mensaje: string;
+  sup_minima_nidal?: number;
+  gallinas_max_nidal?: number;
+  sup_minima_avi?: number;
+  gallinas_max_avi?: number;
 }
 
 export interface Opcion {
@@ -104,6 +110,53 @@ export interface Pregunta {
 export interface FactibilidadResponse {
   factibilidad: ResultadoFactibilidad;
   preguntas: Pregunta[];
+}
+
+export interface PuntoPareto {
+  num_modulos: number;
+  max_gallinas: number;
+  sup_yacija_m2: number;
+  yacija_pct: number;
+  perdida_gallinas: number;
+}
+
+export interface LayoutAviario {
+  orientacion: string;
+  mods_por_fila: number;
+  num_filas: number;
+  descripcion: string;
+}
+
+export interface OpcionCapacidad {
+  sistema: string;
+  label: string;
+  max_gallinas: number;
+  num_modulos: number;
+  densidad_real: number;
+  densidad_max: number;
+  viable: boolean;
+  sup_disponible_m2?: number;
+  sup_yacija_m2?: number;
+  yacija_pct?: number;
+  yacija_min_m2?: number;
+  pareto?: PuntoPareto[];
+  layout?: LayoutAviario;
+}
+
+export interface ResultadoCapacidad {
+  opciones: OpcionCapacidad[];
+  densidad_max: number;
+}
+
+export async function pedirCapacidad(datos: Omit<DatosRecomendacion, "num_gallinas"> & { num_gallinas: number }): Promise<ResultadoCapacidad> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/capacidad`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ datos }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
 }
 
 export async function pedirFactibilidad(datos: DatosRecomendacion): Promise<FactibilidadResponse> {
@@ -189,6 +242,48 @@ export interface IntakeResponse {
   argumentario_ventas: string;
   argumentos_producto: string[];
   objeciones: Objecion[];
+}
+
+// ── Layout nidal ─────────────────────────────────────────────────────────────
+
+export interface FilaLayout {
+  num_modulos: number;
+  slot_izq: number;
+  slot_der: number;
+  pegada_pared_izq: boolean;
+  pegada_pared_der: boolean;
+}
+
+export interface ResultadoLayoutNidal {
+  viable: boolean;
+  filas: FilaLayout[];
+  total_modulos: number;
+  max_gallinas: number;
+  yacija_interior_m2: number;
+  yacija_exterior_m2: number;
+  cumple_normativa: boolean;
+  necesita_exterior: boolean;
+  deficit_yacija_m2: number;
+  explicacion: string;
+  error?: string | null;
+}
+
+export async function pedirLayoutNidal(params: {
+  nave_m2: number;
+  ancho_nave_m: number;
+  largo_nave_m: number;
+  gallinas: number;
+  sistema: string;
+  exterior_m2?: number;
+}): Promise<ResultadoLayoutNidal> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8002";
+  const res = await fetch(`${backendUrl}/layout-nidal`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ ...params, exterior_m2: params.exterior_m2 ?? 0 }),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
 }
 
 export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {
