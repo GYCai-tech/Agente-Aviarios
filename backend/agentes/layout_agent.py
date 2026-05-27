@@ -255,7 +255,9 @@ REGLAS DE DISEÑO:
 - Si hay varias filas paralelas, entre ellas debe haber al menos 1 m de pasillo.
 - Una fila puede ir pegada a pared lateral (slot=0 en ese lado, sin clearance mínimo).
 - slot=0 SOLO está permitido si la fila va pegada a esa pared.
-- Prueba primero slots de 3 m; reduce si no cabe o si la yacija no cumple.
+- PRIORIDAD DE SLOTS: usa siempre slots de 3 m. Solo reduce a 2 m o 1 m si con
+  3 m la fila no cabe físicamente en el ancho de nave. Nunca reduzcas los slots
+  para meter más filas: prefiere menos filas con slots de 3 m a más filas con slots menores.
 - Usa siempre las herramientas para verificar antes de proponer.
 
 Responde SIEMPRE con un bloque JSON con esta estructura exacta:
@@ -319,12 +321,15 @@ Diseña el layout de nidales A-Nida que MAXIMICE la capacidad de esta nave:
 
 Instrucciones:
 1. Calcula cuántos módulos caben por fila en {largo_nave_m} m de largo.
-2. Prueba todas las configuraciones posibles (1 fila, 2 filas, pegada a pared...)
-   verificando que cada configuración cabe en {ancho_nave_m} m de ancho.
+2. Prueba configuraciones SIEMPRE con slots de 3 m primero:
+   - 1 fila central (slots 3+3 m): prof = 7,40 m
+   - 1 fila pegada a pared (slots 0+3 m): prof = 4,40 m
+   - 2 filas pegadas a paredes opuestas (slots 0+3 | 3+0): prof = 4,40+1+4,40 = 9,80 m
+   Solo si ninguna configuración con slots de 3 m cabe en {ancho_nave_m} m, prueba slots de 2 m o 1 m.
    Si hay 2+ filas paralelas, deja al menos 1 m de pasillo entre ellas.
 3. Para cada configuración, usa el MÁXIMO de módulos que caben en el largo.
 4. Calcula la yacija y verifica normativa. Ajusta módulos solo si la densidad se excede.
-5. Elige la configuración con MÁS gallinas alojadas cumpliendo todas las restricciones.
+5. Elige la configuración con MÁS gallinas alojadas usando la mayor longitud de slot posible.
 6. Si ninguna cumple la yacija interior y exterior_m2=0, marca necesita_exterior=true.
 
 Devuelve el resultado en el bloque JSON indicado.
