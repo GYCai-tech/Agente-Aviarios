@@ -22,7 +22,7 @@ from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
 from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas, calcular_capacidad, ResultadoCapacidad
-from agentes.layout_agent import disenar_layout_nidal, ResultadoLayout
+from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal
 from clients import qdrant_client
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -45,20 +45,14 @@ def query(request: QueryRequest):
 def validar(request: ValidarRequest):
     informe = validar_conformidad(request.datos)
     resultado_rag = grafo.invoke({"query": informe.consulta_rag})
-    return ValidarResponse(
-        informe=informe,
-        analisis_legal=resultado_rag["answer"],
-    )
+    return ValidarResponse(informe=informe, analisis_legal=resultado_rag["answer"])
 
 
 @app.post("/calcular", response_model=CalcularResponse)
 def calcular(request: CalcularRequest):
     informe = calcular_granja(request.datos)
     resultado_rag = grafo.invoke({"query": informe.consulta_rag})
-    return CalcularResponse(
-        informe=informe,
-        analisis_legal=resultado_rag["answer"],
-    )
+    return CalcularResponse(informe=informe, analisis_legal=resultado_rag["answer"])
 
 
 @app.post("/factibilidad", response_model=FactibilidadResponse)
@@ -74,24 +68,14 @@ def capacidad(request: FactibilidadRequest):
 
 
 class LayoutNidalRequest(BaseModel):
-    nave_m2: float
-    ancho_nave_m: float
-    largo_nave_m: float
-    gallinas: int
+    ancho_nave: float
+    largo_nave: float
     sistema: str
-    exterior_m2: float = 0
 
 
-@app.post("/layout-nidal", response_model=ResultadoLayout)
+@app.post("/layout-nidal", response_model=ResultadoLayoutNidal)
 def layout_nidal(request: LayoutNidalRequest):
-    return disenar_layout_nidal(
-        nave_m2=request.nave_m2,
-        ancho_nave_m=request.ancho_nave_m,
-        largo_nave_m=request.largo_nave_m,
-        gallinas=request.gallinas,
-        sistema=request.sistema,
-        exterior_m2=request.exterior_m2,
-    )
+    return optimizar_nidal(request.ancho_nave, request.largo_nave, request.sistema)
 
 
 @app.post("/recomendar")
@@ -105,8 +89,6 @@ def recomendar_con_respuestas(request: RecomendacionConRespuestasRequest):
 
 
 def _argumentos_brief(tipo_zona: str) -> list[str]:
-    """Recupera chunks del brief y extrae argumentos comerciales via Gemini."""
-    import os
     try:
         result = qdrant_client.scroll(
             collection_name=os.getenv("COLLECTION_NAME", "normativa_aviario"),

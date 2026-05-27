@@ -218,12 +218,11 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
 
 # ── Constantes físicas del módulo Aviario Industrial (cod 10007) ─────────────
 _AVI_MOD_A     = 1.20                      # dimensión paralela al largo de nave (m)
-_AVI_MOD_B     = 3.73                      # dimensión que cruza el ancho de nave (m)
-_AVI_HUELLA_M2 = round(_AVI_MOD_A * _AVI_MOD_B, 4)  # 4.476 m²
+_AVI_MOD_B     = 3.30                      # dimensión paralela al ancho de nave (m)
+_AVI_HUELLA_M2 = round(_AVI_MOD_A * _AVI_MOD_B, 4)  # 3.96 m²
 _AVI_CAP       = 144                       # gallinas/módulo (independiente de niveles)
-_AVI_PASILLO   = 1.0                       # pasillo entre pares espalda-con-espalda (m)
-_AVI_SEP       = 1.0                       # separación entre módulos dentro de una fila (m)
-_AVI_PARED     = 4.0                       # clearance mínimo módulo↔pared lateral (m)
+_AVI_PASILLO   = 1.0                       # pasillo entre filas (m)
+_AVI_CLEARANCE = 4.0                       # clearance al extremo de cada fila (dirección largo, m)
 
 # Superficie por módulo según número de plantas (datos del diseñador)
 # "disponible" = excluye zona de puesta, computa para densidad normativa
@@ -240,49 +239,48 @@ class LayoutAviario(BaseModel):
 
 def _optimizar_layout_aviario(W: float, L: float, H: float, densidad_max: float) -> dict | None:
     """
-    Prueba ambas orientaciones del módulo con filas espalda-con-espalda y
-    pasillos de _AVI_PASILLO metros entre pares de filas.
-    Devuelve la configuración que maximiza gallinas, o None si H < 300 cm.
+    Layout del aviario:
+    - Módulo: 1.20 m paralelo al largo, 3.30 m paralelo al ancho.
+    - Las filas van a lo largo del eje largo. Cada fila tiene 4 m de clearance
+      en su extremo (dirección largo). Módulos por fila = floor((largo - 4) / 1.20).
+    - Las filas se colocan a lo largo del ancho con pasillos de 1 m entre ellas.
+      Número de filas = floor(ancho / (3.30 + pasillo)) ajustado al espacio real.
     """
     if H < 300:
         return None
 
     niveles = 2 if H < 400 else 3
 
-    # Orientación fija: 1,20 m paralelo al largo, 3,73 m cruza el ancho
-    # Clearance de 4 m a cada pared lateral, 1 m entre módulos de la misma fila
-    avail_w = W - 2 * _AVI_PARED
-    if avail_w < _AVI_MOD_B:
+    # Módulos por fila (dirección largo): clearance de 4 m en ambos extremos
+    avail_largo = L - 2 * _AVI_CLEARANCE
+    if avail_largo < _AVI_MOD_A:
         return None
-    mods_per_row = math.floor((avail_w + _AVI_SEP) / (_AVI_MOD_B + _AVI_SEP))
+    mods_per_row = math.floor(avail_largo / _AVI_MOD_A)
 
-    # Pares espalda-con-espalda + 1 m de pasillo entre cada par
-    unit = 2 * _AVI_MOD_A + _AVI_PASILLO
-    num_pairs = math.floor(L / unit)
-    remainder = L - num_pairs * unit
-    extra = 1 if remainder >= _AVI_MOD_A else 0
-    num_rows = 2 * num_pairs + extra
+    # Filas (dirección ancho): cada fila ocupa 3.30 m + 1 m pasillo,
+    # excepto la última que no necesita pasillo
+    if W < _AVI_MOD_B:
+        return None
+    num_rows = math.floor((W + _AVI_PASILLO) / (_AVI_MOD_B + _AVI_PASILLO))
 
-    if num_rows == 0:
+    if num_rows == 0 or mods_per_row == 0:
         return None
 
     total_mods = mods_per_row * num_rows
     sup_disp = round(total_mods * _AVI_SUP_DISP[niveles], 2)
     gallinas = min(_AVI_CAP * total_mods, int(densidad_max * sup_disp))
 
-    best = {
-                "modulos": total_mods,
-                "gallinas": gallinas,
-                "niveles": niveles,
-                "mods_por_fila": mods_per_row,
-                "num_filas": num_rows,
-                "orientacion": "longitudinal",
-                "sup_disp": sup_disp,
-                "densidad_real": round(gallinas / sup_disp, 2) if sup_disp > 0 else 0,
-                "descripcion": f"{mods_per_row} módulos/fila × {num_rows} filas",
-            }
-
-    return best
+    return {
+        "modulos": total_mods,
+        "gallinas": gallinas,
+        "niveles": niveles,
+        "mods_por_fila": mods_per_row,
+        "num_filas": num_rows,
+        "orientacion": "longitudinal",
+        "sup_disp": sup_disp,
+        "densidad_real": round(gallinas / sup_disp, 2) if sup_disp > 0 else 0,
+        "descripcion": f"{num_rows} filas de {mods_per_row} módulos",
+    }
 
 
 # ── Capacidad máxima ──────────────────────────────────────────────────────────
@@ -458,20 +456,55 @@ def _cascade_slot_nidal(S: float, densidad_max: float,
     return 0, 0, 1, 0, round(_NIDAL_LARGO * 1, 4)
 
 
+_NIDAL_SLOT_LADO    = 3.0                                              # m por cada lado
+_NIDAL_SUP_SLOT     = round(_NIDAL_LARGO * _NIDAL_SLOT_LADO * 2, 4)   # ambos lados: 7.20 m²
+_NIDAL_HUELLA_TOTAL = round(_NIDAL_CUERPO + _NIDAL_SUP_SLOT, 4)        # 8.88 m²
+
+
+def _optimo_nidal_iterativo(S: float, densidad_max: float,
+                             largo_nave: float | None,
+                             ancho_nave: float | None) -> tuple[int, int]:
+    """
+    Algoritmo iterativo geométrico:
+      Paso 1 — N_max = floor(largo / 1.20)
+      Paso 2 — gallinas = N × 144
+      Paso 3 — sup_disponible = S − N × 1.68  (densidad: descuenta solo cuerpo)
+      Paso 4 — sup_yacija = S − N × 8.88  (cuerpo + 3m slot cada lado)
+               Requiere: sup_yacija ≥ S / 3
+      Paso 5 — densidad = gallinas / sup_disponible ≤ densidad_max
+    Si no cumple, N -= 1 y se repite.
+    """
+    if largo_nave is not None:
+        largo = max(largo_nave, ancho_nave or 0.0)
+        N_max = math.floor(largo / _NIDAL_LARGO)
+    else:
+        N_max = math.floor(S / _NIDAL_HUELLA_TOTAL)
+
+    for N in range(N_max, 0, -1):
+        sup_cuerpo = N * _NIDAL_CUERPO
+        sup_efectiva = S - sup_cuerpo
+        if sup_efectiva <= 0:
+            continue
+        gallinas = N * _NIDAL_CAP
+        densidad = gallinas / sup_efectiva
+        sup_yacija = S - N * _NIDAL_HUELLA_TOTAL
+        if densidad <= densidad_max and sup_yacija >= S / 3:
+            return N, gallinas
+
+    return 0, 0
+
+
 def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
     densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
     S = datos.superficie_nave_m2
     opciones: list[OpcionCapacidad] = []
 
-    # ── Nidal colectivo — cascade de slot + ILP + Pareto ──
-    m_opt, n_opt, slot_izq, slot_der, sup_slot_mod = _cascade_slot_nidal(
-        S, densidad_max, datos.ancho_nave_m
-    )
+    # ── Nidal colectivo — iterativo geométrico (slot 3 m fijo, 1 fila) ──
+    m_opt, n_opt = _optimo_nidal_iterativo(S, densidad_max, datos.largo_nave_m, datos.ancho_nave_m)
 
     if n_opt > 0:
-        huella_mod = _NIDAL_CUERPO + sup_slot_mod
         sup_disp   = round(S - m_opt * _NIDAL_CUERPO, 2)
-        sup_yacija = round(S - m_opt * huella_mod, 2)
+        sup_yacija = round(S - m_opt * _NIDAL_HUELLA_TOTAL, 2)
         opciones.append(OpcionCapacidad(
             sistema="nidal_colectivo",
             label="Nidal colectivo A-Nida",
@@ -484,10 +517,10 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             sup_yacija_m2=sup_yacija,
             yacija_pct=round(sup_yacija / S * 100, 1),
             yacija_min_m2=round(S / 3, 1),
-            pareto=_pareto_nidal(S, densidad_max, m_opt, n_opt, sup_slot_mod),
+            pareto=[],
             requisitos=_requisitos_equipamiento(n_opt, datos.sistema),
-            slot_izq=slot_izq,
-            slot_der=slot_der,
+            slot_izq=3,
+            slot_der=3,
         ))
 
     # ── Aviario (por niveles disponibles) ──
@@ -504,23 +537,34 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             ))
             continue
 
+        layout_obj = None
         if tiene_dimensiones:
             lay = _optimizar_layout_aviario(
                 datos.ancho_nave_m, datos.largo_nave_m,  # type: ignore[arg-type]
                 datos.altura_nave_cm, densidad_max,
             )
-            if lay is None or lay["niveles"] != niveles:
-                continue
-            num_mod_avi = lay["modulos"]
-            max_avi     = lay["gallinas"]
-            sup_disp    = lay["sup_disp"]
-            dens_avi    = lay["densidad_real"]
-            layout_obj  = LayoutAviario(
-                orientacion=lay["orientacion"],
-                mods_por_fila=lay["mods_por_fila"],
-                num_filas=lay["num_filas"],
-                descripcion=lay["descripcion"],
-            )
+            if lay is not None:
+                # Físicamente caben los mismos módulos independientemente del nivel.
+                # Solo varía la superficie disponible por módulo según el nivel.
+                num_mod_avi = lay["modulos"]
+                sup_disp    = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
+                max_avi     = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
+                dens_avi    = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
+                if lay["niveles"] == niveles:
+                    layout_obj = LayoutAviario(
+                        orientacion=lay["orientacion"],
+                        mods_por_fila=lay["mods_por_fila"],
+                        num_filas=lay["num_filas"],
+                        descripcion=lay["descripcion"],
+                    )
+            else:
+                # Layout no encaja con clearances estrictos → fallback por superficie
+                num_mod_avi = math.floor(S / _AVI_HUELLA_M2)
+                if num_mod_avi == 0:
+                    continue
+                sup_disp   = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
+                max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
+                dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
         else:
             num_mod_avi = math.floor(S / _AVI_HUELLA_M2)
             if num_mod_avi == 0:
@@ -528,7 +572,6 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             sup_disp   = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
             max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
             dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
-            layout_obj = None
 
         sup_yacija_av = round(num_mod_avi * _AVI_HUELLA_M2, 2)
         opciones.append(OpcionCapacidad(
