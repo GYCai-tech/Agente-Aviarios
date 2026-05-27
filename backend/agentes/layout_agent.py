@@ -5,6 +5,7 @@ constraints duras (yacija, densidad, dimensional) con herramientas Python.
 Si la yacija interior no es suficiente, indica el déficit y solicita exterior.
 """
 import json
+import logging
 import math
 import os
 import re
@@ -239,10 +240,12 @@ Tu tarea es diseñar el layout óptimo de nidales colectivos A-Nida en una nave.
 ESPECIFICACIONES TÉCNICAS:
 {specs}
 
-OBJETIVO:
+OBJETIVO: MAXIMIZAR siempre la capacidad de la nave.
 1. Determinar cuántas filas de nidales caben en el ancho de la nave.
 2. Determinar cuántos módulos por fila caben en el largo.
-3. Maximizar gallinas alojadas sin superar la densidad máxima legal.
+3. MAXIMIZAR el número de gallinas alojadas sin superar la densidad máxima legal.
+   El número de gallinas del cliente es una REFERENCIA MÍNIMA, no el objetivo.
+   Siempre debes proponer el máximo posible dentro de la normativa.
 4. Garantizar que la superficie de yacija cumpla normativa (≥ 1/3 de la nave).
 5. Si la yacija interior es insuficiente en todas las configuraciones viables,
    informar del déficit y preguntar si hay superficie exterior disponible.
@@ -305,23 +308,23 @@ def disenar_layout_nidal(
 
     system_msg = SystemMessage(content=_SYSTEM_PROMPT.format(specs=specs))
     user_msg = HumanMessage(content=f"""
-Diseña el layout de nidales A-Nida para esta nave:
+Diseña el layout de nidales A-Nida que MAXIMICE la capacidad de esta nave:
 - Superficie nave: {nave_m2} m²
 - Ancho nave: {ancho_nave_m} m
 - Largo nave: {largo_nave_m} m
-- Gallinas a alojar: {gallinas}
 - Sistema: {sistema} (densidad máxima: {densidad_max} gal/m²)
 - Yacija mínima requerida: {yacija_minima} m² (1/3 de la nave)
 - Superficie exterior disponible: {exterior_m2} m²
+- Referencia del cliente: {gallinas} gallinas (aloja el MÁXIMO posible, no te limites a este número)
 
 Instrucciones:
-1. Calcula cuántos módulos mínimos necesitas para {gallinas} gallinas.
-2. Calcula cuántos módulos caben por fila en {largo_nave_m} m de largo.
-3. Prueba configuraciones de filas (una fila, dos filas, fila pegada a pared...)
-   verificando que cada una cabe en {ancho_nave_m} m de ancho.
+1. Calcula cuántos módulos caben por fila en {largo_nave_m} m de largo.
+2. Prueba todas las configuraciones posibles (1 fila, 2 filas, pegada a pared...)
+   verificando que cada configuración cabe en {ancho_nave_m} m de ancho.
    Si hay 2+ filas paralelas, deja al menos 1 m de pasillo entre ellas.
-4. Para cada configuración viable, calcula la yacija y verifica normativa.
-5. Elige la configuración que aloje más gallinas cumpliendo todas las restricciones.
+3. Para cada configuración, usa el MÁXIMO de módulos que caben en el largo.
+4. Calcula la yacija y verifica normativa. Ajusta módulos solo si la densidad se excede.
+5. Elige la configuración con MÁS gallinas alojadas cumpliendo todas las restricciones.
 6. Si ninguna cumple la yacija interior y exterior_m2=0, marca necesita_exterior=true.
 
 Devuelve el resultado en el bloque JSON indicado.
@@ -330,6 +333,8 @@ Devuelve el resultado en el bloque JSON indicado.
     messages = [system_msg, user_msg]
     _FORCE_STOP_AFTER = 8   # tras N rondas de herramientas, forzar respuesta final
     _MAX_ITER = 14
+    total_input_tokens = 0
+    total_output_tokens = 0
 
     try:
         for i in range(_MAX_ITER):
@@ -337,6 +342,14 @@ Devuelve el resultado en el bloque JSON indicado.
             llm_step = llm if i < _FORCE_STOP_AFTER else llm_no_tools
             response: AIMessage = llm_step.invoke(messages)
             messages.append(response)
+
+            # Acumular tokens
+            usage = getattr(response, "usage_metadata", None) or {}
+            inp = usage.get("input_tokens", 0) or 0
+            out = usage.get("output_tokens", 0) or 0
+            total_input_tokens += inp
+            total_output_tokens += out
+            logging.info(f"[layout_agent] iter {i}: in={inp} out={out} | acum in={total_input_tokens} out={total_output_tokens}")
 
             # Si no hay tool calls, el agente terminó → parsear
             if not response.tool_calls:
@@ -388,7 +401,6 @@ Devuelve el resultado en el bloque JSON indicado.
 
 def _parsear_resultado(output: str) -> ResultadoLayout:
     """Extrae el JSON del output del agente y lo convierte a ResultadoLayout."""
-    import logging
     logging.info(f"[layout_agent] output del agente ({len(output)} chars):\n{output[:800]}")
 
     json_str: str | None = None
