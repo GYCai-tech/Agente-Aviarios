@@ -179,7 +179,7 @@ export default function ChatInterface() {
         nave_m2: ancho * largo,
         ancho_nave_m: ancho,
         largo_nave_m: largo,
-        gallinas: parseInt(layoutGallinas),
+        gallinas: layoutGallinas ? parseInt(layoutGallinas) : 0,
         sistema: sistemaApi!,
         exterior_m2: exteriorM2,
       });
@@ -493,15 +493,15 @@ export default function ChatInterface() {
                             <form className="layout-form" onSubmit={(e) => { e.preventDefault(); onLayoutSubmit(0); }}>
                               <div className="field-input-wrap">
                                 <input
-                                  type="number" min={1} required placeholder="Gallinas a alojar"
+                                  type="number" min={1} placeholder="Mínimo de gallinas (opcional)"
                                   className="field-input field-input--unit"
                                   value={layoutGallinas}
                                   onChange={(e) => { setLayoutGallinas(e.target.value); setLayoutResult(null); }}
                                 />
                                 <span className="field-unit">aves</span>
                               </div>
-                              <button type="submit" className="btn-pill btn-pill--sm"
-                                disabled={!layoutGallinas}>
+                              <p className="layout-hint">El agente maximiza la capacidad de la nave con slots de 3 m.</p>
+                              <button type="submit" className="btn-pill btn-pill--sm">
                                 Calcular layout
                                 <svg width="12" height="8" viewBox="0 0 12 8" fill="none"><path d="M1 4h10M7 1l4 3-4 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>
                               </button>
@@ -1525,6 +1525,7 @@ const CHAT_CSS = `
   .layout-divider { border: none; border-top: 1px dashed rgba(0,0,0,0.1); margin-bottom: 0.75rem; }
   .layout-title { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.55rem; }
   .layout-form { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+  .layout-hint { font-size: 0.72rem; color: var(--c-body); opacity: 0.65; width: 100%; margin-top: -0.15rem; }
   .btn-pill--sm { padding: 0.4rem 0.9rem; font-size: 0.75rem; }
   .layout-loading { display: flex; align-items: center; gap: 0.5rem; color: var(--c-body); font-size: 0.78rem; padding: 0.5rem 0; }
   .loading-dots--sm span { width: 5px; height: 5px; }
