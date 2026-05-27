@@ -11,6 +11,7 @@ logging.basicConfig(
 )
 
 from fastapi import FastAPI
+from pydantic import BaseModel
 from schemas.pydantic_models import (
     QueryRequest, QueryResponse, ValidarRequest, ValidarResponse,
     CalcularRequest, CalcularResponse, IntakeRequest, IntakeResponse,
@@ -20,7 +21,8 @@ from schemas.pydantic_models import (
 from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
-from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas
+from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas, calcular_capacidad, ResultadoCapacidad
+from agentes.layout_agent import disenar_layout_nidal, ResultadoLayout
 from clients import qdrant_client
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -66,6 +68,32 @@ def factibilidad(request: FactibilidadRequest):
     return FactibilidadResponse(factibilidad=fact, preguntas=preguntas)
 
 
+@app.post("/capacidad", response_model=ResultadoCapacidad)
+def capacidad(request: FactibilidadRequest):
+    return calcular_capacidad(request.datos)
+
+
+class LayoutNidalRequest(BaseModel):
+    nave_m2: float
+    ancho_nave_m: float
+    largo_nave_m: float
+    gallinas: int
+    sistema: str
+    exterior_m2: float = 0
+
+
+@app.post("/layout-nidal", response_model=ResultadoLayout)
+def layout_nidal(request: LayoutNidalRequest):
+    return disenar_layout_nidal(
+        nave_m2=request.nave_m2,
+        ancho_nave_m=request.ancho_nave_m,
+        largo_nave_m=request.largo_nave_m,
+        gallinas=request.gallinas,
+        sistema=request.sistema,
+        exterior_m2=request.exterior_m2,
+    )
+
+
 @app.post("/recomendar")
 def recomendar(request: RecomendacionRequest):
     return recomendar_zona(request.datos)
@@ -76,8 +104,8 @@ def recomendar_con_respuestas(request: RecomendacionConRespuestasRequest):
     return recomendar_zona(request.datos, respuestas=request.respuestas)
 
 
-def _argumentos_brief() -> list[str]:
-    """Recupera chunks del brief aviario y extrae argumentos via Gemini."""
+def _argumentos_brief(tipo_zona: str) -> list[str]:
+    """Recupera chunks del brief y extrae argumentos comerciales via Gemini."""
     import os
     try:
         result = qdrant_client.scroll(
@@ -93,17 +121,25 @@ def _argumentos_brief() -> list[str]:
         if not chunks:
             return []
         texto_brief = "\n\n".join(chunks)
+        producto_label = (
+            "sistema aviario industrial multinivel (código 10007)"
+            if tipo_zona == "aviario"
+            else "sistema de nidales colectivos A-Nida Plus"
+        )
         query = (
-            f"Dado el siguiente contenido de un brief comercial de Gómez y Crespo sobre su sistema "
-            f"aviario industrial:\n\n{texto_brief}\n\n"
-            f"Extrae una lista de 5 a 7 argumentos de venta clave, concisos y persuasivos. "
-            f"Devuelve SOLO los argumentos, uno por línea, comenzando cada uno con '- '. "
-            f"Sin títulos, sin numeración, sin texto adicional."
+            f"Eres comercial experto de Gómez y Crespo. Brief comercial del {producto_label}:\n\n"
+            f"{texto_brief}\n\n"
+            f"Redacta exactamente 5 argumentos de venta persuasivos orientados al BENEFICIO del granjero "
+            f"(rentabilidad, ahorro, bienestar animal, cumplimiento normativo, facilidad de manejo). "
+            f"Cada argumento debe ser una frase completa y convincente. "
+            f"PROHIBIDO: cifras sueltas, densidades en gal/m², medidas en m² o cm, tablas de datos. "
+            f"Solo frases de beneficio comercial. "
+            f"Devuelve ÚNICAMENTE los 5 argumentos, uno por línea, sin guiones ni numeración."
         )
         resultado = grafo.invoke({"query": query})
         lineas = resultado["answer"].strip().split("\n")
-        argumentos = [l.lstrip("- •*").strip() for l in lineas if l.strip() and l.strip() not in ("-", "•", "*")]
-        return [a for a in argumentos if len(a) > 10]
+        argumentos = [l.lstrip("0123456789.-•* )").strip() for l in lineas if l.strip()]
+        return [a for a in argumentos if len(a) > 20][:6]
     except Exception as e:
         logging.error(f"Error recuperando argumentos brief: {e}")
         return []
@@ -177,7 +213,7 @@ def intake(request: IntakeRequest):
     informe = generar_informe(request.datos)
     resultado_rag = grafo.invoke({"query": informe.consulta_rag})
     resultado_ventas = grafo.invoke({"query": consulta_ventas(request.datos, informe.requisitos)})
-    argumentos = _argumentos_brief()
+    argumentos = _argumentos_brief(request.datos.tipo_zona)
     objeciones = _objeciones_producto(request.datos)
     return IntakeResponse(
         informe=informe,
