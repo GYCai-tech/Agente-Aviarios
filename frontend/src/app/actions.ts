@@ -141,6 +141,9 @@ export interface OpcionCapacidad {
   yacija_min_m2?: number;
   pareto?: PuntoPareto[];
   layout?: LayoutAviario;
+  parque_invierno_m2?: number;
+  modulos_opcion_a?: number;
+  gallinas_opcion_a?: number;
 }
 
 export interface ResultadoCapacidad {

@@ -443,30 +443,55 @@ export default function ChatInterface() {
                           {op.viable ? "Viable" : "No viable"}
                         </div>
                       </div>
-                      <div className="cap-card-gallinas">
-                        {op.viable ? op.max_gallinas.toLocaleString("es-ES") : "—"}
-                        <span className="cap-card-unit"> aves</span>
-                      </div>
+                      {/* Gallinas + módulos — solo cuando no hay bifurcación parque */}
+                      {op.viable && (op.parque_invierno_m2 ?? 0) === 0 && (
+                        <>
+                          <div className="cap-card-gallinas">
+                            {op.max_gallinas.toLocaleString("es-ES")}
+                            <span className="cap-card-unit"> aves</span>
+                          </div>
+                          <div className="cap-card-gallinas cap-card-modulos">
+                            {op.num_modulos}
+                            <span className="cap-card-unit"> módulo{op.num_modulos !== 1 ? "s" : ""}</span>
+                          </div>
+                        </>
+                      )}
+                      {!op.viable && (
+                        <div className="cap-card-details"><span>Altura insuficiente para este sistema</span></div>
+                      )}
+
+                      {/* Stats grid */}
                       {op.viable && (
-                        <div className="cap-card-gallinas cap-card-modulos">
-                          {op.num_modulos}
-                          <span className="cap-card-unit"> módulo{op.num_modulos !== 1 ? "s" : ""}</span>
+                        <div className="cap-stats-grid">
+                          <div className="cap-stat">
+                            <span className="cap-stat-label">Sup. normativa</span>
+                            <span className="cap-stat-val">{(op.sup_disponible_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+                          </div>
+                          <div className="cap-stat">
+                            <span className="cap-stat-label">Densidad</span>
+                            <span className="cap-stat-val">{op.densidad_real.toFixed(1)} / {op.densidad_max.toFixed(0)} gal/m²</span>
+                          </div>
+                          {op.sup_yacija_m2 != null && <>
+                            <div className="cap-stat">
+                              <span className="cap-stat-label">Yacija disponible</span>
+                              <span className={`cap-stat-val${(op.sup_yacija_m2 ?? 0) < (op.yacija_min_m2 ?? 0) ? " is-warn" : ""}`}>
+                                {op.sup_yacija_m2.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
+                              </span>
+                            </div>
+                            <div className="cap-stat">
+                              <span className="cap-stat-label">Yacija requerida</span>
+                              <span className="cap-stat-val">{(op.yacija_min_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+                            </div>
+                          </>}
                         </div>
                       )}
-                      <div className="cap-card-details">
-                        {op.viable ? (
-                          <span>{op.densidad_real.toFixed(1)} / {op.densidad_max.toFixed(0)} gal/m²</span>
-                        ) : (
-                          <span>Altura insuficiente para este sistema</span>
-                        )}
-                      </div>
+
+                      {/* Layout */}
                       {op.viable && op.layout && (
                         <div className="cap-card-layout">
                           <span className="cap-layout-row">
                             <span className="cap-layout-label">En planta</span>
-                            <span className="cap-layout-val">
-                              {op.layout.num_filas} filas de {op.layout.mods_por_fila} módulos
-                            </span>
+                            <span className="cap-layout-val">{op.layout.num_filas} filas × {op.layout.mods_por_fila} módulos</span>
                           </span>
                           <span className="cap-layout-row">
                             <span className="cap-layout-label">Pasillos</span>
@@ -474,15 +499,52 @@ export default function ChatInterface() {
                           </span>
                         </div>
                       )}
-                      {op.viable && op.sup_yacija_m2 != null && (
-                        <div className="cap-card-yacija">
-                          <span className="cap-yacija-label">Yacija</span>
-                          <span className="cap-yacija-val">
-                            {op.sup_yacija_m2.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
-                            <span className={`cap-yacija-pct${(op.yacija_pct ?? 0) < 35 ? " is-warn" : ""}`}> · {op.yacija_pct?.toFixed(0)}%{(op.yacija_pct ?? 0) < 35 ? " ⚠" : ""}</span>
-                          </span>
-                        </div>
-                      )}
+
+                      {/* Bifurcación parque de invierno */}
+                      {op.viable && (op.parque_invierno_m2 ?? 0) > 0 && (() => {
+                        const supPorMod = op.num_modulos > 0 ? (op.sup_disponible_m2 ?? 0) / op.num_modulos : 0;
+                        const supDispA  = (op.modulos_opcion_a ?? 0) * supPorMod;
+                        const densA     = supDispA > 0 ? (op.gallinas_opcion_a ?? 0) / supDispA : 0;
+                        return (
+                          <div className="cap-card-parque">
+                            <div className="cap-parque-title">Para cumplir la normativa de yacija</div>
+                            <div className="cap-parque-grid">
+                              <div className="cap-parque-opcion cap-parque-opcion--a">
+                                <div className="cap-parque-opcion-head">Sin parque de invierno</div>
+                                <div className="cap-parque-opcion-gallinas">
+                                  {(op.gallinas_opcion_a ?? 0).toLocaleString("es-ES")}
+                                  <span className="cap-card-unit"> aves</span>
+                                </div>
+                                <div className="cap-parque-opcion-row">
+                                  <span className="cap-parque-opcion-key">Módulos</span>
+                                  <span className="cap-parque-opcion-val">{op.modulos_opcion_a}</span>
+                                </div>
+                                <div className="cap-parque-opcion-row">
+                                  <span className="cap-parque-opcion-key">Densidad</span>
+                                  <span className="cap-parque-opcion-val">{densA.toFixed(1)} gal/m²</span>
+                                </div>
+                                <div className="cap-parque-opcion-tag cap-parque-opcion-tag--ok">✓ Yacija OK · nave sola</div>
+                              </div>
+                              <div className="cap-parque-opcion cap-parque-opcion--b">
+                                <div className="cap-parque-opcion-head">Con parque de invierno</div>
+                                <div className="cap-parque-opcion-gallinas">
+                                  {op.max_gallinas.toLocaleString("es-ES")}
+                                  <span className="cap-card-unit"> aves</span>
+                                </div>
+                                <div className="cap-parque-opcion-row">
+                                  <span className="cap-parque-opcion-key">Módulos</span>
+                                  <span className="cap-parque-opcion-val">{op.num_modulos}</span>
+                                </div>
+                                <div className="cap-parque-opcion-row">
+                                  <span className="cap-parque-opcion-key">Densidad</span>
+                                  <span className="cap-parque-opcion-val">{op.densidad_real.toFixed(1)} gal/m²</span>
+                                </div>
+                                <div className="cap-parque-opcion-tag cap-parque-opcion-tag--parque">+ {op.parque_invierno_m2} m² parque</div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()}
 
                     </div>
                   ))}
@@ -1337,6 +1399,31 @@ const CHAT_CSS = `
   .cap-yacija-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--c-title); font-size: 0.8rem; }
   .cap-yacija-pct { font-weight: 400; color: var(--c-body); }
   .cap-yacija-pct.is-warn { color: var(--c-fail-text); font-weight: 700; }
+
+  /* ── STATS GRID ── */
+  .cap-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.75rem; margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid rgba(0,0,0,0.07); }
+  .cap-stat { display: flex; flex-direction: column; gap: 0.08rem; }
+  .cap-stat-label { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--c-body); }
+  .cap-stat-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.8rem; color: var(--c-title); }
+  .cap-stat-val.is-warn { color: var(--c-fail-text); }
+
+  /* ── PARQUE DE INVIERNO ── */
+  .cap-card-parque { margin-top: 0.75rem; padding-top: 0.65rem; border-top: 1px solid rgba(0,0,0,0.07); }
+  .cap-parque-title { font-family: 'Montserrat', sans-serif; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-body); margin-bottom: 0.5rem; }
+  .cap-parque-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
+  .cap-parque-opcion { border-radius: 2px; padding: 0.6rem 0.7rem; border: 1px solid var(--c-border); }
+  .cap-parque-opcion--a { background: var(--c-bg-alt); }
+  .cap-parque-opcion--b { background: var(--c-ok-bg); border-color: rgba(45,125,50,0.35); }
+  .cap-parque-opcion-head { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.3rem; }
+  .cap-parque-opcion--a .cap-parque-opcion-head { color: var(--c-body); }
+  .cap-parque-opcion--b .cap-parque-opcion-head { color: var(--c-ok-text); }
+  .cap-parque-opcion-gallinas { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.05rem; color: var(--c-title); margin-bottom: 0.35rem; }
+  .cap-parque-opcion-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.2rem; }
+  .cap-parque-opcion-key { font-size: 0.69rem; color: var(--c-body); }
+  .cap-parque-opcion-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.72rem; color: var(--c-title); }
+  .cap-parque-opcion-tag { display: inline-block; margin-top: 0.45rem; font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.18rem 0.45rem; border-radius: 20px; }
+  .cap-parque-opcion-tag--ok { background: var(--c-ok-bg); color: var(--c-ok-text); }
+  .cap-parque-opcion-tag--parque { background: rgba(79,118,77,0.12); color: var(--c-primary-dk); }
 
   /* ── PARETO ── */
   .cap-card-pareto {

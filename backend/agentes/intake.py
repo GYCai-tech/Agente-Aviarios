@@ -380,6 +380,9 @@ class OpcionCapacidad(BaseModel):
     layout: Optional[LayoutAviario] = None
     slot_izq: int = 0             # metros de slot lado izquierdo (nidal)
     slot_der: int = 0             # metros de slot lado derecho (nidal)
+    parque_invierno_m2: float = 0
+    modulos_opcion_a: Optional[int] = None
+    gallinas_opcion_a: Optional[int] = None
 
 
 class ResultadoCapacidad(BaseModel):
@@ -573,7 +576,23 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
             dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
 
-        sup_yacija_av = round(num_mod_avi * _AVI_HUELLA_M2, 2)
+        sup_yacija_av = S
+        yacija_min_av = round((S + sup_disp) / 3, 1)
+        yacija_pct_av = round(S / (S + sup_disp) * 100, 1) if (S + sup_disp) > 0 else 0.0
+        parque_m2 = max(0.0, round((sup_disp - 2 * S) / 2, 1))
+        sup_disp_por_mod = _AVI_SUP_DISP[niveles]
+        if parque_m2 > 0:
+            N_max_a = min(math.floor(2 * S / sup_disp_por_mod), num_mod_avi)
+            if N_max_a > 0:
+                sup_disp_a = round(N_max_a * sup_disp_por_mod, 2)
+                modulos_a: Optional[int] = N_max_a
+                gallinas_a: Optional[int] = min(_AVI_CAP * N_max_a, int(densidad_max * sup_disp_a))
+            else:
+                modulos_a = None
+                gallinas_a = None
+        else:
+            modulos_a = None
+            gallinas_a = None
         opciones.append(OpcionCapacidad(
             sistema=f"aviario_{niveles}",
             label=f"Aviario {niveles} niveles",
@@ -584,10 +603,13 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             viable=True,
             sup_disponible_m2=sup_disp,
             sup_yacija_m2=sup_yacija_av,
-            yacija_pct=round(sup_yacija_av / S * 100, 1),
-            yacija_min_m2=round(S / 3, 1),
+            yacija_pct=yacija_pct_av,
+            yacija_min_m2=yacija_min_av,
             requisitos=_requisitos_equipamiento(max_avi, datos.sistema),
             layout=layout_obj,
+            parque_invierno_m2=parque_m2,
+            modulos_opcion_a=modulos_a,
+            gallinas_opcion_a=gallinas_a,
         ))
 
     return ResultadoCapacidad(opciones=opciones, densidad_max=densidad_max)
@@ -916,17 +938,41 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             articulo="Cálculo interno",
         ))
     else:
-        # Aviario: todo el suelo es yacija
+        # Aviario: yacija = suelo nave completo; requerida = 1/3 de (nave + todas las plantas)
+        yacija_minima_tercio_avi = round((datos.superficie_nave_m2 + sup_disp) / 3, 2)
+        yacija_requerida_avi = max(yacija_min_m2, yacija_minima_tercio_avi)
+        yacija_disponible_avi = datos.superficie_nave_m2
+        parque_avi = max(0.0, round((sup_disp - 2 * datos.superficie_nave_m2) / 2, 1))
+        verificaciones.append(VerificacionNave(
+            parametro="Superficie yacija disponible (suelo nave completo)",
+            cumple=yacija_disponible_avi >= yacija_requerida_avi,
+            valor_real=yacija_disponible_avi,
+            valor_limite=yacija_requerida_avi,
+            unidad="m²",
+            tipo_limite="minimo",
+            articulo="RD 3/2002 Anexo IV",
+        ))
         requisitos.append(RequisitoCalculado(
-            nombre="Zona de yacija (área de escarbar)",
-            valor_minimo=yacija_requerida,
+            nombre="Zona de yacija mínima requerida",
+            valor_minimo=yacija_requerida_avi,
             unidad="m²",
             formula=(
-                f"máx({n} × 250 cm² = {yacija_min_m2} m²  |  "
-                f"1/3 de nave = {yacija_minima_tercio} m²)"
+                f"1/3 × ({datos.superficie_nave_m2} m² nave + {sup_disp} m² módulos) "
+                f"= {yacija_minima_tercio_avi} m²"
             ),
             articulo="RD 3/2002 Anexo IV",
         ))
+        if parque_avi > 0:
+            requisitos.append(RequisitoCalculado(
+                nombre="Parque de invierno necesario",
+                valor_minimo=parque_avi,
+                unidad="m²",
+                formula=(
+                    f"({sup_disp} m² módulos − 2 × {datos.superficie_nave_m2} m² nave) / 2 "
+                    f"= {parque_avi} m²"
+                ),
+                articulo="RD 3/2002 Anexo IV",
+            ))
 
     # Zona de puesta
     if tipo_zona == "aviario":
