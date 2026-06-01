@@ -22,5 +22,5 @@ def retriever_context(text, model, api, collection_name):
         logger.info(f"Query returned {len(context)} results")
     except Exception as e:
         logger.error(f"Qdrant query failed: {e}")
-        return None
+        return []
     return context

@@ -8,7 +8,11 @@ logger = logging.getLogger(__name__)
 
 
 def inicializar_cache():
-    nombres = [c.name for c in qdrant_client.get_collections().collections]
+    try:
+        nombres = [c.name for c in qdrant_client.get_collections().collections]
+    except Exception as e:
+        logger.warning(f"Qdrant no disponible, cache desactivado: {e}")
+        return
     if "cache_respuestas" not in nombres:
         try:
             qdrant_client.create_collection(
