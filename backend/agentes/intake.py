@@ -3,6 +3,7 @@ from typing import Literal, Optional
 import numpy as np
 from scipy.optimize import milp, LinearConstraint, Bounds
 from pydantic import BaseModel, Field
+from agentes.nidal_layout import maximizar_nidal, ResultadoMaximizacion
 
 
 Sistema = Literal["suelo", "campero", "ecologico", "jaulas"]
@@ -17,6 +18,7 @@ class DatosBasicos(BaseModel):
     altura_nave_cm: float
     ancho_nave_m: Optional[float] = None
     largo_nave_m: Optional[float] = None
+    sup_exterior_m2: Optional[float] = None   # zona exterior anexa (solo suelo)
 
 
 # Mantener alias para no romper código existente
@@ -45,6 +47,8 @@ class ResultadoFactibilidad(BaseModel):
     # Ajustes cuando aviario excede límite (o no cabe)
     sup_minima_avi: Optional[float] = None
     gallinas_max_avi: Optional[int] = None
+    # Resultado de maximización de nidal (nuevo flujo suelo)
+    maximizacion_nidal: Optional[ResultadoMaximizacion] = None
 
 
 def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
@@ -125,6 +129,21 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         sup_minima_avi = math.ceil(mods_needed * _AVI_HUELLA_M2 * 10) / 10
         gallinas_max_avi = None  # no aplica si no hay altura suficiente
 
+    # ── Maximización de nidal (solo para "suelo" con dimensiones disponibles) ──
+    maximizacion: Optional[ResultadoMaximizacion] = None
+    if (
+        datos.sistema == "suelo"
+        and datos.ancho_nave_m is not None
+        and datos.largo_nave_m is not None
+    ):
+        maximizacion = maximizar_nidal(
+            ancho_nave=datos.ancho_nave_m,
+            largo_nave=datos.largo_nave_m,
+            gallinas=datos.num_gallinas,
+            sistema="suelo",
+            sup_exterior_m2=datos.sup_exterior_m2 or 0.0,
+        )
+
     return ResultadoFactibilidad(
         factible=factible,
         densidad_actual=densidad_nidal,
@@ -137,6 +156,7 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         gallinas_max_nidal=gallinas_max_nidal,
         sup_minima_avi=sup_minima_avi,
         gallinas_max_avi=gallinas_max_avi,
+        maximizacion_nidal=maximizacion,
     )
 
 
@@ -164,8 +184,30 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
     """
     Genera las preguntas al cliente solo cuando tanto nidal como aviario son viables.
     Si una sola opción es técnicamente posible, no se pregunta y se recomienda directamente.
+    Para "suelo" con maximización disponible, añade la pregunta de zona exterior si
+    el escenario interior no cumple normativa para el número de gallinas objetivo.
     """
     preguntas: list[Pregunta] = []
+
+    # ── Pregunta de zona exterior (suelo: compensa densidad y yacija) ──────────
+    mx = factibilidad.maximizacion_nidal
+    if mx and mx.viable and mx.interior and not mx.interior.cumple:
+        preguntas.append(Pregunta(
+            id="zona_exterior",
+            texto=(
+                f"Con la nave actual ({mx.sup_nave_m2:.0f} m²) el máximo de gallinas "
+                f"cumpliendo normativa es {mx.interior.gallinas_max:,}. "
+                f"¿Dispone de zona exterior anexa a la nave que pueda incluirse "
+                f"en el cálculo de superficie? Si es así, ¿cuántos m² tiene?"
+            ),
+            tipo="opcion_unica",
+            opciones=[
+                Opcion(id="no", texto="No, solo cuento con la superficie de la nave"),
+                Opcion(id="si_pequeña",  texto="Sí, menos de 200 m² adicionales"),
+                Opcion(id="si_mediana",  texto="Sí, entre 200 y 500 m² adicionales"),
+                Opcion(id="si_grande",   texto="Sí, más de 500 m² adicionales"),
+            ],
+        ))
 
     nidal_viable  = factibilidad.densidad_actual <= factibilidad.densidad_max
     aviario_viable = (
@@ -208,7 +250,7 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
         tipo="opcion_unica",
         opciones=[
             Opcion(id="maximizar_produccion", texto="Maximizar el número de gallinas por m²"),
-            Opcion(id="bienestar",            texto="Priorizar el bienestar animal y la calidad del huevo"),
+            Opcion(id="bienestar",            texto="Priorizar el bienestar animal"),
             Opcion(id="minima_inversion",     texto="Minimizar la inversión inicial"),
         ],
     ))

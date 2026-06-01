@@ -11,6 +11,7 @@ logging.basicConfig(
 )
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from schemas.pydantic_models import (
     QueryRequest, QueryResponse, ValidarRequest, ValidarResponse,
@@ -22,7 +23,7 @@ from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
 from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas, calcular_capacidad, ResultadoCapacidad
-from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal
+from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal, maximizar_nidal, ResultadoMaximizacion
 from agentes.plano_agent import (
     PlanoRequest, PlanoResponse, generar_plano_svg,
     LayoutConfig, LayoutConfigResponse, generar_desde_config,
@@ -37,6 +38,14 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -80,6 +89,25 @@ class LayoutNidalRequest(BaseModel):
 @app.post("/layout-nidal", response_model=ResultadoLayoutNidal)
 def layout_nidal(request: LayoutNidalRequest):
     return optimizar_nidal(request.ancho_nave, request.largo_nave, request.sistema)
+
+
+class MaximizarNidalRequest(BaseModel):
+    ancho_nave: float
+    largo_nave: float
+    gallinas: int
+    sistema: str = "suelo"
+    sup_exterior_m2: float = 0.0
+
+
+@app.post("/maximizar-nidal", response_model=ResultadoMaximizacion)
+def maximizar_nidal_endpoint(request: MaximizarNidalRequest):
+    return maximizar_nidal(
+        ancho_nave=request.ancho_nave,
+        largo_nave=request.largo_nave,
+        gallinas=request.gallinas,
+        sistema=request.sistema,
+        sup_exterior_m2=request.sup_exterior_m2,
+    )
 
 
 @app.post("/recomendar")
