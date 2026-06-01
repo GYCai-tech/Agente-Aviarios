@@ -4,6 +4,8 @@ import numpy as np
 model = CrossEncoder("cross-encoder/ms-marco-MiniLM-L-6-v2")
 
 def reranking(query, chunks):
+    if not chunks:
+        return []
     textos = [str(chunk["contenido"]) for chunk in chunks]
     pairs = [[query, texto] for texto in textos]
     puntuations = model.predict(pairs)

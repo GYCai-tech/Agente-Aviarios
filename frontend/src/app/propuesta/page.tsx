@@ -40,6 +40,8 @@ interface ProposalData {
   altura: string;
   tipo_zona: "nidal_colectivo" | "aviario";
   niveles?: number;
+  ancho_nave?: string;
+  largo_nave?: string;
 }
 
 const SISTEMA_LABEL: Record<string, string> = {
@@ -67,7 +69,93 @@ function GycLogoImg({ size = "md", white = false }: { size?: "sm" | "md" | "lg";
   );
 }
 
-// ── Plano esquemático ─────────────────────────────────────────────────────────
+// ── Plano generado por IA ─────────────────────────────────────────────────────
+
+function AiPlanoSection({
+  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie,
+}: {
+  ancho_nave_m: number; largo_nave_m: number; gallinas: number;
+  sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; superficie: number;
+}) {
+  const [svg, setSvg]       = useState<string | null>(null);
+  const [error, setError]   = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
+
+    async function fetchPlano() {
+      setLoading(true);
+      setSvg(null);
+      setError(null);
+      try {
+        // Primero obtenemos el layout real de módulos
+        const layoutRes = await fetch(`${backendUrl}/layout-nidal`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ancho_nave: ancho_nave_m,
+            largo_nave: largo_nave_m,
+            sistema,
+          }),
+        });
+        if (!layoutRes.ok) throw new Error("layout error");
+        const layout = await layoutRes.json();
+
+        // Luego pedimos el SVG a Gemini con el layout calculado
+        const planoRes = await fetch(`${backendUrl}/plano`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ancho_nave_m,
+            largo_nave_m,
+            filas: layout.filas ?? [],
+            tipo_zona,
+            gallinas,
+            sistema,
+            total_modulos: layout.total_modulos ?? 0,
+            yacija_interior_m2: layout.yacija_interior_m2 ?? 0,
+          }),
+        });
+        if (!planoRes.ok) throw new Error("plano error");
+        const data = await planoRes.json();
+        if (data.error || !data.svg) throw new Error(data.error ?? "SVG vacío");
+        setSvg(data.svg);
+      } catch (e: unknown) {
+        setError(e instanceof Error ? e.message : "Error generando el plano");
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    fetchPlano();
+  }, [ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie]);
+
+  if (loading) return (
+    <div className="ai-plano-loading">
+      <div className="ai-plano-dots"><span /><span /><span /></div>
+      <p>Generando plano con IA…</p>
+    </div>
+  );
+
+  if (error || !svg) return (
+    <NaveSchematic
+      superficie={superficie}
+      gallinas={gallinas}
+      tipoZona={tipo_zona}
+      requisitos={[]}
+    />
+  );
+
+  return (
+    <div
+      className="ai-plano-svg"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
+
+// ── Plano esquemático (fallback) ──────────────────────────────────────────────
 
 function NaveSchematic({
   superficie, gallinas, tipoZona, requisitos,
@@ -185,7 +273,10 @@ export default function PropuestaPage() {
     );
   }
 
-  const { informe, argumentario_ventas, gallinas, sistema, superficie, tipo_zona, niveles } = data;
+  const { informe, argumentario_ventas, gallinas, sistema, superficie, tipo_zona, niveles, ancho_nave, largo_nave } = data;
+  const anchoM  = ancho_nave  ? parseFloat(ancho_nave)  : 0;
+  const largoM  = largo_nave  ? parseFloat(largo_nave)  : 0;
+  const tieneNaveDims = anchoM > 0 && largoM > 0;
   const sistemaLabel = SISTEMA_LABEL[sistema] ?? sistema;
   const nivelesEfectivos = tipo_zona === "aviario" ? (niveles ?? 2) : 1;
   const isAviario = tipo_zona === "aviario";
@@ -222,7 +313,14 @@ export default function PropuestaPage() {
               <span key={t} className={`hdr-tab${t === "Informe" ? " is-active" : ""}`}>{t}</span>
             ))}
           </nav>
-          <button className="hdr-action" onClick={() => window.print()}>
+          <a href="/plano" className="hdr-action" style={{ marginLeft: "auto", marginRight: 8, textDecoration: "none" }}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+              <rect x="1" y="1" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none"/>
+              <path d="M3 4h6M3 6h4M3 8h5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+            </svg>
+            Editor de plano
+          </a>
+          <button className="hdr-action" onClick={() => window.print()} style={{ marginLeft: 0 }}>
             <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
               <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
@@ -373,15 +471,26 @@ export default function PropuestaPage() {
             <div className="dim-panel">
               <div className="dim-panel-head">
                 <span className="dim-panel-badge">B</span>
-                <span className="dim-panel-title">Plano esquemático · vista de planta</span>
+                <span className="dim-panel-title">Plano de distribución · vista de planta</span>
               </div>
               <div className="dim-plano">
-                <NaveSchematic
-                  superficie={parseFloat(superficie)}
-                  gallinas={parseInt(gallinas)}
-                  tipoZona={tipo_zona}
-                  requisitos={informe.requisitos}
-                />
+                {tieneNaveDims ? (
+                  <AiPlanoSection
+                    ancho_nave_m={anchoM}
+                    largo_nave_m={largoM}
+                    gallinas={parseInt(gallinas)}
+                    sistema={sistema}
+                    tipo_zona={tipo_zona}
+                    superficie={parseFloat(superficie)}
+                  />
+                ) : (
+                  <NaveSchematic
+                    superficie={parseFloat(superficie)}
+                    gallinas={parseInt(gallinas)}
+                    tipoZona={tipo_zona}
+                    requisitos={informe.requisitos}
+                  />
+                )}
               </div>
             </div>
           </div>
@@ -735,6 +844,26 @@ const BASE_CSS = `
   .dim-label { font-size: 0.78rem; color: var(--c-body); font-weight: 400; }
   .dim-value { font-size: 0.85rem; color: var(--c-title); font-weight: 600; text-align: right; }
   .dim-plano { padding: 1.5rem; background: var(--c-bg-alt); display: flex; align-items: center; justify-content: center; min-height: 200px; }
+
+  /* ── AI Plano ── */
+  .ai-plano-svg { width: 100%; overflow: auto; }
+  .ai-plano-svg svg { width: 100%; height: auto; display: block; }
+  .ai-plano-loading {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem; padding: 3rem; color: var(--c-body); font-size: 0.82rem;
+  }
+  .ai-plano-dots { display: flex; gap: 6px; }
+  .ai-plano-dots span {
+    width: 7px; height: 7px; border-radius: 50%; background: var(--c-primary);
+    animation: dot-bounce 1.2s infinite ease-in-out both;
+  }
+  .ai-plano-dots span:nth-child(1) { animation-delay: 0s; }
+  .ai-plano-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .ai-plano-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dot-bounce {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40%           { transform: scale(1);   opacity: 1; }
+  }
 
   /* ── EQUIPAMIENTO ── */
   .eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }

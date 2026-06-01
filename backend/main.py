@@ -23,6 +23,10 @@ from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
 from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas, calcular_capacidad, ResultadoCapacidad
 from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal
+from agentes.plano_agent import (
+    PlanoRequest, PlanoResponse, generar_plano_svg,
+    LayoutConfig, LayoutConfigResponse, generar_desde_config,
+)
 from clients import qdrant_client
 from qdrant_client.models import Filter, FieldCondition, MatchValue
 
@@ -204,6 +208,16 @@ def intake(request: IntakeRequest):
         argumentos_producto=argumentos,
         objeciones=objeciones,
     )
+
+
+@app.post("/plano", response_model=PlanoResponse)
+def plano(request: PlanoRequest):
+    return generar_plano_svg(request)
+
+
+@app.post("/plano-config", response_model=LayoutConfigResponse)
+def plano_config(request: LayoutConfig):
+    return generar_desde_config(request)
 
 
 @app.get("/health")

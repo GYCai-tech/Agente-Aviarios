@@ -163,6 +163,8 @@ export default function ChatInterface() {
           altura: mainV.altura_nave_cm,
           tipo_zona: zona,
           niveles: rec?.niveles ?? 1,
+          ancho_nave: mainV.ancho_nave_m ?? "",
+          largo_nave: mainV.largo_nave_m ?? "",
         }));
       }
     } catch { setRes(null); }
@@ -188,6 +190,48 @@ export default function ChatInterface() {
       setLayoutResult(null);
     }
     setLayoutLoading(false);
+  }
+
+  async function onSeleccionarCapacidad(op: OpcionCapacidad) {
+    const ancho = parseFloat(mainV.ancho_nave_m);
+    const largo = parseFloat(mainV.largo_nave_m);
+    const superficie = String(ancho * largo);
+    const gallinas   = String(op.max_gallinas);
+    const zona: TipoZona = op.sistema.startsWith("aviario") ? "aviario" : "nidal_colectivo";
+    const nivelesOp  = op.sistema === "aviario_3" ? 3 : 2;
+
+    setMain(v => ({ ...v, gallinas, superficie_nave_m2: superficie }));
+    go("loading");
+    try {
+      const datos: DatosIntake = {
+        num_gallinas:       op.max_gallinas,
+        sistema:            sistemaApi!,
+        superficie_nave_m2: ancho * largo,
+        altura_nave_cm:     parseFloat(mainV.altura_nave_cm),
+        tipo_zona:          zona,
+      };
+      const res = await solicitarIntake(datos);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("gc_propuesta", JSON.stringify({
+          informe:              res.informe,
+          argumentario_ventas:  res.argumentario_ventas,
+          argumentos_producto:  res.argumentos_producto ?? [],
+          objeciones:           res.objeciones ?? [],
+          gallinas,
+          sistema:              sistemaApi,
+          superficie,
+          altura:               mainV.altura_nave_cm,
+          tipo_zona:            zona,
+          niveles:              zona === "aviario" ? nivelesOp : 1,
+          ancho_nave:           mainV.ancho_nave_m,
+          largo_nave:           mainV.largo_nave_m,
+        }));
+        window.location.href = "/propuesta";
+      }
+    } catch {
+      setRes(null);
+      go("result");
+    }
   }
 
   function reset() {
@@ -546,6 +590,14 @@ export default function ChatInterface() {
                         );
                       })()}
 
+                      {op.viable && (
+                        <button className="cap-card-cta" onClick={() => onSeleccionarCapacidad(op)}>
+                          Generar propuesta
+                          <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                            <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                          </svg>
+                        </button>
+                      )}
                     </div>
                   ))}
                 </div>
@@ -856,7 +908,7 @@ export default function ChatInterface() {
             <div key={`loading-${animKey}`} className="step-anim">
               <div className="loading-wrap">
                 <div className="loading-dots"><span /><span /><span /></div>
-                <p className="loading-text">Calculando requisitos normativos...</p>
+                <p className="loading-text">Generando propuesta comercial…</p>
               </div>
             </div>
           )}
@@ -1393,6 +1445,16 @@ const CHAT_CSS = `
   .cap-layout-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.74rem; }
   .cap-layout-label { color: var(--c-body); }
   .cap-layout-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--c-title); font-size: 0.76rem; }
+
+  .cap-card-cta {
+    display: flex; align-items: center; justify-content: center; gap: 0.5rem;
+    width: 100%; margin-top: 1rem; padding: 0.6rem 1rem;
+    background: var(--c-primary); color: #fff; border: none; border-radius: 4px;
+    font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700;
+    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
+    transition: background 0.15s;
+  }
+  .cap-card-cta:hover { background: var(--c-primary-dk); }
 
   .cap-card-yacija { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid rgba(0,0,0,0.07); display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.76rem; }
   .cap-yacija-label { color: var(--c-body); flex-shrink: 0; }

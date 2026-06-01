@@ -289,6 +289,44 @@ export async function pedirLayoutNidal(params: {
   return res.json();
 }
 
+// ── Plano SVG ─────────────────────────────────────────────────────────────────
+
+export interface FilaPlano {
+  num_modulos: number;
+  slot_izq: number;
+  slot_der: number;
+  pegada_pared_izq: boolean;
+  pegada_pared_der: boolean;
+}
+
+export interface PlanoRequest {
+  ancho_nave_m: number;
+  largo_nave_m: number;
+  filas: FilaPlano[];
+  tipo_zona: string;
+  gallinas: number;
+  sistema: string;
+  nombre_cliente?: string;
+  total_modulos?: number;
+  yacija_interior_m2?: number;
+}
+
+export interface PlanoResponse {
+  svg: string;
+  error?: string | null;
+}
+
+export async function pedirPlano(req: PlanoRequest): Promise<PlanoResponse> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/plano`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
 export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
   const res = await fetch(`${backendUrl}/intake`, {
