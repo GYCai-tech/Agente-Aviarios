@@ -213,7 +213,8 @@ def maximizar_nidal(
     # La cadena siempre va por el lado más largo
     largo = max(largo_nave, ancho_nave)
     ancho = min(largo_nave, ancho_nave)
-    sup_nave = largo_nave * ancho_nave
+    # El local técnico (motorreductor + mesa) es habitación anexa: no computa
+    sup_nave = (largo - _EQUIP_IZQ) * ancho
 
     # Verificar que la nave es suficientemente ancha para 1 fila
     if ancho < _PERFIL_1F:

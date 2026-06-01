@@ -15,6 +15,7 @@ interface LayoutConfig {
   nombre_cliente?: string;
   gallinas: number;
   niveles?: number;
+  ancho_alero_m: number;
 }
 
 interface Metricas {
@@ -99,12 +100,11 @@ export default function PlanoPage() {
     clearance_lateral_m: 4.00,
     gallinas: 0,
     niveles: 2,
+    ancho_alero_m: 0,
   });
 
-  const [svg, setSvg]               = useState<string>("");
-  const [svgCableado, setSvgCableado] = useState<string>("");
-  const [activeSheet, setActiveSheet] = useState<"hoja1" | "hoja2">("hoja1");
-  const [metricas, setMetricas]     = useState<Metricas | null>(null);
+  const [svg, setSvg]           = useState<string>("");
+  const [metricas, setMetricas] = useState<Metricas | null>(null);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [scale, setScale]           = useState(0.8);
@@ -206,8 +206,6 @@ export default function PlanoPage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setSvg(data.svg ?? "");
-      setSvgCableado(data.svg_cableado ?? "");
-      setActiveSheet("hoja1");
       if (data.metricas) setMetricas(data.metricas);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error al generar plano");
@@ -227,13 +225,41 @@ export default function PlanoPage() {
   }
 
   function exportSvg() {
-    const content = activeSheet === "hoja1" ? svg : svgCableado;
-    const name = activeSheet === "hoja1" ? "plano-layout.svg" : "plano-cableado.svg";
-    const blob = new Blob([content], { type: "image/svg+xml" });
+    const blob = new Blob([svg], { type: "image/svg+xml" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
-    a.href = url; a.download = name; a.click();
+    a.href = url; a.download = "plano-layout.svg"; a.click();
     URL.revokeObjectURL(url);
+  }
+
+  function exportPdf() {
+    const cliente = cfg.nombre_cliente ?? "Plano layout";
+    const tipo    = cfg.tipo_zona === "aviario" ? "Aviario Industrial" : "A-Nida Plus";
+    const titulo  = `${cliente} — ${tipo} ${cfg.ancho_nave_m}×${cfg.largo_nave_m} m`;
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>${titulo}</title>
+  <style>
+    @page { size: A4 landscape; margin: 12mm; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, sans-serif; background: #fff; }
+    h1 { font-size: 11pt; font-weight: 600; color: #000823; margin-bottom: 6px; }
+    svg { width: 100%; height: auto; display: block; }
+    @media screen { body { padding: 20px; } }
+  </style>
+</head>
+<body>
+  <h1>${titulo}</h1>
+  ${svg}
+  <script>window.onload = () => { window.print(); }<\/script>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html" });
+    const url  = URL.createObjectURL(blob);
+    window.open(url, "_blank");
+    setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
 
   const nFil = metricas?.num_filas      ?? cfg.num_filas;
@@ -247,31 +273,7 @@ export default function PlanoPage() {
         <header className="hdr">
           <a href="/propuesta" className="hdr-back">← Propuesta</a>
           <span className="hdr-title">Editor de plano</span>
-          {svgCableado && (
-            <div style={{ display: "flex", gap: 4, marginLeft: "auto" }}>
-              <button
-                onClick={() => setActiveSheet("hoja1")}
-                style={{
-                  padding: "4px 10px", fontSize: 11, cursor: "pointer",
-                  background: activeSheet === "hoja1" ? "#fff" : "transparent",
-                  color: activeSheet === "hoja1" ? "#000823" : "#8899bb",
-                  border: "1px solid #3a4a6a", borderRadius: 3,
-                }}>
-                Hoja 1 — Layout
-              </button>
-              <button
-                onClick={() => setActiveSheet("hoja2")}
-                style={{
-                  padding: "4px 10px", fontSize: 11, cursor: "pointer",
-                  background: activeSheet === "hoja2" ? "#fff" : "transparent",
-                  color: activeSheet === "hoja2" ? "#000823" : "#8899bb",
-                  border: "1px solid #3a4a6a", borderRadius: 3,
-                }}>
-                Hoja 2 — Cableado
-              </button>
-            </div>
-          )}
-          <span className="hdr-sub" style={{ marginLeft: svgCableado ? 12 : "auto" }}>
+          <span className="hdr-sub" style={{ marginLeft: "auto" }}>
             {cfg.ancho_nave_m} × {cfg.largo_nave_m} m &nbsp;·&nbsp;
             {cfg.tipo_zona === "aviario" ? "Aviario Industrial" : "A-Nida Plus"}
           </span>
@@ -293,7 +295,7 @@ export default function PlanoPage() {
             )}
 
             {/* SVG centrado con transform zoom/pan */}
-            {(activeSheet === "hoja1" ? svg : svgCableado) && (
+            {svg && (
               <div
                 style={{
                   position: "absolute",
@@ -310,9 +312,7 @@ export default function PlanoPage() {
                   overflow: "hidden",
                   lineHeight: 0,
                 }}
-                dangerouslySetInnerHTML={{
-                  __html: activeSheet === "hoja1" ? svg : svgCableado,
-                }}
+                dangerouslySetInnerHTML={{ __html: svg }}
               />
             )}
 
@@ -376,12 +376,14 @@ export default function PlanoPage() {
             <div className="panel-section">
               <div className="section-title">Layout</div>
               {cfg.tipo_zona === "nidal_colectivo" ? (
-                <div className="field">
-                  <label>Número de módulos (0 = Auto)</label>
-                  <input type="number" min={0} max={80} step={1}
-                    value={nMod || ""} placeholder="Auto (ceil gallinas/144)"
-                    onChange={e => set("mods_por_fila", parseInt(e.target.value) || 0)} />
-                </div>
+                <>
+                  <div className="field">
+                    <label>Número de módulos (0 = Auto)</label>
+                    <input type="number" min={0} max={80} step={1}
+                      value={nMod || ""} placeholder="Auto (máx. físico)"
+                      onChange={e => set("mods_por_fila", parseInt(e.target.value) || 0)} />
+                  </div>
+                </>
               ) : (
                 <div className="field-row">
                   <div className="field">
@@ -403,6 +405,12 @@ export default function PlanoPage() {
                 <input type="number" min={0} max={999999} step={100}
                   value={cfg.gallinas || ""} placeholder="0"
                   onChange={e => set("gallinas", parseInt(e.target.value) || 0)} />
+              </div>
+              <div className="field">
+                <label>Zona exterior — ancho (m)</label>
+                <input type="number" min={0} max={50} step={0.5}
+                  value={cfg.ancho_alero_m || ""} placeholder="0 = sin exterior"
+                  onChange={e => set("ancho_alero_m", parseFloat(e.target.value) || 0)} />
               </div>
             </div>
 
@@ -479,8 +487,14 @@ export default function PlanoPage() {
                 ⟳ Optimizar layout
               </button>
               <button className="btn-secondary"
+                onClick={exportPdf}
+                disabled={!svg}>
+                ↓ Exportar PDF
+              </button>
+              <button className="btn-secondary"
                 onClick={exportSvg}
-                disabled={!(activeSheet === "hoja1" ? svg : svgCableado)}>
+                disabled={!svg}
+                style={{ marginTop: 6 }}>
                 ↓ Exportar SVG
               </button>
             </div>
