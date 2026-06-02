@@ -175,13 +175,15 @@ def _build_nidal_distribucion_svg(
     Si ancho_alero_m > 0 dibuja la zona exterior (alero/parque) debajo de la nave.
     """
     # Si hay alero, la escala Y abarca nave + alero juntos
-    total_y_m = ancho_nave + (ancho_alero_m if ancho_alero_m > 0 else 0.0)
-    sx = dw / largo_nave
+    total_y_m   = ancho_nave + (ancho_alero_m if ancho_alero_m > 0 else 0.0)
+    # El local técnico (4 m) es exterior a la nave: la escala X lo incluye aparte
+    total_x_m   = _NIDAL_EQUIP_IZQ + largo_nave
+    sx = dw / total_x_m
     sy = dh / total_y_m
     nave_ph = ancho_nave * sy   # altura en píxeles de la nave
     els: list[str] = []
 
-    # ── Y-axis geometry (solo nave) ───────────────────────────────────
+    # ── Y-axis geometry ───────────────────────────────────────────────
     total_nidal_y = _NIDAL_MOD_SLOT * 2 + _NIDAL_PROF_MOD   # 7.4 m
     y_margin      = max(0.0, (ancho_nave - total_nidal_y) / 2)
     y_slot_top    = y_margin
@@ -189,10 +191,10 @@ def _build_nidal_distribucion_svg(
     y_slot_bot    = y_cuerpo + _NIDAL_PROF_MOD
     y_nidal_end   = y_slot_bot + _NIDAL_MOD_SLOT
 
-    # ── X-axis geometry ────────────────────────────────────────────────
-    x_nidal_start = _NIDAL_EQUIP_IZQ
+    # ── X-axis geometry (coords en espacio total: 0=inicio local, 4=pared izq nave) ─
+    x_nidal_start = _NIDAL_EQUIP_IZQ                          # 4 m — pared izq nave
     x_nidal_end   = x_nidal_start + num_modulos * _NIDAL_ANCHO_MOD
-    x_tensor_end  = min(x_nidal_end + _NIDAL_TENSOR_W, largo_nave)
+    x_tensor_end  = min(x_nidal_end + _NIDAL_TENSOR_W, _NIDAL_EQUIP_IZQ + largo_nave)
 
     def px(xm: float) -> float: return PAD_L + xm * sx
     def py(ym: float) -> float: return PAD_T + ym * sy
@@ -291,7 +293,7 @@ def _build_nidal_distribucion_svg(
     room_cx    = PAD_L + room_px / 2
     room_mid_y = room_y0 + room_ph / 2    # centro real del local 4×4
     # Etiqueta del local
-    els.append(_text(room_cx, room_y0 + 10, "LOCAL TÉCNICO",
+    els.append(_text(room_cx, room_y0 + 10, "ALMACÉN",
                      size=7, bold=True, fill="#444"))
     # Cinta saliendo del local hacia la nave (barra roja a través del hueco)
     els.append(_rect(PAD_L, cy0 + ch / 2 - belt_h / 2,
@@ -323,18 +325,24 @@ def _build_nidal_distribucion_svg(
     els.append(_text(t_x0 + t_w / 2, t_y0 + t_h / 2 - 4, "Módulo", size=8, fill="#5a3000"))
     els.append(_text(t_x0 + t_w / 2, t_y0 + t_h / 2 + 9, "tensor", size=8, fill="#5a3000"))
 
-    # Tensor también en slot areas (extends to both slots)
+    # Zona del tensor en los slots → yacija
     for y0 in (y_slot_top, y_slot_bot):
         els.append(_rect(t_x0, py(y0), t_w, _NIDAL_MOD_SLOT * sy,
-                         fill="#fff0c0", stroke="#b08000", sw=0.8))
+                         fill="#e8ede8", stroke="#4f764d", sw=0.8))
+
+    # Zona detrás del tensor (tensor end → pared derecha) → yacija completa
+    if x_tensor_end < largo_nave - 0.05:
+        behind_x0 = px(x_tensor_end)
+        behind_w  = (PAD_L + dw) - behind_x0
+        els.append(_rect(behind_x0, PAD_T, behind_w, nave_ph,
+                         fill="#e8ede8", stroke="#4f764d", sw=0.8))
 
     # ── Cotas ─────────────────────────────────────────────────────────
     nave_bot_px = PAD_T + nave_ph
-    # Local técnico
+    # Local técnico (exterior)
     els += _arrow_h(PAD_L, nave_x0, PAD_T - 22, f"{_NIDAL_EQUIP_IZQ:.0f} m")
-    # Nave interior (largo sin local)
-    nave_largo_m = largo_nave - _NIDAL_EQUIP_IZQ
-    els += _arrow_h(nave_x0, PAD_L + dw, PAD_T - 38, f"{nave_largo_m:.1f} m")
+    # Nave (largo total real)
+    els += _arrow_h(nave_x0, PAD_L + dw, PAD_T - 38, f"{largo_nave:.1f} m")
     # Tramo módulos
     els += _arrow_h(px(x_nidal_start), px(x_nidal_end), PAD_T - 22,
                     f"{num_modulos * _NIDAL_ANCHO_MOD:.1f} m")
@@ -732,9 +740,38 @@ def _footer(
     total_modulos: int,
     gallinas: int,
     hoja: str = "1 DE 2",
+    gallinas_max: int = 0,
+    densidad: float = 0.0,
+    densidad_max: float = 9.0,
 ) -> list[str]:
     els: list[str] = []
-    y_leg = PAD_T + (SVG_H - PAD_T - PAD_B) + 18
+    dh   = SVG_H - PAD_T - PAD_B
+    y0   = PAD_T + dh        # base de la zona de dibujo
+
+    # ── Línea de métricas clave ───────────────────────────────────────
+    band_y   = y0 + 16
+    col_ok   = "#234926"
+    col_err  = "#b05000"
+    dens_col = col_ok if densidad <= densidad_max else col_err
+    gmax_str = f"{gallinas_max:,}".replace(",", ".")
+    dens_str = f"{densidad:.1f} gal/m²"
+    sep      = "·"
+
+    # Tres bloques en posiciones fijas: módulos | aves | densidad
+    xs = [PAD_L, PAD_L + 220, PAD_L + 460]
+    datos = [
+        (f"Módulos: {total_modulos}",       "#000823"),
+        (f"Aves máx.: {gmax_str}",           col_ok),
+        (f"Densidad: {dens_str}",            dens_col),
+    ]
+    for (txt, col), x in zip(datos, xs):
+        els.append(_text(x, band_y, txt, size=9, anchor="start", fill=col, bold=True))
+    # separadores
+    for x in xs[1:]:
+        els.append(_text(x - 14, band_y, sep, size=9, anchor="middle", fill="#aaa"))
+
+    # ── Leyenda ────────────────────────────────────────────────────────
+    y_leg = band_y + 16
 
     if req_tipo == "aviario":
         items = [("#ffecec", "#cc2200", "Módulo aviario")]
@@ -752,8 +789,9 @@ def _footer(
         els.append(_text(x + 18, y_leg + 9, label, size=8, anchor="start", fill="#484e62"))
         x += 155
 
+    # ── Bloque de título ───────────────────────────────────────────────
     bx = SVG_W - PAD_R - 250
-    by = y_leg - 8
+    by = band_y
     bw, bh = 250, 62
     els.append(_rect(bx, by, bw, bh, fill="#f5f5f5", stroke="#000823", sw=1.0))
     els.append(_line(bx, by + 21, bx + bw, by + 21, sw=0.6, stroke="#000823"))
@@ -819,11 +857,12 @@ def _metricas_aviario(
     huella  = total * _AVI_ANCHO_MOD * _AVI_PROF_MOD
     nave_m2 = ancho * largo
     sup_ext = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
-    yacija  = nave_m2 - huella + sup_ext
 
     densidad_max     = 6.0 if sistema == "ecologico" else 9.0
     sup_disp_por_mod = 16.194 if niveles == 3 else 13.180
     sup_disp         = total * sup_disp_por_mod + sup_ext
+    # Yacija = suelo libre (nave menos huella de módulos) + superficies de plataformas por cada planta
+    yacija  = (nave_m2 - huella + sup_ext) + total * sup_disp_por_mod
     gal_max          = min(144 * total, int(densidad_max * sup_disp)) if total > 0 else 0
 
     aves_proyecto = gallinas_override if gallinas_override > 0 else gal_max
@@ -855,7 +894,7 @@ def _metricas_nidal(
 ) -> MetricasPlano:
     huella      = num_modulos * _NIDAL_ANCHO_MOD * _NIDAL_PROF_MOD
     sup_slot    = num_modulos * _NIDAL_ANCHO_MOD * _NIDAL_MOD_SLOT * 2
-    nave_m2     = (largo - _NIDAL_EQUIP_IZQ) * ancho   # local técnico excluido
+    nave_m2     = largo * ancho   # local técnico es habitación anexa exterior
     sup_ext     = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
     yacija      = max(0.0, nave_m2 - huella - sup_slot + sup_ext)
     sup_efect   = nave_m2 - huella + sup_ext
@@ -900,14 +939,16 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 num_mods, nombre, cfg.gallinas, dw, dh,
                 ancho_alero_m=cfg.ancho_alero_m,
             )
-            parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas,
-                              hoja="1 DE 1")
-
             metricas = _metricas_nidal(
                 cfg.ancho_nave_m, cfg.largo_nave_m,
                 num_mods, cfg.gallinas, cfg.sistema,
                 ancho_alero_m=cfg.ancho_alero_m,
             )
+            parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas,
+                              hoja="1 DE 1",
+                              gallinas_max=metricas.gallinas_max,
+                              densidad=metricas.densidad,
+                              densidad_max=9.0)
             return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
 
         # ── Aviario ────────────────────────────────────────────────────
@@ -927,8 +968,6 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             dw, dh,
             ancho_alero_m=cfg.ancho_alero_m,
         )
-        parts += _footer("aviario", cfg.nombre_cliente or "Propuesta GyC",
-                         nf * mpf, cfg.gallinas, hoja="1 DE 1")
         metricas = _metricas_aviario(
             cfg.ancho_nave_m, cfg.largo_nave_m,
             nf, mpf,
@@ -936,6 +975,11 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             cfg.gallinas, cfg.sistema, cfg.niveles,
             ancho_alero_m=cfg.ancho_alero_m,
         )
+        parts += _footer("aviario", cfg.nombre_cliente or "Propuesta GyC",
+                         nf * mpf, cfg.gallinas, hoja="1 DE 1",
+                         gallinas_max=metricas.gallinas_max,
+                         densidad=metricas.densidad,
+                         densidad_max=9.0)
         return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
 
     except Exception as exc:

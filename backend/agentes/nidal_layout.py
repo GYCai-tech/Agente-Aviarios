@@ -30,8 +30,15 @@ _PERFIL_2F = 2 * _MOD_FONDO + 2 * _SLOT      # 8.80 m — 2 filas back-to-back
 _EQUIP_IZQ    = 4.00   # m — mesa de recogida + motoreductor
 _TENSOR_DER   = 3.00   # m — módulo tensor
 
-# Densidad máxima interior (gallinas/m²) — solo para "suelo"
-_DENSIDAD_MAX_SUELO = 9.0
+# Densidad máxima (gallinas/m²) según sistema de producción
+# Para campero/ecológico la zona exterior suma a la base de cálculo
+_DENSIDAD_MAX_SUELO = 9.0   # alias de compatibilidad
+_DENSIDAD_POR_SISTEMA: dict[str, float] = {
+    "suelo":     9.0,   # RD 3/2002 Anexo II
+    "campero":   6.0,   # Regl. CE 589/2008
+    "ecologico": 4.0,   # Regl. UE 2018/848
+    "jaulas":    9.0,
+}
 
 # Fracción mínima de la nave que debe ser yacija
 _FRACCION_YACIJA_MIN = 1 / 3
@@ -99,11 +106,12 @@ class ResultadoLayoutNidal(BaseModel):
 
 def _max_modulos_fisicos(largo_nave: float, ancho_nave: float) -> int:
     """
-    Cuántos módulos caben físicamente en la nave considerando los extremos fijos.
-    Longitud disponible = largo - equip_izq - tensor_der = largo - 7 m.
+    Cuántos módulos caben físicamente en la nave.
+    El local técnico (4 m) es una habitación anexa exterior — no resta longitud de nave.
+    Longitud disponible = largo - tensor_der = largo - 3 m.
     """
     largo  = max(largo_nave, ancho_nave)   # cadena va por el lado largo
-    disponible = largo - _EQUIP_IZQ - _TENSOR_DER
+    disponible = largo - _TENSOR_DER
     if disponible < _MOD_ANCHO:
         return 0
     return math.floor(disponible / _MOD_ANCHO)
@@ -213,8 +221,8 @@ def maximizar_nidal(
     # La cadena siempre va por el lado más largo
     largo = max(largo_nave, ancho_nave)
     ancho = min(largo_nave, ancho_nave)
-    # El local técnico (motorreductor + mesa) es habitación anexa: no computa
-    sup_nave = (largo - _EQUIP_IZQ) * ancho
+    # El local técnico es habitación anexa exterior: no resta longitud de nave
+    sup_nave = largo * ancho
 
     # Verificar que la nave es suficientemente ancha para 1 fila
     if ancho < _PERFIL_1F:
@@ -231,7 +239,7 @@ def maximizar_nidal(
             ),
         )
 
-    densidad_max = _DENSIDAD_MAX_SUELO   # solo "suelo" en este flujo
+    densidad_max = _DENSIDAD_POR_SISTEMA.get(sistema, _DENSIDAD_MAX_SUELO)
     max_mods = _max_modulos_fisicos(largo, ancho)
 
     if max_mods == 0:

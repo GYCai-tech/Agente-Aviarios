@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useLayoutEffect, useState, useCallback, useRef } from "react";
+import JourneyHeader from "../JourneyHeader";
 
 interface LayoutConfig {
   ancho_nave_m: number;
@@ -42,11 +43,7 @@ const CSS = `
 html,body{height:100%}
 body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;background:#f4f4f2;color:#1a1a1a}
 .layout{display:flex;flex-direction:column;height:100vh;overflow:hidden}
-.hdr{flex:0 0 auto;display:flex;align-items:center;gap:12px;padding:12px 20px;background:#000823;color:#fff;border-bottom:1px solid #1e2840}
-.hdr-title{font-size:14px;font-weight:600;letter-spacing:.5px}
-.hdr-sub{font-size:11px;color:#8899bb;margin-left:auto}
-.hdr-back{font-size:11px;color:#7ab;text-decoration:none;margin-right:8px}
-.hdr-back:hover{color:#adf}
+
 .body{flex:1 1 0;display:grid;grid-template-columns:1fr 300px;min-height:0}
 .canvas-area{background:#e8e8e5;overflow:hidden;position:relative;cursor:grab;min-height:0}
 .canvas-area:active{cursor:grabbing}
@@ -270,14 +267,7 @@ export default function PlanoPage() {
       <style>{CSS}</style>
       <div className="layout">
 
-        <header className="hdr">
-          <a href="/propuesta" className="hdr-back">← Propuesta</a>
-          <span className="hdr-title">Editor de plano</span>
-          <span className="hdr-sub" style={{ marginLeft: "auto" }}>
-            {cfg.ancho_nave_m} × {cfg.largo_nave_m} m &nbsp;·&nbsp;
-            {cfg.tipo_zona === "aviario" ? "Aviario Industrial" : "A-Nida Plus"}
-          </span>
-        </header>
+        <JourneyHeader activeStep={5} />
 
         <div className="body">
 

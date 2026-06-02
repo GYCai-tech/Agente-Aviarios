@@ -2,7 +2,7 @@
 
 :root {
   --background: #ffffff;
-  --foreground: #808285;
+  --foreground: #484e62;
   --gyc-green: #4F764D;
   --gyc-green-hover: #3d5e3b;
   --gyc-blue: #0274BE;
@@ -20,7 +20,7 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: "Source Sans Pro", "Source Sans 3", sans-serif;
+  font-family: var(--font-source-sans), "Source Sans 3", sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 

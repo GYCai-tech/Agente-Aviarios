@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useRef } from "react";
+import JourneyHeader from "./JourneyHeader";
 import {
   solicitarIntake,
   pedirFactibilidad,
@@ -57,6 +58,145 @@ function renderMd(text: string): string {
     .replace(/\n/g, "<br/>");
 }
 
+interface ChatMsg { from: "user" | "bot"; text: string; }
+
+function ConsultaLibreWidget({ datos }: {
+  datos: { num_gallinas: number; sistema: string; superficie_nave_m2: number; altura_nave_cm: number; tipo_zona?: string };
+}) {
+  const [msgs, setMsgs] = useState<ChatMsg[]>([]);
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  async function send() {
+    const q = input.trim();
+    if (!q || loading) return;
+    setInput("");
+    setMsgs(m => [...m, { from: "user", text: q }]);
+    setLoading(true);
+    try {
+      const res = await fetch("/api/consulta-libre", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ pregunta: q, ...datos }),
+      });
+      const json = await res.json() as { respuesta: string };
+      setMsgs(m => [...m, { from: "bot", text: json.respuesta }]);
+    } catch {
+      setMsgs(m => [...m, { from: "bot", text: "Error al conectar. Inténtalo de nuevo." }]);
+    }
+    setLoading(false);
+  }
+
+  // Scroll al último mensaje
+  useState(() => { bottomRef.current?.scrollIntoView({ behavior: "smooth" }); });
+
+  return (
+    <div className="clw-root">
+      <div className="clw-head">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+          <path d="M1 10.5V13l2.5-1.25H12a1 1 0 001-1V2a1 1 0 00-1-1H2a1 1 0 00-1 1v7.5a1 1 0 001 1z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round"/>
+          <path d="M4 5h6M4 7.5h4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+        </svg>
+        <span>¿Tienes más preguntas?</span>
+        <span className="clw-head-sub">Pregunta lo que necesites sobre normativa, producto o instalación</span>
+      </div>
+
+      {msgs.length > 0 && (
+        <div className="clw-msgs">
+          {msgs.map((m, i) => (
+            <div key={i} className={`clw-msg clw-msg--${m.from}`}>
+              {m.from === "bot" && <div className="clw-avatar" aria-hidden="true">GC</div>}
+              <div className="clw-bubble">{m.text}</div>
+            </div>
+          ))}
+          {loading && (
+            <div className="clw-msg clw-msg--bot">
+              <div className="clw-avatar" aria-hidden="true">GC</div>
+              <div className="clw-bubble clw-bubble--loading">
+                <span /><span /><span />
+              </div>
+            </div>
+          )}
+          <div ref={bottomRef} />
+        </div>
+      )}
+
+      <div className="clw-input-row">
+        <input
+          className="clw-input"
+          type="text"
+          placeholder="Ej: ¿Qué subvenciones hay disponibles?"
+          value={input}
+          onChange={e => setInput(e.target.value)}
+          onKeyDown={e => { if (e.key === "Enter") send(); }}
+          disabled={loading}
+          aria-label="Escribe tu pregunta"
+        />
+        <button className="clw-send" onClick={send} disabled={!input.trim() || loading} aria-label="Enviar pregunta">
+          <svg width="14" height="12" viewBox="0 0 14 12" fill="none" aria-hidden="true">
+            <path d="M1 6h12M7 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function PlanoConfirmCard({
+  detected,
+  onApply,
+  onDismiss,
+}: {
+  detected: { ancho_m: number; largo_m: number; altura_cm?: number; confianza: number; notas?: string };
+  onApply: () => void;
+  onDismiss: () => void;
+}) {
+  const confLabel = detected.confianza >= 0.8 ? "alta" : detected.confianza >= 0.5 ? "media" : "baja";
+  const confClass = detected.confianza >= 0.8 ? "is-high" : detected.confianza >= 0.5 ? "is-mid" : "is-low";
+  return (
+    <div className="plano-confirm-card" role="region" aria-label="Dimensiones detectadas">
+      <div className="plano-confirm-head">
+        <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+          <rect x="0.65" y="0.65" width="11.7" height="11.7" rx="1.35" stroke="currentColor" strokeWidth="1.3"/>
+          <path d="M3 4.5h7M3 6.5h5M3 8.5h6" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+        </svg>
+        <span>Dimensiones detectadas</span>
+        <span className={`plano-confirm-conf ${confClass}`}>Confianza {confLabel}</span>
+      </div>
+      <div className="plano-confirm-dims">
+        <div className="plano-confirm-dim">
+          <span className="plano-confirm-val">{detected.ancho_m} m</span>
+          <span className="plano-confirm-key">Ancho</span>
+        </div>
+        <div className="plano-confirm-sep">×</div>
+        <div className="plano-confirm-dim">
+          <span className="plano-confirm-val">{detected.largo_m} m</span>
+          <span className="plano-confirm-key">Largo</span>
+        </div>
+        {detected.altura_cm && (
+          <>
+            <div className="plano-confirm-sep">·</div>
+            <div className="plano-confirm-dim">
+              <span className="plano-confirm-val">{detected.altura_cm} cm</span>
+              <span className="plano-confirm-key">Altura</span>
+            </div>
+          </>
+        )}
+      </div>
+      {detected.notas && <p className="plano-confirm-notes">{detected.notas}</p>}
+      <div className="plano-confirm-actions">
+        <button className="plano-confirm-apply" onClick={onApply}>
+          Usar estas medidas
+        </button>
+        <button className="plano-confirm-dismiss" onClick={onDismiss}>
+          Introducir manualmente
+        </button>
+      </div>
+    </div>
+  );
+}
+
 export default function ChatInterface() {
   const [step, setStep]               = useState<Step>("mode");
   const [modo, setModo]               = useState<"compliance" | "capacidad">("compliance");
@@ -73,12 +213,52 @@ export default function ChatInterface() {
   const [layoutExterior, setLayoutExterior] = useState<string>("");
   const [layoutLoading, setLayoutLoading]   = useState(false);
   const [layoutResult, setLayoutResult]     = useState<ResultadoLayoutNidal | null>(null);
+  const [planoAnalyzing, setPlanoAnalyzing] = useState(false);
+  const [planoError, setPlanoError]         = useState<string | null>(null);
+  const [planoDetected, setPlanoDetected]   = useState<{ ancho_m: number; largo_m: number; altura_cm?: number; confianza: number; notas?: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const planoTarget  = useRef<"compliance" | "capacidad">("compliance");
 
   const sistemaLabel = mainV.sistema as SistemaLabel | undefined;
   const sistemaApi   = sistemaLabel ? SISTEMA_MAP[sistemaLabel] : undefined;
   const esJaulas     = sistemaApi === "jaulas";
 
   function go(next: Step) { setAnim((k) => k + 1); setStep(next); }
+
+  async function handlePlanoUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = "";
+    setPlanoAnalyzing(true);
+    setPlanoDetected(null);
+    setPlanoError(null);
+    try {
+      const fd = new FormData();
+      fd.append("file", file);
+      const res  = await fetch("/api/analizar-plano", { method: "POST", body: fd });
+      const json = await res.json() as { ancho_m?: number; largo_m?: number; altura_cm?: number; confianza?: number; notas?: string };
+      if (json.ancho_m && json.largo_m) {
+        setPlanoDetected({ ancho_m: json.ancho_m, largo_m: json.largo_m, altura_cm: json.altura_cm, confianza: json.confianza ?? 0, notas: json.notas });
+      } else {
+        setPlanoError("No se detectaron dimensiones en la imagen. Introduce las medidas manualmente.");
+      }
+    } catch {
+      setPlanoError("Error al analizar la imagen. Introduce las medidas manualmente.");
+    }
+    setPlanoAnalyzing(false);
+  }
+
+  function applyPlanoDetected() {
+    if (!planoDetected) return;
+    setMain(v => ({
+      ...v,
+      ancho_nave_m:       String(planoDetected.ancho_m),
+      largo_nave_m:       String(planoDetected.largo_m),
+      superficie_nave_m2: String(Math.round(planoDetected.ancho_m * planoDetected.largo_m)),
+      ...(planoDetected.altura_cm ? { altura_nave_cm: String(planoDetected.altura_cm) } : {}),
+    }));
+    setPlanoDetected(null);
+  }
 
   function datosBásicos() {
     return {
@@ -250,49 +430,23 @@ export default function ChatInterface() {
       <style>{CHAT_CSS}</style>
 
       {/* ── HEADER ── */}
-      <header className="chat-hdr">
-        <div className="chat-hdr-inner">
-          <img src="/gyc-logo.png" alt="Gómez y Crespo" className="chat-logo" />
-          <a href="/propuesta" target="_blank" className="chat-hdr-link">
-            Ver propuesta
-            <svg width="10" height="8" viewBox="0 0 10 8" fill="none">
-              <path d="M1 4h8M5 1l4 3-4 3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/>
-            </svg>
-          </a>
-        </div>
-      </header>
+      <JourneyHeader activeStep={stepIdx ?? 0} />
 
-      <div className="chat-root">
-        {/* ── Page intro ── */}
-        <div className="chat-intro">
+      {/* ── Page intro ── */}
+      <section className="chat-intro">
+        <div className="chat-intro-inner">
           <div className="chat-eyebrow">Granja avícola — Producción de huevo</div>
           <h1 className="chat-title">Agente Aviario</h1>
           <p className="chat-tagline">Introduce los datos de tu instalación y obtén los requisitos mínimos exigidos por la normativa.</p>
-          <div className="chat-divider" />
         </div>
+      </section>
 
+      <div className="chat-root">
         <main className="chat-main">
-          {/* ── Progress ── */}
-          <div className="prog-bar">
-            {STEPS.map(({ key, label }, i) => (
-              <div key={key} className={`prog-step-outer${i < STEPS.length - 1 ? " prog-step-outer--flex" : ""}`}>
-                <div className="prog-step">
-                  <div className={`prog-circle${(stepIdx ?? -1) > i ? " is-done" : stepIdx === i ? " is-active" : ""}`}>
-                    {(stepIdx ?? -1) > i
-                      ? <svg width="10" height="8" viewBox="0 0 10 8" fill="none"><path d="M1 4l3 3 5-6" stroke="white" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      : i + 1}
-                  </div>
-                  <span className={`prog-label${stepIdx === i ? " is-active" : ""}`}>{label}</span>
-                </div>
-                {i < STEPS.length - 1 && <div className="prog-line" />}
-              </div>
-            ))}
-          </div>
-
           {/* ── Step 0: Selector de modo ── */}
           {step === "mode" && (
             <div key={`mode-${animKey}`} className="step-anim">
-              <div className="form-title">¿Cómo puedo ayudarte?</div>
+              <h2 className="form-title">¿Cómo puedo ayudarte?</h2>
               <p className="form-subtitle">Elige el tipo de cálculo que necesitas.</p>
               <div className="mode-grid">
                 <button className="mode-card" onClick={() => { setModo("compliance"); go("main"); }}>
@@ -306,7 +460,7 @@ export default function ChatInterface() {
                     <div className="mode-card-title">Verificar instalación</div>
                     <p className="mode-card-desc">Tengo <strong>X gallinas</strong> y quiero saber si caben en mi nave y qué sistema de puesta instalar.</p>
                   </div>
-                  <svg className="mode-card-arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h14M9 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="mode-card-arrow" width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true"><path d="M1 6h14M9 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
                 <button className="mode-card" onClick={() => { setModo("capacidad"); go("main"); }}>
                   <div className="mode-card-icon">
@@ -320,7 +474,7 @@ export default function ChatInterface() {
                     <div className="mode-card-title">Calcular capacidad</div>
                     <p className="mode-card-desc">Tengo una <strong>nave de X m²</strong> y quiero saber cuántas gallinas puedo alojar con cada sistema.</p>
                   </div>
-                  <svg className="mode-card-arrow" width="16" height="12" viewBox="0 0 16 12" fill="none"><path d="M1 6h14M9 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg className="mode-card-arrow" width="16" height="12" viewBox="0 0 16 12" fill="none" aria-hidden="true"><path d="M1 6h14M9 1l6 5-6 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
               </div>
             </div>
@@ -330,25 +484,25 @@ export default function ChatInterface() {
           {step === "main" && modo === "compliance" && (
             <div key={`main-${animKey}`} className="step-anim">
               <button className="btn-back" onClick={() => go("mode")}>
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
-              <div className="form-title">Datos del proyecto</div>
+              <h2 className="form-title">Datos del proyecto</h2>
               <p className="form-subtitle">Introduce el sistema de alojamiento y las dimensiones de la nave.</p>
               <form onSubmit={onMainSubmit}>
                 <div className="field-row">
                   <div className="field">
-                    <label className="field-label">Sistema de alojamiento</label>
-                    <select className="field-select" required value={mainV.sistema ?? ""}
+                    <label className="field-label" htmlFor="f-sistema">Sistema de alojamiento</label>
+                    <select id="f-sistema" className="field-select" required value={mainV.sistema ?? ""}
                       onChange={(e) => setMain((v) => ({ ...v, sistema: e.target.value }))}>
                       <option value="" disabled>Selecciona sistema</option>
                       {SISTEMAS_LABEL.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="field">
-                    <label className="field-label">Gallinas a alojar</label>
+                    <label className="field-label" htmlFor="f-gallinas">Gallinas a alojar</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="500" min={1} required
+                      <input id="f-gallinas" type="number" className="field-input field-input--unit" placeholder="500" min={1} required
                         value={mainV.gallinas ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, gallinas: e.target.value }))} />
                       <span className="field-unit">aves</span>
@@ -357,29 +511,50 @@ export default function ChatInterface() {
                 </div>
                 <div className="field-row">
                   <div className="field">
-                    <label className="field-label">Superficie útil de la nave</label>
+                    <label className="field-label" htmlFor="f-superficie">Superficie útil de la nave</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="200" min={1} step="0.1" required
+                      <input id="f-superficie" type="number" className="field-input field-input--unit" placeholder="200" min={1} step="0.1" required
                         value={mainV.superficie_nave_m2 ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
                       <span className="field-unit">m²</span>
                     </div>
                   </div>
                   <div className="field">
-                    <label className="field-label">Altura libre de la nave</label>
+                    <label className="field-label" htmlFor="f-altura">Altura libre de la nave</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="250" min={50} step="1" required
+                      <input id="f-altura" type="number" className="field-input field-input--unit" placeholder="250" min={50} step="1" required
                         value={mainV.altura_nave_cm ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, altura_nave_cm: e.target.value }))} />
                       <span className="field-unit">cm</span>
                     </div>
                   </div>
                 </div>
+                <div className="plano-upload-row">
+                  <button type="button" className="plano-upload-btn" disabled={planoAnalyzing}
+                    onClick={() => { planoTarget.current = "compliance"; fileInputRef.current?.click(); }}>
+                    {planoAnalyzing ? (
+                      <span className="plano-upload-dots"><span /><span /><span /></span>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                        <rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                        <circle cx="7" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M5 3l.8-1.5h2.4L9 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {planoAnalyzing ? "Analizando…" : "Subir foto del plano"}
+                  </button>
+                  {planoDetected && planoTarget.current === "compliance" && (
+                    <PlanoConfirmCard detected={planoDetected} onApply={applyPlanoDetected} onDismiss={() => setPlanoDetected(null)} />
+                  )}
+                  {planoError && planoTarget.current === "compliance" && (
+                    <p className="plano-upload-err">{planoError}</p>
+                  )}
+                </div>
                 <div className="btn-row">
                   <button type="submit" className="btn-pill"
                     disabled={!mainV.gallinas || !mainV.sistema || !mainV.superficie_nave_m2 || !mainV.altura_nave_cm}>
                     Calcular
-                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 </div>
               </form>
@@ -390,25 +565,25 @@ export default function ChatInterface() {
           {step === "main" && modo === "capacidad" && (
             <div key={`main-cap-${animKey}`} className="step-anim">
               <button className="btn-back" onClick={() => go("mode")}>
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
-              <div className="form-title">Datos de la nave</div>
+              <h2 className="form-title">Datos de la nave</h2>
               <p className="form-subtitle">Introduce las dimensiones de tu nave y el sistema de producción.</p>
               <form onSubmit={onCapacidadSubmit}>
                 <div className="field-row">
                   <div className="field">
-                    <label className="field-label">Sistema de alojamiento</label>
-                    <select className="field-select" required value={mainV.sistema ?? ""}
+                    <label className="field-label" htmlFor="f-cap-sistema">Sistema de alojamiento</label>
+                    <select id="f-cap-sistema" className="field-select" required value={mainV.sistema ?? ""}
                       onChange={(e) => setMain((v) => ({ ...v, sistema: e.target.value }))}>
                       <option value="" disabled>Selecciona sistema</option>
                       {SISTEMAS_LABEL.map((s) => <option key={s} value={s}>{s}</option>)}
                     </select>
                   </div>
                   <div className="field">
-                    <label className="field-label">Altura libre de la nave</label>
+                    <label className="field-label" htmlFor="f-cap-altura">Altura libre de la nave</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="320" min={50} step="1" required
+                      <input id="f-cap-altura" type="number" className="field-input field-input--unit" placeholder="320" min={50} step="1" required
                         value={mainV.altura_nave_cm ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, altura_nave_cm: e.target.value }))} />
                       <span className="field-unit">cm</span>
@@ -417,18 +592,18 @@ export default function ChatInterface() {
                 </div>
                 <div className="field-row">
                   <div className="field">
-                    <label className="field-label">Ancho de la nave</label>
+                    <label className="field-label" htmlFor="f-ancho">Ancho de la nave</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="12" min={1} step="0.1" required
+                      <input id="f-ancho" type="number" className="field-input field-input--unit" placeholder="12" min={1} step="0.1" required
                         value={mainV.ancho_nave_m ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, ancho_nave_m: e.target.value }))} />
                       <span className="field-unit">m</span>
                     </div>
                   </div>
                   <div className="field">
-                    <label className="field-label">Largo de la nave</label>
+                    <label className="field-label" htmlFor="f-largo">Largo de la nave</label>
                     <div className="field-input-wrap">
-                      <input type="number" className="field-input field-input--unit" placeholder="100" min={1} step="0.1" required
+                      <input id="f-largo" type="number" className="field-input field-input--unit" placeholder="100" min={1} step="0.1" required
                         value={mainV.largo_nave_m ?? ""}
                         onChange={(e) => setMain((v) => ({ ...v, largo_nave_m: e.target.value }))} />
                       <span className="field-unit">m</span>
@@ -440,11 +615,32 @@ export default function ChatInterface() {
                     Superficie: {(parseFloat(mainV.ancho_nave_m) * parseFloat(mainV.largo_nave_m)).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
                   </p>
                 )}
+                <div className="plano-upload-row">
+                  <button type="button" className="plano-upload-btn" disabled={planoAnalyzing}
+                    onClick={() => { planoTarget.current = "capacidad"; fileInputRef.current?.click(); }}>
+                    {planoAnalyzing ? (
+                      <span className="plano-upload-dots"><span /><span /><span /></span>
+                    ) : (
+                      <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+                        <rect x="1" y="3" width="12" height="10" rx="1.5" stroke="currentColor" strokeWidth="1.3"/>
+                        <circle cx="7" cy="8" r="2.2" stroke="currentColor" strokeWidth="1.3"/>
+                        <path d="M5 3l.8-1.5h2.4L9 3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {planoAnalyzing ? "Analizando…" : "Subir foto del plano"}
+                  </button>
+                  {planoDetected && planoTarget.current === "capacidad" && (
+                    <PlanoConfirmCard detected={planoDetected} onApply={applyPlanoDetected} onDismiss={() => setPlanoDetected(null)} />
+                  )}
+                  {planoError && planoTarget.current === "capacidad" && (
+                    <p className="plano-upload-err">{planoError}</p>
+                  )}
+                </div>
                 <div className="btn-row">
                   <button type="submit" className="btn-pill"
                     disabled={!mainV.sistema || !mainV.ancho_nave_m || !mainV.largo_nave_m || !mainV.altura_nave_cm}>
                     Calcular capacidad
-                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>
                 </div>
               </form>
@@ -454,7 +650,7 @@ export default function ChatInterface() {
           {/* ── Loading capacidad ── */}
           {step === "loading_cap" && (
             <div key={`loading_cap-${animKey}`} className="step-anim">
-              <div className="loading-wrap">
+              <div className="loading-wrap" role="status" aria-live="polite">
                 <div className="loading-dots"><span /><span /><span /></div>
                 <p className="loading-text">Calculando capacidad de la nave...</p>
               </div>
@@ -472,11 +668,11 @@ export default function ChatInterface() {
             return (
               <div key={`capacidad-${animKey}`} className="step-anim">
                 <button className="btn-back" onClick={() => go("main")}>
-                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   Volver
                 </button>
                 <div className="rec-badge">{mainV.sistema} · {mainV.ancho_nave_m} × {mainV.largo_nave_m} m · {mainV.altura_nave_cm} cm</div>
-                <div className="form-title">Capacidad de la nave</div>
+                <h2 className="form-title">Capacidad de la nave</h2>
                 <p className="form-subtitle">Gallinas que puedes alojar con cada sistema, dentro del límite normativo de <strong>{capResult.densidad_max} gal/m²</strong>.</p>
                 <div className="cap-grid">
                   {capResult.opciones.map((op) => (
@@ -593,7 +789,7 @@ export default function ChatInterface() {
                       {op.viable && (
                         <button className="cap-card-cta" onClick={() => onSeleccionarCapacidad(op)}>
                           Generar propuesta
-                          <svg width="12" height="9" viewBox="0 0 12 9" fill="none">
+                          <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
                             <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </button>
@@ -611,7 +807,7 @@ export default function ChatInterface() {
           {/* ── Loading factibilidad ── */}
           {step === "loading_fact" && (
             <div key={`loading_fact-${animKey}`} className="step-anim">
-              <div className="loading-wrap">
+              <div className="loading-wrap" role="status" aria-live="polite">
                 <div className="loading-dots"><span /><span /><span /></div>
                 <p className="loading-text">Analizando la nave...</p>
               </div>
@@ -620,9 +816,9 @@ export default function ChatInterface() {
 
           {/* ── Step 2: Factibilidad ── */}
           {step === "factibilidad" && factResult && (
-            <div key={`fact-${animKey}`} className="step-anim">
+            <div key={`fact-${animKey}`} className="step-anim" aria-live="polite">
               <button className="btn-back" onClick={() => go("main")}>
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
 
@@ -631,8 +827,8 @@ export default function ChatInterface() {
                 <div className="fact-box-inner">
                   <div className={`fact-icon ${factResult.factibilidad.factible ? "is-ok" : "is-fail"}`}>
                     {factResult.factibilidad.factible
-                      ? <svg width="16" height="14" viewBox="0 0 16 14" fill="none"><path d="M1 7l5 5 9-9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      : <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2l10 10M12 2L2 12" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
+                      ? <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true"><path d="M1 7l5 5 9-9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
                     }
                   </div>
                   <div className="fact-text">
@@ -735,7 +931,7 @@ export default function ChatInterface() {
 
               {/* Preguntas dinámicas */}
               {factResult.factibilidad.factible && factResult.preguntas.length > 0 && (
-                <div className="questions-wrap">
+                <div className="questions-wrap" aria-live="polite" aria-atomic="false">
                   {factResult.preguntas.map((p: Pregunta, i: number) => {
                     if (i > preguntaIdx) return null;
                     const answered = respuestas[p.id];
@@ -746,7 +942,7 @@ export default function ChatInterface() {
                       return (
                         <div key={p.id} className="q-answered">
                           <div className="q-answered-inner">
-                            <svg width="14" height="12" viewBox="0 0 14 12" fill="none"><path d="M1 6l4 4 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                            <svg width="14" height="12" viewBox="0 0 14 12" fill="none" aria-hidden="true"><path d="M1 6l4 4 8-8" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
                             <span className="q-answered-text">{opcionTexto}</span>
                           </div>
                           <button className="q-change-btn"
@@ -794,7 +990,7 @@ export default function ChatInterface() {
                   {!factResult.preguntas.some((p: Pregunta) => !respuestas[p.id]) && (
                     <button className="btn-pill step-anim" onClick={onFactibilidadSubmit}>
                       Ver recomendación
-                      <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                     </button>
                   )}
                 </div>
@@ -809,7 +1005,7 @@ export default function ChatInterface() {
           {/* ── Loading recomendación ── */}
           {step === "loading_rec" && (
             <div key={`loading_rec-${animKey}`} className="step-anim">
-              <div className="loading-wrap">
+              <div className="loading-wrap" role="status" aria-live="polite">
                 <div className="loading-dots"><span /><span /><span /></div>
                 <p className="loading-text">Calculando recomendación...</p>
               </div>
@@ -820,18 +1016,18 @@ export default function ChatInterface() {
           {step === "recomendacion" && rec && (
             <div key={`rec-${animKey}`} className="step-anim">
               <button className="btn-back" onClick={() => go("main")}>
-                <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 Volver
               </button>
               <div className="rec-badge">{sistemaLabel} · {mainV.gallinas} aves · {mainV.superficie_nave_m2} m²</div>
-              <div className="form-title">Sistema de puesta recomendado</div>
+              <h2 className="form-title">Sistema de puesta recomendado</h2>
               <p className="form-subtitle">Basado en la densidad y la altura disponible de la nave.</p>
 
               <div className="rec-result-card">
                 <div className={`rec-result-icon ${rec.tipo_zona === "aviario" ? "is-aviario" : "is-nidal"}`}>
                   {rec.tipo_zona === "aviario"
-                    ? <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="2" y="4" width="16" height="3" rx="1" fill="currentColor"/><rect x="2" y="9" width="16" height="3" rx="1" fill="currentColor" opacity=".65"/><rect x="2" y="14" width="16" height="3" rx="1" fill="currentColor" opacity=".35"/></svg>
-                    : <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><rect x="3" y="7" width="14" height="8" rx="1" fill="currentColor"/><path d="M7 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
+                    ? <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="2" y="4" width="16" height="3" rx="1" fill="currentColor"/><rect x="2" y="9" width="16" height="3" rx="1" fill="currentColor" opacity=".65"/><rect x="2" y="14" width="16" height="3" rx="1" fill="currentColor" opacity=".35"/></svg>
+                    : <svg width="20" height="20" viewBox="0 0 20 20" fill="none" aria-hidden="true"><rect x="3" y="7" width="14" height="8" rx="1" fill="currentColor"/><path d="M7 7V5a3 3 0 016 0v2" stroke="currentColor" strokeWidth="1.5" fill="none"/></svg>
                   }
                 </div>
                 <div className="rec-result-body">
@@ -897,7 +1093,7 @@ export default function ChatInterface() {
               <div className="btn-row">
                 <button className="btn-pill" onClick={() => onConfirmar(tipoZona ?? rec.tipo_zona)}>
                   Confirmar y calcular requisitos
-                  <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                 </button>
               </div>
             </div>
@@ -906,7 +1102,7 @@ export default function ChatInterface() {
           {/* ── Loading final ── */}
           {step === "loading" && (
             <div key={`loading-${animKey}`} className="step-anim">
-              <div className="loading-wrap">
+              <div className="loading-wrap" role="status" aria-live="polite">
                 <div className="loading-dots"><span /><span /><span /></div>
                 <p className="loading-text">Generando propuesta comercial…</p>
               </div>
@@ -932,11 +1128,11 @@ export default function ChatInterface() {
                 <div className="result-wrap">
 
                   {/* Banner */}
-                  <div className={`result-banner ${cumple ? "is-ok" : "is-fail"}`}>
+                  <div className={`result-banner ${cumple ? "is-ok" : "is-fail"}`} role="alert">
                     <div className={`result-banner-icon ${cumple ? "is-ok" : "is-fail"}`}>
                       {cumple
-                        ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        : <svg width="22" height="22" viewBox="0 0 22 22" fill="none"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                        ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                        : <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
                       }
                     </div>
                     <div className="result-banner-text">
@@ -973,8 +1169,8 @@ export default function ChatInterface() {
                         <div key={v.parametro} className="check-row">
                           <div className={`check-icon ${ok ? "is-ok" : "is-fail"}`}>
                             {ok
-                              ? <svg width="12" height="10" viewBox="0 0 12 10" fill="none"><path d="M1 5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                              : <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
+                              ? <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M1 5l3.5 3.5 6.5-7" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                              : <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                             }
                           </div>
                           <span className="check-name">{v.parametro}</span>
@@ -996,7 +1192,7 @@ export default function ChatInterface() {
                     </div>
                     {informe.requisitos.map((r) => (
                       <div key={r.nombre} className="req-row">
-                        <div className="req-icon">
+                        <div className="req-icon" aria-hidden="true">
                           <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
                         </div>
                         <div className="req-body">
@@ -1037,10 +1233,18 @@ export default function ChatInterface() {
                   </div>
                 </div>
 
+                <ConsultaLibreWidget datos={{
+                  num_gallinas:       informe.num_gallinas,
+                  sistema:            informe.sistema,
+                  superficie_nave_m2: parseFloat(mainV.superficie_nave_m2 ?? "0"),
+                  altura_nave_cm:     parseFloat(mainV.altura_nave_cm ?? "0"),
+                  tipo_zona:          tipoZona ?? undefined,
+                }} />
+
                 <div className="btn-row">
-                  <a href="/propuesta" target="_blank" className="btn-pill">
+                  <a href="/propuesta" className="btn-pill">
                     Ver propuesta comercial
-                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                    <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </a>
                   <button className="btn-outline" onClick={reset}>Nueva consulta</button>
                 </div>
@@ -1049,6 +1253,16 @@ export default function ChatInterface() {
           })()}
         </main>
       </div>
+
+      {/* Input de archivo oculto — compartido por ambos formularios */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        style={{ display: "none" }}
+        onChange={handlePlanoUpload}
+        aria-hidden="true"
+      />
     </>
   );
 }
@@ -1056,8 +1270,6 @@ export default function ChatInterface() {
 // ── CSS ───────────────────────────────────────────────────────────────────────
 
 const CHAT_CSS = `
-  @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&family=Montserrat:wght@700;800&family=JetBrains+Mono:wght@400;700&display=swap');
-
   :root {
     --c-primary:    #4f764d;
     --c-primary-dk: #234926;
@@ -1071,87 +1283,68 @@ const CHAT_CSS = `
     --c-ok-icon:    #2E7D4F;
     --c-fail-bg:    #fdecea;
     --c-fail-text:  #b5261e;
+    --font-display: var(--font-montserrat, 'Montserrat');
+    --font-body:    var(--font-source-sans, 'Source Sans Pro');
+    --font-mono:    var(--font-jetbrains, 'JetBrains Mono');
   }
 
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   body {
-    font-family: 'Source Sans Pro', sans-serif;
+    font-family: var(--font-body), sans-serif;
     font-size: 1rem; line-height: 1.65;
     background: var(--c-bg); color: var(--c-body);
     -webkit-font-smoothing: antialiased;
   }
 
-  /* ── HEADER ── */
-  .chat-hdr {
-    background: var(--c-title);
-    position: sticky; top: 0; z-index: 100;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-  }
-  .chat-hdr-inner {
-    max-width: 760px; margin: 0 auto; padding: 0 2rem;
-    height: 54px; display: flex; align-items: center; gap: 0.75rem;
-  }
-  .chat-logo {
-    height: 30px; width: auto; display: block;
-    filter: brightness(0) invert(1); flex-shrink: 0;
-  }
-  .chat-hdr-brand { display: flex; flex-direction: column; gap: 2px; flex: 1; }
-  .chat-hdr-name { font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.85); letter-spacing: 0.14em; text-transform: uppercase; line-height: 1; }
-  .chat-hdr-sub  { font-size: 0.58rem; color: rgba(255,255,255,0.35); letter-spacing: 0.1em; text-transform: uppercase; }
-  .chat-hdr-link {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none;
-    color: rgba(255,255,255,0.45); transition: color 0.15s; white-space: nowrap;
-  }
-  .chat-hdr-link:hover { color: rgba(255,255,255,0.85); }
 
   /* ── ROOT ── */
   .chat-root { max-width: 760px; margin: 0 auto; }
 
-  /* ── INTRO ── */
-  .chat-intro { padding: 2.5rem 2rem 0; }
-  .chat-eyebrow { font-size: 0.72rem; color: var(--c-primary); margin-bottom: 0.4rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; font-family: 'Montserrat', sans-serif; }
-  .chat-title { font-family: 'Montserrat', sans-serif; font-size: clamp(1.8rem, 4vw, 2.82rem); font-weight: 800; color: var(--c-title); letter-spacing: -0.02em; line-height: 1; }
-  .chat-tagline { font-size: 1rem; color: var(--c-body); margin-top: 0.6rem; font-weight: 300; line-height: 1.65; }
-  .chat-divider { height: 3px; background: var(--c-primary); width: 48px; margin: 1.25rem 0 1.5rem; border-radius: 2px; }
+  /* ── INTRO (full-width dark zone) ── */
+  .chat-intro {
+    background: var(--c-title);
+    border-bottom: 2px solid var(--c-primary);
+  }
+  .chat-intro-inner {
+    max-width: 760px; margin: 0 auto;
+    padding: 2.75rem 2rem 2.25rem;
+  }
+  .chat-eyebrow {
+    font-size: 0.68rem; color: var(--c-primary); margin-bottom: 0.55rem;
+    font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase;
+    font-family: var(--font-display), sans-serif;
+  }
+  .chat-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: 2.75rem; font-weight: 800; color: #ffffff;
+    letter-spacing: -0.03em; line-height: 1;
+  }
+  .chat-tagline {
+    font-size: 1rem; color: rgba(255,255,255,0.62);
+    margin-top: 0.75rem; font-weight: 300; line-height: 1.65;
+    max-width: 52ch;
+  }
 
   /* ── MAIN ── */
-  .chat-main { padding: 0 2rem 4rem; }
+  .chat-main { padding: 2.5rem 2rem 4rem; }
 
-  /* ── PROGRESS ── */
-  .prog-bar { display: flex; align-items: center; margin-bottom: 2.5rem; }
-  .prog-step-outer { display: flex; align-items: center; }
-  .prog-step-outer--flex { flex: 1; }
-  .prog-step { display: flex; align-items: center; gap: 0.5rem; }
-  .prog-circle {
-    width: 28px; height: 28px; border-radius: 50%;
-    border: 2px solid var(--c-border); background: var(--c-bg);
-    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; color: #bbb;
-    display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: all 0.2s;
-  }
-  .prog-circle.is-active { border-color: var(--c-title); background: var(--c-title); color: #fff; }
-  .prog-circle.is-done   { border-color: var(--c-primary); background: var(--c-primary); color: #fff; }
-  .prog-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; color: #bbb; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; }
-  .prog-label.is-active  { color: var(--c-title); }
-  .prog-line { flex: 1; height: 1px; background: var(--c-border); margin: 0 0.6rem; min-width: 12px; }
 
   @keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
   .step-anim { animation: stepIn 0.22s ease forwards; }
 
   /* ── FORM ── */
-  .form-title    { font-family: 'Montserrat', sans-serif; font-size: 1.52rem; font-weight: 800; color: var(--c-title); margin-bottom: 0.3rem; line-height: 1.1; }
+  .form-title    { font-family: var(--font-display), sans-serif; font-size: 1.85rem; font-weight: 800; color: var(--c-title); margin-bottom: 0.3rem; line-height: 1.1; }
   .form-subtitle { font-size: 0.95rem; color: var(--c-body); margin-bottom: 1.75rem; font-weight: 300; line-height: 1.65; }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .field { margin-bottom: 1.1rem; }
-  .field-label { display: block; font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
+  .field-label { display: block; font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .field-input-wrap { position: relative; display: flex; align-items: center; }
   .field-unit { position: absolute; right: 0.9rem; font-size: 0.82rem; color: #bbb; pointer-events: none; }
   .field-select, .field-input {
     width: 100%; background: var(--c-bg); border: 1px solid var(--c-border);
     border-radius: 2px; padding: 0.7rem 0.9rem;
-    font-family: 'Source Sans Pro', sans-serif; font-size: 0.95rem;
+    font-family: var(--font-body), sans-serif; font-size: 0.95rem;
     color: var(--c-title); outline: none;
     transition: border-color 0.15s, box-shadow 0.15s;
   }
@@ -1169,7 +1362,7 @@ const CHAT_CSS = `
     display: inline-flex; align-items: center; gap: 0.5rem;
     background: var(--c-primary); color: #ffffff;
     border: none; border-radius: 30px;
-    padding: 0.75rem 1.75rem; font-family: 'Source Sans Pro', sans-serif;
+    padding: 0.75rem 1.75rem; font-family: var(--font-body), sans-serif;
     font-size: 0.9rem; font-weight: 700; cursor: pointer;
     letter-spacing: 0.05em; text-transform: uppercase; text-decoration: none;
     transition: background 0.15s;
@@ -1180,7 +1373,7 @@ const CHAT_CSS = `
     display: inline-flex; align-items: center; gap: 0.5rem;
     background: transparent; color: var(--c-primary);
     border: 2px solid var(--c-primary); border-radius: 30px;
-    padding: 0.7rem 1.5rem; font-family: 'Source Sans Pro', sans-serif;
+    padding: 0.7rem 1.5rem; font-family: var(--font-body), sans-serif;
     font-size: 0.9rem; font-weight: 600; cursor: pointer;
     letter-spacing: 0.04em; text-decoration: none;
     transition: background 0.15s, color 0.15s;
@@ -1188,7 +1381,7 @@ const CHAT_CSS = `
   .btn-outline:hover { background: var(--c-primary); color: #ffffff; }
   .btn-back {
     display: inline-flex; align-items: center; gap: 0.45rem;
-    font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700;
     color: var(--c-body); cursor: pointer; border: none; background: none;
     padding: 0; margin-bottom: 1.75rem; letter-spacing: 0.08em; text-transform: uppercase;
     transition: color 0.15s;
@@ -1218,13 +1411,13 @@ const CHAT_CSS = `
   }
   .fact-icon.is-ok   { background: var(--c-primary); }
   .fact-icon.is-fail { background: var(--c-fail-text); }
-  .fact-heading { font-family: 'Montserrat', sans-serif; font-weight: 800; font-size: 1rem; color: var(--c-title); margin-bottom: 0.35rem; }
+  .fact-heading { font-family: var(--font-display), sans-serif; font-weight: 800; font-size: 1rem; color: var(--c-title); margin-bottom: 0.35rem; }
   .fact-msg { font-size: 0.9rem; color: var(--c-body); line-height: 1.65; margin: 0; }
   .density-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.25rem; }
   .density-card { background: var(--c-bg); padding: 0.75rem 1rem; border: 1px solid var(--c-border); }
   .density-card.is-warn { border-color: #f5b8b8; }
-  .density-label { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.3rem; }
-  .density-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.4rem; color: var(--c-title); line-height: 1; }
+  .density-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.3rem; }
+  .density-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 1.4rem; color: var(--c-title); line-height: 1; }
   .density-val.is-warn { color: var(--c-fail-text); }
   .density-val.is-na { font-size: 1rem; color: var(--c-body); }
   .density-card.is-na { opacity: 0.5; }
@@ -1233,32 +1426,32 @@ const CHAT_CSS = `
   /* ── AJUSTE RECOMENDADO ── */
   .adjust-box {
     margin-bottom: 1.5rem; padding: 1.1rem 1.25rem;
-    background: #fffbeb; border: 1px solid #f5d87a; border-left: 3px solid #d4a017;
+    background: #fffbeb; border: 1.5px solid #d4a017; border-radius: 2px;
   }
   .adjust-box-title {
-    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.65rem; font-weight: 700;
     letter-spacing: 0.1em; text-transform: uppercase; color: #7a5c00; margin-bottom: 0.9rem;
   }
   .adjust-section { margin-bottom: 0.85rem; }
   .adjust-section:last-child { margin-bottom: 0; }
   .adjust-section-label {
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
     letter-spacing: 0.08em; text-transform: uppercase; color: #9a7200;
     margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid #f0d080;
   }
   .adjust-section-note {
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 400;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 400;
     letter-spacing: 0; text-transform: none; color: #b08000;
   }
   .adjust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
   .adjust-grid--single { grid-template-columns: 1fr; max-width: 50%; }
   .adjust-card { background: #fff; border: 1px solid #f0d080; padding: 0.75rem 0.9rem; }
   .adjust-card-eyebrow {
-    font-family: 'Montserrat', sans-serif; font-size: 0.55rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.55rem; font-weight: 700;
     letter-spacing: 0.08em; text-transform: uppercase; color: #7a5c00; margin-bottom: 0.3rem;
   }
   .adjust-card-val {
-    font-family: 'JetBrains Mono', monospace; font-size: 1.25rem; font-weight: 700;
+    font-family: var(--font-mono), monospace; font-size: 1.25rem; font-weight: 700;
     color: var(--c-title); line-height: 1;
   }
   .adjust-card-unit { font-size: 0.75rem; font-weight: 400; color: var(--c-body); }
@@ -1274,10 +1467,10 @@ const CHAT_CSS = `
   }
   .q-answered-inner { display: flex; align-items: center; gap: 0.6rem; flex: 1; min-width: 0; color: var(--c-primary); }
   .q-answered-text { font-size: 0.85rem; color: var(--c-primary); font-weight: 700; letter-spacing: 0.04em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-  .q-change-btn { background: none; border: none; color: var(--c-primary); font-size: 0.72rem; cursor: pointer; font-family: 'Montserrat', sans-serif; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; padding: 0.2rem 0.4rem; flex-shrink: 0; }
+  .q-change-btn { background: none; border: none; color: var(--c-primary); font-size: 0.72rem; cursor: pointer; font-family: var(--font-display), sans-serif; letter-spacing: 0.06em; text-transform: uppercase; font-weight: 700; padding: 0.2rem 0.4rem; flex-shrink: 0; }
   .q-change-btn:hover { text-decoration: underline; }
   .q-active { }
-  .q-active-label { font-family: 'Montserrat', sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
+  .q-active-label { font-family: var(--font-display), sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.08em; text-transform: uppercase; margin-bottom: 0.6rem; display: flex; align-items: center; gap: 0.5rem; }
   .q-num { background: var(--c-title); color: #fff; border-radius: 50%; width: 18px; height: 18px; display: inline-flex; align-items: center; justify-content: center; font-size: 0.65rem; flex-shrink: 0; }
   .q-options { display: flex; flex-direction: column; gap: 0.45rem; }
   .q-option {
@@ -1285,7 +1478,7 @@ const CHAT_CSS = `
     padding: 0.8rem 1rem; text-align: left;
     border: 2px solid var(--c-border); background: var(--c-bg);
     border-radius: 2px; cursor: pointer; transition: border-color 0.15s, background 0.15s;
-    font-family: 'Source Sans Pro', sans-serif; width: 100%;
+    font-family: var(--font-body), sans-serif; width: 100%;
   }
   .q-option:hover { border-color: var(--c-primary); background: var(--c-ok-bg); }
   .q-option-dot { width: 18px; height: 18px; border-radius: 50%; border: 2px solid var(--c-border); flex-shrink: 0; }
@@ -1293,12 +1486,12 @@ const CHAT_CSS = `
   .q-option-text { font-size: 0.92rem; color: var(--c-title); }
 
   /* ── RECOMENDACIÓN ── */
-  .rec-badge { display: inline-block; padding: 0.25rem 0.85rem; background: var(--c-ok-bg); color: var(--c-primary); border-radius: 30px; font-size: 0.75rem; font-weight: 700; margin-bottom: 1.25rem; letter-spacing: 0.04em; font-family: 'Montserrat', sans-serif; }
+  .rec-badge { display: inline-block; padding: 0.25rem 0.85rem; background: var(--c-ok-bg); color: var(--c-primary); border-radius: 30px; font-size: 0.75rem; font-weight: 700; margin-bottom: 1.25rem; letter-spacing: 0.04em; font-family: var(--font-display), sans-serif; }
   .rec-result-card { background: var(--c-bg); border: 1px solid var(--c-border); padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
   .rec-result-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .rec-result-icon.is-aviario { background: var(--c-ok-bg); color: var(--c-primary); }
   .rec-result-icon.is-nidal   { background: var(--c-bg-alt); color: var(--c-body); }
-  .rec-result-name { font-family: 'Montserrat', sans-serif; font-size: 1.17rem; font-weight: 800; margin-bottom: 0.25rem; color: var(--c-title); }
+  .rec-result-name { font-family: var(--font-display), sans-serif; font-size: 1.17rem; font-weight: 800; margin-bottom: 0.25rem; color: var(--c-title); }
   .rec-result-reason { font-size: 0.92rem; color: var(--c-body); line-height: 1.65; margin: 0; }
   .rec-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.5rem; }
   .rec-card {
@@ -1309,11 +1502,11 @@ const CHAT_CSS = `
   .rec-card-badge {
     position: absolute; top: -11px; left: 12px;
     background: var(--c-primary); color: #fff;
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
     letter-spacing: 0.12em; text-transform: uppercase;
     padding: 0.15rem 0.7rem; border-radius: 30px;
   }
-  .rec-card-title { font-family: 'Montserrat', sans-serif; font-size: 0.92rem; font-weight: 800; margin-bottom: 0.65rem; color: var(--c-title); }
+  .rec-card-title { font-family: var(--font-display), sans-serif; font-size: 0.92rem; font-weight: 800; margin-bottom: 0.65rem; color: var(--c-title); }
   .rec-card-list { margin: 0; padding: 0; list-style: none; }
   .rec-card-item { font-size: 0.82rem; color: var(--c-body); line-height: 1.6; margin-bottom: 0.3rem; padding-left: 1rem; position: relative; }
   .rec-card-bullet { position: absolute; left: 0; color: var(--c-border); }
@@ -1321,7 +1514,7 @@ const CHAT_CSS = `
   .rec-card-choose {
     margin-top: 0.85rem; background: none; border: 1px solid var(--c-border);
     border-radius: 30px; color: var(--c-body); font-size: 0.78rem; padding: 0.35rem 0.85rem;
-    cursor: pointer; font-family: 'Source Sans Pro', sans-serif; width: 100%;
+    cursor: pointer; font-family: var(--font-body), sans-serif; width: 100%;
     transition: border-color 0.15s, color 0.15s;
   }
   .rec-card-choose:hover { border-color: var(--c-primary); color: var(--c-primary); }
@@ -1336,10 +1529,10 @@ const CHAT_CSS = `
   .result-banner.is-ok   .result-banner-icon { background: #2E7D4F; }
   .result-banner.is-fail .result-banner-icon { background: #C0392B; }
   .result-banner-text { color: #fff; display: flex; flex-direction: column; gap: 0.2rem; }
-  .result-banner-supra { font-family: 'Montserrat', sans-serif; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; display: block; font-weight: 700; }
+  .result-banner-supra { font-family: var(--font-display), sans-serif; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; display: block; font-weight: 700; }
   .result-banner.is-ok   .result-banner-supra { color: #A8F0BC; }
   .result-banner.is-fail .result-banner-supra { color: #F5B8B8; }
-  .result-banner-main { font-family: 'Montserrat', sans-serif; font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
+  .result-banner-main { font-family: var(--font-display), sans-serif; font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
   .result-meta-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.75rem; }
   .result-meta-strip.is-ok   { background: rgba(30,77,43,0.85); }
   .result-meta-strip.is-fail { background: rgba(77,30,30,0.85); }
@@ -1348,9 +1541,9 @@ const CHAT_CSS = `
   .result-block { background: var(--c-bg); }
   .result-block--sep { border-top: 2px solid var(--c-bg-alt); }
   .result-block-head { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); display: flex; align-items: center; justify-content: space-between; }
-  .result-block-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .result-block-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
   .result-stats { display: flex; gap: 0.5rem; }
-  .result-stat { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 30px; letter-spacing: 0.04em; }
+  .result-stat { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 30px; letter-spacing: 0.04em; }
   .result-stat.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .result-stat.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
@@ -1364,7 +1557,7 @@ const CHAT_CSS = `
   .check-real { color: var(--c-title); font-weight: 600; }
   .check-sep  { color: var(--c-border); }
   .check-ref  { color: var(--c-body); }
-  .check-diff { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
+  .check-diff { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
   .check-diff.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .check-diff.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
@@ -1374,24 +1567,24 @@ const CHAT_CSS = `
   .req-body { flex: 1; min-width: 0; }
   .req-name { font-size: 0.9rem; color: var(--c-title); font-weight: 400; }
   .req-formula { font-size: 0.78rem; color: #bbb; margin-top: 0.1rem; font-style: italic; }
-  .req-value { font-family: 'JetBrains Mono', monospace; font-size: 0.95rem; font-weight: 700; color: var(--c-title); flex-shrink: 0; white-space: nowrap; }
+  .req-value { font-family: var(--font-mono), monospace; font-size: 0.95rem; font-weight: 700; color: var(--c-title); flex-shrink: 0; white-space: nowrap; }
   .req-unit { font-weight: 400; font-size: 0.78rem; color: var(--c-body); }
 
   .warn-block { background: #fffdf0; border-top: 2px solid #f5e580; }
   .warn-head  { padding: 0.8rem 1.75rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
-  .warn-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6500; }
+  .warn-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6500; }
   .warn-row   { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.75rem; border-bottom: 1px solid #f0e070; }
   .warn-row:last-child { border-bottom: none; }
   .warn-text  { font-size: 0.88rem; color: #5a4a00; line-height: 1.65; }
 
   .analysis-block { background: var(--c-bg); border-top: 1px solid var(--c-border); }
   .analysis-head  { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); }
-  .analysis-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .analysis-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
   .analysis-body  { padding: 1.4rem 1.75rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
   .analysis-body strong { font-weight: 700; color: var(--c-title); }
   .analysis-body em { font-style: italic; }
   .md-section-label {
-    display: block; font-family: 'Montserrat', sans-serif;
+    display: block; font-family: var(--font-display), sans-serif;
     font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
     text-transform: uppercase; color: var(--c-primary);
     margin-top: 1.4rem; margin-bottom: 0.35rem;
@@ -1401,27 +1594,31 @@ const CHAT_CSS = `
   .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 2px; }
 
   /* ── MODE SELECTOR ── */
-  .mode-grid { display: flex; flex-direction: column; gap: 0.75rem; margin-top: 0.5rem; }
+  .mode-grid { display: flex; flex-direction: column; gap: 0.85rem; margin-top: 0.5rem; }
   .mode-card {
-    display: flex; align-items: center; gap: 1.1rem;
-    padding: 1.25rem 1.5rem; text-align: left; width: 100%;
-    border: 2px solid var(--c-border); background: var(--c-bg);
-    cursor: pointer; transition: border-color 0.15s, background 0.15s, box-shadow 0.15s;
+    display: flex; align-items: center; gap: 1.25rem;
+    padding: 1.5rem 1.75rem; text-align: left; width: 100%;
+    border: 2px solid var(--c-border); background: var(--c-bg-alt);
+    cursor: pointer; transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
     font-family: inherit;
   }
-  .mode-card:hover { border-color: var(--c-primary); background: var(--c-ok-bg); box-shadow: 0 2px 12px rgba(79,118,77,0.1); }
-  .mode-card-icon {
-    width: 52px; height: 52px; border-radius: 50%; flex-shrink: 0;
-    background: var(--c-bg-alt); color: var(--c-primary);
-    display: flex; align-items: center; justify-content: center;
-    transition: background 0.15s;
+  .mode-card:hover {
+    border-color: var(--c-primary); background: var(--c-ok-bg);
+    box-shadow: 0 4px 20px rgba(79,118,77,0.14);
+    transform: translateY(-1px);
   }
-  .mode-card:hover .mode-card-icon { background: rgba(79,118,77,0.18); }
+  .mode-card-icon {
+    width: 60px; height: 60px; border-radius: 50%; flex-shrink: 0;
+    background: var(--c-bg); border: 1.5px solid var(--c-border);
+    display: flex; align-items: center; justify-content: center;
+    color: var(--c-primary); transition: background 0.18s, border-color 0.18s;
+  }
+  .mode-card:hover .mode-card-icon { background: rgba(79,118,77,0.12); border-color: var(--c-primary); }
   .mode-card-body { flex: 1; min-width: 0; }
-  .mode-card-title { font-family: 'Montserrat', sans-serif; font-size: 1rem; font-weight: 800; color: var(--c-title); margin-bottom: 0.3rem; }
-  .mode-card-desc { font-size: 0.88rem; color: var(--c-body); line-height: 1.55; margin: 0; }
-  .mode-card-arrow { color: var(--c-border); flex-shrink: 0; transition: color 0.15s, transform 0.15s; }
-  .mode-card:hover .mode-card-arrow { color: var(--c-primary); transform: translateX(3px); }
+  .mode-card-title { font-family: var(--font-display), sans-serif; font-size: 1.1rem; font-weight: 800; color: var(--c-title); margin-bottom: 0.35rem; letter-spacing: -0.01em; }
+  .mode-card-desc { font-size: 0.9rem; color: var(--c-body); line-height: 1.55; margin: 0; }
+  .mode-card-arrow { color: var(--c-border); flex-shrink: 0; transition: color 0.18s, transform 0.18s; }
+  .mode-card:hover .mode-card-arrow { color: var(--c-primary); transform: translateX(4px); }
 
   /* ── CAPACIDAD ── */
   .cap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.75rem; }
@@ -1429,11 +1626,11 @@ const CHAT_CSS = `
   .cap-card.is-viable { border-color: var(--c-primary); background: var(--c-ok-bg); }
   .cap-card.is-no { opacity: 0.55; }
   .cap-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.65rem; }
-  .cap-card-label { font-family: 'Montserrat', sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.06em; text-transform: uppercase; }
-  .cap-card-badge { font-family: 'Montserrat', sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.15rem 0.55rem; border-radius: 30px; }
+  .cap-card-label { font-family: var(--font-display), sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.06em; text-transform: uppercase; }
+  .cap-card-badge { font-family: var(--font-display), sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.15rem 0.55rem; border-radius: 30px; }
   .cap-card-badge.is-viable { background: var(--c-ok-bg); color: var(--c-ok-text); border: 1px solid var(--c-primary); }
   .cap-card-badge.is-no     { background: var(--c-bg-alt); color: #bbb; border: 1px solid var(--c-border); }
-  .cap-card-gallinas { font-family: 'JetBrains Mono', monospace; font-size: 2rem; font-weight: 700; color: var(--c-title); line-height: 1; margin-bottom: 0.45rem; }
+  .cap-card-gallinas { font-family: var(--font-mono), monospace; font-size: 2rem; font-weight: 700; color: var(--c-title); line-height: 1; margin-bottom: 0.45rem; }
   .cap-card-modulos { font-size: 1.4rem; margin-top: 0; margin-bottom: 0.35rem; color: var(--c-primary); }
   .cap-card-unit { font-size: 0.85rem; font-weight: 400; color: var(--c-body); }
   .cap-card-details { font-size: 0.78rem; color: var(--c-body); display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
@@ -1444,13 +1641,13 @@ const CHAT_CSS = `
   .cap-card-layout { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid rgba(0,0,0,0.07); display: flex; flex-direction: column; gap: 0.2rem; }
   .cap-layout-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.74rem; }
   .cap-layout-label { color: var(--c-body); }
-  .cap-layout-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--c-title); font-size: 0.76rem; }
+  .cap-layout-val { font-family: var(--font-mono), monospace; font-weight: 700; color: var(--c-title); font-size: 0.76rem; }
 
   .cap-card-cta {
     display: flex; align-items: center; justify-content: center; gap: 0.5rem;
     width: 100%; margin-top: 1rem; padding: 0.6rem 1rem;
     background: var(--c-primary); color: #fff; border: none; border-radius: 4px;
-    font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700;
     letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
     transition: background 0.15s;
   }
@@ -1458,32 +1655,32 @@ const CHAT_CSS = `
 
   .cap-card-yacija { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid rgba(0,0,0,0.07); display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.76rem; }
   .cap-yacija-label { color: var(--c-body); flex-shrink: 0; }
-  .cap-yacija-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; color: var(--c-title); font-size: 0.8rem; }
+  .cap-yacija-val { font-family: var(--font-mono), monospace; font-weight: 700; color: var(--c-title); font-size: 0.8rem; }
   .cap-yacija-pct { font-weight: 400; color: var(--c-body); }
   .cap-yacija-pct.is-warn { color: var(--c-fail-text); font-weight: 700; }
 
   /* ── STATS GRID ── */
   .cap-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.75rem; margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid rgba(0,0,0,0.07); }
   .cap-stat { display: flex; flex-direction: column; gap: 0.08rem; }
-  .cap-stat-label { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--c-body); }
-  .cap-stat-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.8rem; color: var(--c-title); }
+  .cap-stat-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--c-body); }
+  .cap-stat-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 0.8rem; color: var(--c-title); }
   .cap-stat-val.is-warn { color: var(--c-fail-text); }
 
   /* ── PARQUE DE INVIERNO ── */
   .cap-card-parque { margin-top: 0.75rem; padding-top: 0.65rem; border-top: 1px solid rgba(0,0,0,0.07); }
-  .cap-parque-title { font-family: 'Montserrat', sans-serif; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-body); margin-bottom: 0.5rem; }
+  .cap-parque-title { font-family: var(--font-display), sans-serif; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-body); margin-bottom: 0.5rem; }
   .cap-parque-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
   .cap-parque-opcion { border-radius: 2px; padding: 0.6rem 0.7rem; border: 1px solid var(--c-border); }
   .cap-parque-opcion--a { background: var(--c-bg-alt); }
   .cap-parque-opcion--b { background: var(--c-ok-bg); border-color: rgba(45,125,50,0.35); }
-  .cap-parque-opcion-head { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.3rem; }
+  .cap-parque-opcion-head { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.3rem; }
   .cap-parque-opcion--a .cap-parque-opcion-head { color: var(--c-body); }
   .cap-parque-opcion--b .cap-parque-opcion-head { color: var(--c-ok-text); }
-  .cap-parque-opcion-gallinas { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 1.05rem; color: var(--c-title); margin-bottom: 0.35rem; }
+  .cap-parque-opcion-gallinas { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 1.05rem; color: var(--c-title); margin-bottom: 0.35rem; }
   .cap-parque-opcion-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.2rem; }
   .cap-parque-opcion-key { font-size: 0.69rem; color: var(--c-body); }
-  .cap-parque-opcion-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.72rem; color: var(--c-title); }
-  .cap-parque-opcion-tag { display: inline-block; margin-top: 0.45rem; font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.18rem 0.45rem; border-radius: 20px; }
+  .cap-parque-opcion-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 0.72rem; color: var(--c-title); }
+  .cap-parque-opcion-tag { display: inline-block; margin-top: 0.45rem; font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.18rem 0.45rem; border-radius: 20px; }
   .cap-parque-opcion-tag--ok { background: var(--c-ok-bg); color: var(--c-ok-text); }
   .cap-parque-opcion-tag--parque { background: rgba(79,118,77,0.12); color: var(--c-primary-dk); }
 
@@ -1496,14 +1693,14 @@ const CHAT_CSS = `
     display: flex; align-items: baseline; gap: 0.5rem; margin-bottom: 0.35rem;
   }
   .cap-pareto-title {
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
     letter-spacing: 0.09em; text-transform: uppercase; color: var(--c-body);
   }
   .cap-pareto-sub { font-size: 0.6rem; color: #bbb; }
   .cap-pareto-cols {
     display: grid; grid-template-columns: 38px 1fr 56px 40px 52px;
     gap: 4px; padding: 0 4px; margin-bottom: 3px;
-    font-family: 'Montserrat', sans-serif; font-size: 0.55rem;
+    font-family: var(--font-display), sans-serif; font-size: 0.55rem;
     font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: #bbb;
   }
   .cap-pareto-table { display: flex; flex-direction: column; gap: 2px; }
@@ -1514,11 +1711,11 @@ const CHAT_CSS = `
   .cap-pareto-row.is-opt { background: rgba(79,118,77,0.12); }
   .cap-pareto-row.is-min { background: rgba(212,160,23,0.1); }
   .cap-pareto-m {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    font-family: var(--font-mono), monospace; font-size: 0.65rem;
     color: var(--c-body); white-space: nowrap;
   }
   .cap-pareto-n {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.7rem;
+    font-family: var(--font-mono), monospace; font-size: 0.7rem;
     font-weight: 700; color: var(--c-title); text-align: right;
   }
   .cap-pareto-ybar-wrap {
@@ -1531,19 +1728,19 @@ const CHAT_CSS = `
     width: 1.5px; background: #d4a017; transform: translateX(-50%);
   }
   .cap-pareto-pct {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.65rem;
+    font-family: var(--font-mono), monospace; font-size: 0.65rem;
     color: var(--c-body); text-align: right;
   }
   .cap-pareto-pct.is-warn { color: var(--c-fail-text); }
   .cap-pareto-tag {
-    font-family: 'Montserrat', sans-serif; font-size: 0.52rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.52rem; font-weight: 700;
     letter-spacing: 0.05em; text-transform: uppercase;
     padding: 0.1rem 0.32rem; border-radius: 30px; white-space: nowrap; text-align: center;
   }
   .cap-pareto-tag.is-opt { background: var(--c-ok-bg); color: var(--c-ok-text); }
   .cap-pareto-tag.is-min { background: rgba(212,160,23,0.18); color: #7a5c00; }
   .cap-pareto-loss {
-    font-family: 'JetBrains Mono', monospace; font-size: 0.62rem;
+    font-family: var(--font-mono), monospace; font-size: 0.62rem;
     color: #bbb; text-align: center;
   }
   .cap-pareto-legend {
@@ -1559,7 +1756,7 @@ const CHAT_CSS = `
   /* ── LAYOUT NIDAL ── */
   .layout-section { margin-top: 1rem; }
   .layout-divider { border: none; border-top: 1px dashed rgba(0,0,0,0.1); margin-bottom: 0.75rem; }
-  .layout-title { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.55rem; }
+  .layout-title { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.55rem; }
   .layout-form { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
   .layout-hint { font-size: 0.72rem; color: var(--c-body); opacity: 0.65; width: 100%; margin-top: -0.15rem; }
   .btn-pill--sm { padding: 0.4rem 0.9rem; font-size: 0.75rem; }
@@ -1572,14 +1769,14 @@ const CHAT_CSS = `
   .layout-fila-row { display: flex; align-items: center; gap: 0.5rem; font-size: 0.75rem; background: rgba(0,0,0,0.03); border-radius: 5px; padding: 0.35rem 0.55rem; }
   .layout-fila-num { font-weight: 700; color: var(--c-title); min-width: 40px; }
   .layout-fila-detail { flex: 1; color: var(--c-body); }
-  .layout-fila-slot { font-family: 'JetBrains Mono', monospace; font-size: 0.7rem; color: var(--c-primary); font-weight: 600; }
+  .layout-fila-slot { font-family: var(--font-mono), monospace; font-size: 0.7rem; color: var(--c-primary); font-weight: 600; }
   .layout-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 0.4rem; margin-bottom: 0.65rem; }
   .layout-stat { background: rgba(0,0,0,0.03); border-radius: 6px; padding: 0.4rem 0.55rem; }
   .layout-stat--norm { grid-column: span 2; }
   .layout-stat--norm.is-ok { background: rgba(22,163,74,0.08); }
   .layout-stat--norm.is-fail { background: rgba(220,38,38,0.07); }
   .layout-stat-label { display: block; font-size: 0.62rem; color: var(--c-body); margin-bottom: 0.15rem; text-transform: uppercase; letter-spacing: 0.05em; }
-  .layout-stat-val { font-family: 'JetBrains Mono', monospace; font-weight: 700; font-size: 0.82rem; color: var(--c-title); }
+  .layout-stat-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 0.82rem; color: var(--c-title); }
   .layout-stat-val.is-warn { color: var(--c-fail-text); }
   .layout-stat--norm.is-ok .layout-stat-val { color: #16a34a; }
   .layout-stat--norm.is-fail .layout-stat-val { color: #dc2626; }
@@ -1589,12 +1786,275 @@ const CHAT_CSS = `
 
   /* ── RESPONSIVE ── */
   @media (max-width: 520px) {
-    .chat-intro, .chat-main { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .chat-intro-inner { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .chat-main { padding-left: 1.25rem; padding-right: 1.25rem; }
+    .chat-title { font-size: 2.1rem; }
     .field-row { grid-template-columns: 1fr; }
     .rec-compare { grid-template-columns: 1fr; }
     .density-grid { grid-template-columns: 1fr 1fr; }
     .check-row { flex-wrap: wrap; }
     .check-vals, .check-diff { font-size: 0.75rem; }
-    .chat-hdr-link { display: none; }
+    /* Cap cards stack at narrow widths — pareto table overflows in 2-col layout */
+    .cap-grid { grid-template-columns: 1fr; }
+    /* Adjust single-option grid fills full width on mobile */
+    .adjust-grid--single { max-width: 100%; grid-template-columns: 1fr 1fr; }
+  }
+
+  /* ── TOUCH TARGETS ── */
+  @media (pointer: coarse) {
+    .btn-back { min-height: 44px; padding: 0.5rem 0; }
+    .q-change-btn { min-height: 44px; padding: 0.5rem 0.75rem; }
+  }
+
+  /* ── TEXT WRAP ── */
+  .chat-title  { text-wrap: balance; }
+  .form-title  { text-wrap: balance; }
+
+  /* ── PLACEHOLDER CONTRAST ── */
+  .field-input::placeholder  { color: #6b7280; }
+  .field-select::placeholder { color: #6b7280; }
+
+  /* ── FOCUS-VISIBLE ── */
+  .btn-pill:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 3px;
+  }
+  .btn-outline:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 3px;
+  }
+  .btn-back:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+  .mode-card:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 2px;
+  }
+  .q-option:focus-visible {
+    outline: none;
+    border-color: var(--c-primary);
+    background: var(--c-ok-bg);
+    box-shadow: 0 0 0 3px rgba(79,118,77,0.15);
+  }
+  .cap-card-cta:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 2px;
+  }
+  .rec-card-choose:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 2px;
+    border-radius: 30px;
+  }
+  .q-change-btn:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 2px;
+    border-radius: 2px;
+  }
+
+  /* ── PLANO UPLOAD ── */
+  .plano-upload-row {
+    margin-bottom: 1.25rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+  .plano-upload-btn {
+    display: inline-flex; align-items: center; gap: 0.5rem;
+    padding: 0.55rem 1rem;
+    background: var(--c-bg-alt); border: 1.5px dashed var(--c-border);
+    border-radius: 4px; cursor: pointer;
+    font-family: var(--font-body), sans-serif; font-size: 0.85rem;
+    color: var(--c-body); font-weight: 600;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+    align-self: flex-start;
+  }
+  .plano-upload-btn:hover:not(:disabled) {
+    border-color: var(--c-primary); color: var(--c-primary); background: #eef5ee;
+  }
+  .plano-upload-btn:disabled { opacity: 0.5; cursor: default; }
+  .plano-upload-dots {
+    display: inline-flex; gap: 4px; align-items: center;
+  }
+  .plano-upload-dots span {
+    width: 4px; height: 4px; border-radius: 50%;
+    background: var(--c-primary);
+    animation: dotPulse 1.2s ease-in-out infinite;
+  }
+  .plano-upload-dots span:nth-child(2) { animation-delay: 0.2s; }
+  .plano-upload-dots span:nth-child(3) { animation-delay: 0.4s; }
+  @keyframes dotPulse { 0%,80%,100% { opacity: 0.2; } 40% { opacity: 1; } }
+  .plano-upload-err {
+    font-size: 0.8rem; color: #b05000;
+    background: #fff8f0; border: 1px solid #f0d0b0;
+    border-radius: 4px; padding: 0.45rem 0.75rem;
+    line-height: 1.5;
+  }
+
+  /* ── Plano confirm card ── */
+  .plano-confirm-card {
+    border: 1.5px solid var(--c-primary);
+    border-radius: 6px;
+    background: #f5faf5;
+    padding: 1rem 1.1rem;
+    display: flex; flex-direction: column; gap: 0.75rem;
+  }
+  .plano-confirm-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.72rem; font-weight: 700;
+    letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--c-primary);
+  }
+  .plano-confirm-conf {
+    margin-left: auto; font-size: 0.65rem; font-weight: 700;
+    padding: 0.15rem 0.5rem; border-radius: 20px;
+    letter-spacing: 0.06em;
+  }
+  .plano-confirm-conf.is-high { background: #d4edda; color: #1a6b2e; }
+  .plano-confirm-conf.is-mid  { background: #fff3cd; color: #7a5800; }
+  .plano-confirm-conf.is-low  { background: #fde8e8; color: #9b2020; }
+  .plano-confirm-dims {
+    display: flex; align-items: center; gap: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .plano-confirm-dim {
+    display: flex; flex-direction: column; gap: 0.1rem;
+  }
+  .plano-confirm-val {
+    font-family: var(--font-mono), monospace;
+    font-size: 1.35rem; font-weight: 700; color: var(--c-title); line-height: 1;
+  }
+  .plano-confirm-key {
+    font-size: 0.68rem; color: #909399; text-transform: uppercase;
+    letter-spacing: 0.08em; font-weight: 600;
+  }
+  .plano-confirm-sep {
+    font-size: 1.1rem; color: #c0c4cc; font-weight: 300; line-height: 1;
+    align-self: flex-start; margin-top: 0.1rem;
+  }
+  .plano-confirm-notes {
+    font-size: 0.78rem; color: var(--c-body); line-height: 1.5;
+    border-top: 1px solid #c8dfc7; padding-top: 0.6rem;
+  }
+  .plano-confirm-actions {
+    display: flex; gap: 0.6rem; flex-wrap: wrap;
+  }
+  .plano-confirm-apply {
+    padding: 0.5rem 1.1rem;
+    background: var(--c-primary); color: #fff; border: none;
+    border-radius: 30px; cursor: pointer;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.75rem; font-weight: 700; letter-spacing: 0.05em;
+    transition: background 0.15s;
+  }
+  .plano-confirm-apply:hover { background: var(--c-primary-dk); }
+  .plano-confirm-dismiss {
+    padding: 0.5rem 1.1rem;
+    background: transparent; color: var(--c-body);
+    border: 1.5px solid var(--c-border); border-radius: 30px; cursor: pointer;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.75rem; font-weight: 600; letter-spacing: 0.05em;
+    transition: border-color 0.15s, color 0.15s;
+  }
+  .plano-confirm-dismiss:hover { border-color: var(--c-body); color: var(--c-title); }
+
+  /* ── CONSULTA LIBRE WIDGET ── */
+  .clw-root {
+    border: 1.5px solid var(--c-border); border-radius: 6px;
+    background: var(--c-bg); overflow: hidden; margin-top: 1.5rem;
+  }
+  .clw-head {
+    display: flex; align-items: center; gap: 0.5rem;
+    padding: 0.85rem 1.1rem;
+    background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border);
+    font-family: var(--font-display), sans-serif; font-size: 0.72rem;
+    font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+    color: var(--c-title);
+  }
+  .clw-head-sub {
+    font-size: 0.68rem; font-weight: 400; color: var(--c-body);
+    letter-spacing: 0; text-transform: none; margin-left: 0.25rem;
+  }
+  .clw-msgs {
+    padding: 1rem 1.1rem; display: flex; flex-direction: column; gap: 0.85rem;
+    max-height: 340px; overflow-y: auto;
+    border-bottom: 1px solid var(--c-border);
+  }
+  .clw-msg { display: flex; gap: 0.6rem; align-items: flex-start; }
+  .clw-msg--user { flex-direction: row-reverse; }
+  .clw-avatar {
+    flex-shrink: 0; width: 26px; height: 26px; border-radius: 50%;
+    background: var(--c-primary); color: #fff;
+    font-family: var(--font-display), sans-serif; font-size: 0.55rem; font-weight: 800;
+    display: flex; align-items: center; justify-content: center;
+    letter-spacing: 0.04em;
+  }
+  .clw-bubble {
+    max-width: 82%; padding: 0.6rem 0.85rem; border-radius: 6px;
+    font-size: 0.88rem; line-height: 1.6; white-space: pre-wrap;
+    background: var(--c-bg-alt); color: var(--c-body);
+    border: 1px solid var(--c-border);
+  }
+  .clw-msg--user .clw-bubble {
+    background: var(--c-title); color: #fff; border-color: transparent;
+  }
+  .clw-bubble--loading {
+    display: flex; gap: 4px; align-items: center; padding: 0.65rem 0.85rem;
+  }
+  .clw-bubble--loading span {
+    width: 5px; height: 5px; border-radius: 50%; background: var(--c-primary);
+    animation: dotPulse 1.2s ease-in-out infinite;
+  }
+  .clw-bubble--loading span:nth-child(2) { animation-delay: 0.2s; }
+  .clw-bubble--loading span:nth-child(3) { animation-delay: 0.4s; }
+  .clw-input-row {
+    display: flex; gap: 0; padding: 0.65rem 0.75rem; gap: 0.5rem;
+    align-items: center;
+  }
+  .clw-input {
+    flex: 1; border: 1px solid var(--c-border); border-radius: 4px;
+    padding: 0.55rem 0.8rem;
+    font-family: var(--font-body), sans-serif; font-size: 0.88rem;
+    color: var(--c-title); background: var(--c-bg);
+    outline: none; transition: border-color 0.15s;
+  }
+  .clw-input:focus { border-color: var(--c-primary); }
+  .clw-input:disabled { opacity: 0.5; }
+  .clw-send {
+    flex-shrink: 0; width: 36px; height: 36px; border-radius: 4px;
+    background: var(--c-primary); color: #fff; border: none; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    transition: background 0.15s;
+  }
+  .clw-send:hover:not(:disabled) { background: var(--c-primary-dk); }
+  .clw-send:disabled { opacity: 0.4; cursor: default; }
+
+  /* ── REDUCED MOTION ── */
+  @media (prefers-reduced-motion: reduce) {
+    /* Reveal animation: remove opacity gate so content is always visible */
+    .step-anim { animation: none; }
+
+    /* Loading dots: show at full opacity, no pulse */
+    .loading-dots span { animation: none; opacity: 1; }
+
+    /* State transitions: instant; no lift */
+    .mode-card:hover { transform: none; }
+    .mode-card,
+    .mode-card-icon,
+    .mode-card-arrow,
+    .btn-pill,
+    .btn-outline,
+    .btn-back,
+    .q-option,
+    .q-option-dot,
+    .field-select,
+    .field-input,
+    .cap-card-cta,
+    .rec-card-choose,
+    .plano-upload-btn {
+      transition: none;
+    }
   }
 `;
