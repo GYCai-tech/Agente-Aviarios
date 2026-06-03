@@ -70,90 +70,60 @@ function GycLogoImg({ size = "md", white = false }: { size?: "sm" | "md" | "lg";
   );
 }
 
-// ── Plano generado por IA ─────────────────────────────────────────────────────
+// ── Plano de distribución (determinista) ──────────────────────────────────────
 
-function AiPlanoSection({
-  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie,
+function PlanoEmbed({
+  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles,
 }: {
   ancho_nave_m: number; largo_nave_m: number; gallinas: number;
-  sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; superficie: number;
+  sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; niveles?: number;
 }) {
-  const [svg, setSvg]       = useState<string | null>(null);
-  const [error, setError]   = useState<string | null>(null);
+  const [svg, setSvg]         = useState<string | null>(null);
+  const [error, setError]     = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
-
-    async function fetchPlano() {
-      setLoading(true);
-      setSvg(null);
-      setError(null);
+    async function load() {
+      setLoading(true); setSvg(null); setError(null);
       try {
-        // Primero obtenemos el layout real de módulos
-        const layoutRes = await fetch(`${backendUrl}/layout-nidal`, {
+        const res = await fetch("/api/plano-config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ancho_nave: ancho_nave_m,
-            largo_nave: largo_nave_m,
-            sistema,
+            ancho_nave_m, largo_nave_m,
+            tipo_zona, sistema, gallinas,
+            niveles: niveles ?? 2,
+            num_filas: 0, mods_por_fila: 0,
+            clearance_pared_m: 0.85, pasillo_m: 1.20,
+            clearance_lateral_m: 4.00, ancho_alero_m: 0,
           }),
         });
-        if (!layoutRes.ok) throw new Error("layout error");
-        const layout = await layoutRes.json();
-
-        // Luego pedimos el SVG a Gemini con el layout calculado
-        const planoRes = await fetch(`${backendUrl}/plano`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ancho_nave_m,
-            largo_nave_m,
-            filas: layout.filas ?? [],
-            tipo_zona,
-            gallinas,
-            sistema,
-            total_modulos: layout.total_modulos ?? 0,
-            yacija_interior_m2: layout.yacija_interior_m2 ?? 0,
-          }),
-        });
-        if (!planoRes.ok) throw new Error("plano error");
-        const data = await planoRes.json();
-        if (data.error || !data.svg) throw new Error(data.error ?? "SVG vacío");
-        setSvg(data.svg);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Error generando el plano");
+        const data = await res.json();
+        if (data.svg) setSvg(data.svg);
+        else setError(data.error ?? "Sin plano");
+      } catch {
+        setError("Error al generar el plano");
       } finally {
         setLoading(false);
       }
     }
-
-    fetchPlano();
-  }, [ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie]);
+    load();
+  }, [ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles]);
 
   if (loading) return (
     <div className="ai-plano-loading">
       <div className="ai-plano-dots"><span /><span /><span /></div>
-      <p>Generando plano con IA…</p>
+      <p>Calculando distribución de módulos…</p>
     </div>
   );
 
   if (error || !svg) return (
-    <NaveSchematic
-      superficie={superficie}
-      gallinas={gallinas}
-      tipoZona={tipo_zona}
-      requisitos={[]}
-    />
+    <div className="plano-embed-fallback">
+      <p>No se pudo generar el plano. <a href="/plano">Abrir editor →</a></p>
+    </div>
   );
 
-  return (
-    <div
-      className="ai-plano-svg"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
+  return <div className="plano-embed-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 // ── Plano esquemático (fallback) ──────────────────────────────────────────────
@@ -455,23 +425,12 @@ export default function PropuestaPage() {
                 <span className="dim-panel-title">Plano de distribución · vista de planta</span>
               </div>
               <div className="dim-plano">
-                {tieneNaveDims ? (
-                  <AiPlanoSection
-                    ancho_nave_m={anchoM}
-                    largo_nave_m={largoM}
-                    gallinas={parseInt(gallinas)}
-                    sistema={sistema}
-                    tipo_zona={tipo_zona}
-                    superficie={parseFloat(superficie)}
-                  />
-                ) : (
-                  <NaveSchematic
-                    superficie={parseFloat(superficie)}
-                    gallinas={parseInt(gallinas)}
-                    tipoZona={tipo_zona}
-                    requisitos={informe.requisitos}
-                  />
-                )}
+                <NaveSchematic
+                  superficie={parseFloat(superficie)}
+                  gallinas={parseInt(gallinas)}
+                  tipoZona={tipo_zona}
+                  requisitos={informe.requisitos}
+                />
               </div>
             </div>
           </div>
@@ -517,22 +476,43 @@ export default function PropuestaPage() {
         </section>
       )}
 
-      {/* ── NEXT STEP: Plano ───────────────────────────────────────── */}
-      <section className="section-plano-cta">
+      {/* ── PLANO EMBEBIDO ─────────────────────────────────────────── */}
+      <section className="section-plano-embed">
         <div className="wrap">
-          <div className="plano-cta-inner">
-            <div className="plano-cta-text">
-              <span className="plano-cta-eyebrow">Paso 6 de 6</span>
-              <h2 className="plano-cta-title">Ver plano de instalación</h2>
-              <p className="plano-cta-desc">Visualiza la disposición de los módulos en tu nave con dimensiones reales.</p>
-            </div>
-            <a href="/plano" className="plano-cta-btn">
-              Abrir editor de plano
-              <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true">
-                <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </a>
+          <div className="sec-header">
+            <h2 className="sec-title">Plano de distribución</h2>
+            <span className="sec-rule" />
           </div>
+          {tieneNaveDims ? (
+            <>
+              <PlanoEmbed
+                ancho_nave_m={anchoM}
+                largo_nave_m={largoM}
+                gallinas={parseInt(gallinas)}
+                sistema={sistema}
+                tipo_zona={tipo_zona}
+                niveles={nivelesEfectivos}
+              />
+              <div className="plano-edit-row">
+                <a href="/plano" className="plano-edit-link">
+                  Abrir editor interactivo
+                  <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
+                    <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="plano-no-dims">
+              <p>Introduce el ancho y largo de la nave en la calculadora para ver el plano de distribución.</p>
+              <a href="/plano" className="plano-edit-link">
+                Abrir editor de plano
+                <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
+                  <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+            </div>
+          )}
         </div>
       </section>
 
@@ -875,21 +855,22 @@ const BASE_CSS = `
   .arg-body strong { color: #ffffff; font-weight: 700; }
   .arg-body em { color: #8fd68f; font-style: normal; font-weight: 600; }
 
-  /* ── CTA ── */
-  /* ── Plano CTA ── */
-  .section-plano-cta { background: var(--c-title); padding: 3rem 0; border-top: 2px solid var(--c-primary); }
-  .plano-cta-inner { display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
-  .plano-cta-eyebrow { display: block; font-family: var(--font-display), sans-serif; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase; color: var(--c-primary); margin-bottom: 0.4rem; }
-  .plano-cta-title { font-family: var(--font-display), sans-serif; font-size: 1.52rem; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; margin-bottom: 0.3rem; }
-  .plano-cta-desc { font-size: 0.95rem; color: rgba(255,255,255,0.6); }
-  .plano-cta-btn {
-    display: inline-flex; align-items: center; gap: 0.6rem; flex-shrink: 0;
-    background: var(--c-primary); color: #fff; text-decoration: none;
-    border-radius: 30px; padding: 0.75rem 1.75rem;
-    font-family: var(--font-display), sans-serif; font-size: 0.8rem; font-weight: 700;
-    letter-spacing: 0.06em; text-transform: uppercase; transition: background 0.15s;
+  /* ── Plano embebido ── */
+  .section-plano-embed { background: var(--c-bg-alt); padding: 3rem 0; }
+  .plano-embed-svg { width: 100%; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,.1); }
+  .plano-embed-svg svg { display: block; width: 100%; height: auto; }
+  .plano-embed-fallback { padding: 2rem; text-align: center; color: var(--c-text-muted); font-size: 0.9rem; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
+  .plano-embed-fallback a { color: var(--c-primary); text-decoration: underline; }
+  .plano-edit-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
+  .plano-edit-link {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    color: var(--c-primary); font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; letter-spacing: 0.04em;
+    transition: opacity 0.15s;
   }
-  .plano-cta-btn:hover { background: var(--c-primary-dk); }
+  .plano-edit-link:hover { opacity: 0.7; }
+  .plano-no-dims { padding: 2.5rem; text-align: center; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
+  .plano-no-dims p { color: var(--c-text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
 
   .section-cta { background: var(--c-primary); padding: 2.5rem 0; }
   .cta-layout { display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
@@ -956,7 +937,6 @@ const BASE_CSS = `
     .features-grid { grid-template-columns: 1fr; }
 
     .cta-layout { flex-direction: column; align-items: flex-start; }
-    .plano-cta-inner { flex-direction: column; align-items: flex-start; }
   }
 
   @media print {
@@ -968,7 +948,7 @@ const BASE_CSS = `
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
 
     /* Ocultar elementos interactivos */
-    .jrn-hdr, .section-plano-cta, .section-cta, .ftr, .hdr-action, .ai-plano-loading { display: none !important; }
+    .jrn-hdr, .section-cta, .ftr, .hdr-action, .ai-plano-loading, .plano-edit-row { display: none !important; }
 
     body { background: #fff !important; font-size: 0.88rem; }
 
