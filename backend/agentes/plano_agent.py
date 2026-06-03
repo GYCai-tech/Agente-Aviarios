@@ -863,7 +863,7 @@ def _metricas_aviario(
     sup_disp         = total * sup_disp_por_mod + sup_ext
     # Yacija = suelo libre (nave menos huella de módulos) + superficies de plataformas por cada planta
     yacija  = (nave_m2 - huella + sup_ext) + total * sup_disp_por_mod
-    gal_max          = min(144 * total, int(densidad_max * sup_disp)) if total > 0 else 0
+    gal_max          = int(densidad_max * sup_disp) if total > 0 else 0
 
     aves_proyecto = gallinas_override if gallinas_override > 0 else gal_max
     densidad      = aves_proyecto / sup_disp if sup_disp > 0 else 0.0
@@ -899,7 +899,8 @@ def _metricas_nidal(
     yacija      = max(0.0, nave_m2 - huella - sup_slot + sup_ext)
     sup_efect   = nave_m2 - huella + sup_ext
     densidad    = gallinas / sup_efect if sup_efect > 0 and gallinas > 0 else 0.0
-    gal_max     = num_modulos * 144
+    densidad_max = 6.0 if sistema == "ecologico" else 9.0
+    gal_max      = min(num_modulos * 144, int(densidad_max * sup_efect)) if sup_efect > 0 else num_modulos * 144
     return MetricasPlano(
         num_filas=1,
         mods_por_fila=num_modulos,
@@ -944,11 +945,12 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 num_mods, cfg.gallinas, cfg.sistema,
                 ancho_alero_m=cfg.ancho_alero_m,
             )
+            dens_max_nidal = 6.0 if cfg.sistema == "ecologico" else 9.0
             parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas,
                               hoja="1 DE 1",
                               gallinas_max=metricas.gallinas_max,
                               densidad=metricas.densidad,
-                              densidad_max=9.0)
+                              densidad_max=dens_max_nidal)
             return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
 
         # ── Aviario ────────────────────────────────────────────────────
@@ -975,11 +977,12 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             cfg.gallinas, cfg.sistema, cfg.niveles,
             ancho_alero_m=cfg.ancho_alero_m,
         )
+        dens_max_cfg = 6.0 if cfg.sistema == "ecologico" else 9.0
         parts += _footer("aviario", cfg.nombre_cliente or "Propuesta GyC",
                          nf * mpf, cfg.gallinas, hoja="1 DE 1",
                          gallinas_max=metricas.gallinas_max,
                          densidad=metricas.densidad,
-                         densidad_max=9.0)
+                         densidad_max=dens_max_cfg)
         return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
 
     except Exception as exc:

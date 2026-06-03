@@ -252,7 +252,11 @@ export default function PropuestaPage() {
   const isAviario = tipo_zona === "aviario";
   const cumple = informe.cumple_nave;
   const fechaHoy = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
-  const numModulos = Math.ceil(parseInt(gallinas) / (isAviario ? 60 : 144));
+  const densMax = sistema === "ecologico" ? 6 : 9;
+  const supDispPorMod = nivelesEfectivos === 3 ? 16.194 : 13.18;
+  const numModulos = isAviario
+    ? Math.ceil(parseInt(gallinas) / Math.floor(densMax * supDispPorMod))
+    : Math.ceil(parseInt(gallinas) / 144);
   const densidadVerif = informe.verificaciones_nave.find(v => v.parametro.toLowerCase().includes("densidad"));
   const densidadReal = densidadVerif ? densidadVerif.valor_real.toFixed(1) : "—";
   const densidadLimite = densidadVerif ? densidadVerif.valor_limite : 9;
