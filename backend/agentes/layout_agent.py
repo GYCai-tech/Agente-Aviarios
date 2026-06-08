@@ -4,6 +4,7 @@ Gemini razona las posibilidades de configuración en planta y verifica
 constraints duras (yacija, densidad, dimensional) con herramientas Python.
 Si la yacija interior no es suficiente, indica el déficit y solicita exterior.
 """
+from __future__ import annotations
 import json
 import logging
 import math
