@@ -152,112 +152,90 @@ function ParqueSelector({ op }: { op: OpcionCapacidad }) {
 
 // ── Guía de selección de sistema ──────────────────────────────────────────────
 
+const PREGUNTAS_GUIA = [
+  {
+    texto: "¿Qué modelo de gestión de tiempos y mantenimiento diario se adapta mejor a la rutina de su equipo de trabajo?",
+    a: "Mantenimiento simplificado y lineal: prefiero concentrar los esfuerzos en un solo plano de trabajo, facilitando una limpieza de componentes muy rápida y directa.",
+    b: "Gestión técnica especializada: asumo un protocolo de supervisión estructurado por niveles a cambio de maximizar la automatización y el rendimiento de cada rincón de la nave.",
+  },
+  {
+    texto: "Respecto a la logística de limpieza y retirada de la gallinaza, ¿qué estrategia operativa prefiere implementar en esta instalación?",
+    a: "Manejo tradicional acumulativo: prefiero un sistema que permita retirar la gallinaza principalmente al final del ciclo de producción, simplificando la logística diaria.",
+    b: "Evacuación automatizada continua: opto por el uso de cintas transportadoras integradas bajo los niveles para retirar los residuos de forma frecuente, manteniendo la nave en un estado de higiene constante.",
+  },
+  {
+    texto: "¿Qué tipo de acondicionamiento de obra civil e inversión en infraestructura base encaja mejor con la planificación de su terreno?",
+    a: "Obra civil ligera y adaptable: prefiero una adecuación de solera estándar, minimizando los requisitos de cimentación pesada o fosos específicos para arrancar el proyecto con agilidad.",
+    b: "Infraestructura de alta ingeniería: apuesto por un acondicionamiento robusto y de precisión, preparado para soportar cargas verticales elevadas y optimizar el guiado de los sistemas automatizados.",
+  },
+  {
+    texto: "Al evaluar el arranque y la meta de este proyecto, ¿cuál es la prioridad estratégica para su plan de negocio?",
+    a: "Puesta en marcha noble y uso sencillo: priorizo un comienzo ágil y un manejo intuitivo desde el primer día, donde las aves se adaptan de forma natural y sin complicaciones de entrenamiento.",
+    b: "Máxima densidad y aceleración del ROI: priorizo exprimir al máximo la capacidad volumétrica de la nave actual para diluir los costes fijos y multiplicar la producción desde el inicio.",
+  },
+  {
+    texto: "¿Cómo proyecta la evolución y la flexibilidad del espacio interior de su nave de cara a los próximos años?",
+    a: "Versatilidad y diversificación: prefiero mantener un espacio diáfano a un solo nivel que me dé la libertad de reconfigurar o desmontar la nave fácilmente si el mercado o mis objetivos cambian a futuro.",
+    b: "Especialización tecnológica a largo plazo: busco consolidar una planta de producción vertical avanzada e integrada, blindando la competitividad de la granja en mercados de alto volumen.",
+  },
+] as const;
+
 function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
-  const [resp, setResp] = useState<Record<string, string>>({});
+  const [resp, setResp] = useState<Record<number, "a" | "b">>({});
 
-  const viables    = opciones.filter(o => o.viable);
-  const tieneNidal = viables.some(o => o.sistema === "nidal_colectivo");
-  const tieneAv2   = viables.some(o => o.sistema === "aviario_2_niveles");
-  const tieneAv3   = viables.some(o => o.sistema === "aviario_3_niveles");
-  const tieneAv    = tieneAv2 || tieneAv3;
-  const tieneParque= viables.some(o => (o.parque_invierno_m2 ?? 0) > 0);
+  const viables  = opciones.filter(o => o.viable);
+  const opNidal  = viables.find(o => o.sistema === "nidal_colectivo");
+  const opAv3    = viables.find(o => o.sistema === "aviario_3_niveles");
+  const opAv2    = viables.find(o => o.sistema === "aviario_2_niveles");
 
-  type Pregunta = { id: string; texto: string; opts: { val: string; txt: string }[] };
-  const preguntas: Pregunta[] = [];
+  const totalPreguntas = PREGUNTAS_GUIA.length;
+  const respondidas    = Object.keys(resp).length;
+  const allAnswered    = respondidas === totalPreguntas;
 
-  if (tieneNidal && tieneAv)
-    preguntas.push({ id: "objetivo", texto: "¿Cuál es el objetivo principal?", opts: [
-      { val: "maximo",     txt: "Alojar el mayor número de gallinas posible" },
-      { val: "sencillez",  txt: "Instalación simple, fácil de mantener" },
-      { val: "equilibrio", txt: "Buen balance entre capacidad e inversión" },
-    ]});
-  else if (!tieneAv)
-    preguntas.push({ id: "objetivo", texto: "¿Qué prioriza en la instalación?", opts: [
-      { val: "bienestar",  txt: "Bienestar animal y cumplimiento normativo" },
-      { val: "sencillez",  txt: "Facilidad de manejo y limpieza diaria" },
-    ]});
+  const firstUnanswered = PREGUNTAS_GUIA.findIndex((_, i) => resp[i] === undefined);
+  const visibleCount    = firstUnanswered === -1 ? totalPreguntas : firstUnanswered + 1;
 
-  if (tieneAv2 && tieneAv3 && resp.objetivo !== "sencillez" && resp.objetivo !== "bienestar")
-    preguntas.push({ id: "inversion", texto: "¿Qué nivel de inversión busca?", opts: [
-      { val: "alta",     txt: "Máxima capacidad, mayor inversión inicial" },
-      { val: "moderada", txt: "Alta capacidad con inversión más contenida" },
-    ]});
-
-  if (tieneParque && resp.objetivo !== "sencillez" && resp.objetivo !== "bienestar")
-    preguntas.push({ id: "parque", texto: "¿Dispone de terreno para parque de invierno?", opts: [
-      { val: "si", txt: "Sí, hay terreno disponible junto a la nave" },
-      { val: "no", txt: "No, solo la superficie de nave actual" },
-    ]});
-
-  // Calcula recomendación
-  function recomendar(): { sistema: string; conParque: boolean; titulo: string; argumento: string } | null {
-    const respondidas = preguntas.filter(p => resp[p.id]);
-    if (respondidas.length < preguntas.length) return null;
-
-    const obj    = resp.objetivo;
-    const inv    = resp.inversion;
-    const parque = resp.parque === "si";
-    const opNidal = viables.find(o => o.sistema === "nidal_colectivo");
-    const opAv2   = viables.find(o => o.sistema === "aviario_2_niveles");
-    const opAv3   = viables.find(o => o.sistema === "aviario_3_niveles");
-
-    if (obj === "sencillez" || obj === "bienestar") return {
-      sistema: "nidal_colectivo", conParque: false,
-      titulo: opNidal?.label ?? "Nidal A-Nida",
-      argumento: `La instalación más sencilla de manejar y limpiar. Cada módulo aloja 144 aves a nivel de suelo, sin estructuras en altura. Mínimo mantenimiento, máximo bienestar animal y cumplimiento garantizado de normativa campero/ecológico.`,
+  function recomendar(): { titulo: string; argumento: string } {
+    const countB = Object.values(resp).filter(v => v === "b").length;
+    if (countB >= 3) {
+      const op = opAv3 ?? opAv2;
+      return {
+        titulo: op?.label ?? "Aviario Industrial",
+        argumento: "Su perfil operativo encaja con el Aviario Industrial: busca maximizar la capacidad de la nave, asumir automatización avanzada y consolidar una planta de alto volumen. La estructura multicuerpo multiplica la producción sin ampliar la huella y acelera el retorno de la inversión.",
+      };
+    }
+    return {
+      titulo: opNidal?.label ?? "Nidal colectivo A-Nida",
+      argumento: "Su perfil apunta hacia el Nidal A-Nida: prioriza la sencillez de manejo, la flexibilidad del espacio y una puesta en marcha ágil. La instalación a nivel de suelo simplifica el día a día y permite reconversiones futuras sin comprometer la infraestructura.",
     };
-
-    if ((obj === "maximo" || inv === "alta") && tieneAv3 && opAv3) {
-      const aves = parque ? opAv3.max_gallinas : (opAv3.gallinas_opcion_a ?? opAv3.max_gallinas);
-      return {
-        sistema: "aviario_3_niveles", conParque: parque,
-        titulo: opAv3.label + (parque ? " · Con parque" : " · Sin parque"),
-        argumento: `Máxima densidad permitida por normativa: ${aves.toLocaleString("es-ES")} aves con ${parque ? opAv3.num_modulos : (opAv3.modulos_opcion_a ?? opAv3.num_modulos)} módulos. La opción de mayor retorno por m² de nave. Estructura de acero galvanizado con vida útil superior a 20 años.`,
-      };
-    }
-
-    if ((obj === "equilibrio" || inv === "moderada" || obj === "maximo") && tieneAv2 && opAv2) {
-      const aves = parque ? opAv2.max_gallinas : (opAv2.gallinas_opcion_a ?? opAv2.max_gallinas);
-      return {
-        sistema: "aviario_2_niveles", conParque: parque,
-        titulo: opAv2.label + (parque ? " · Con parque" : " · Sin parque"),
-        argumento: `${aves.toLocaleString("es-ES")} aves aprovechando la altura de la nave existente${opNidal ? `, frente a ${opNidal.max_gallinas.toLocaleString("es-ES")} con nidal` : ""}. Inversión moderada con rápido retorno. Compatible con producción libre de jaulas.`,
-      };
-    }
-
-    return null;
   }
 
-  const rec = recomendar();
-  const preguntasVisibles = preguntas.slice(0, preguntas.findIndex(p => !resp[p.id]) + 1 || preguntas.length);
-
-  function reset() { setResp({}); }
+  const rec = allAnswered ? recomendar() : null;
 
   return (
     <div className="cap-guide">
       <div className="cap-guide-header">
         <span className="cap-guide-eyebrow">Asistente de selección</span>
         <h3 className="cap-guide-title">Ayuda para elegir el sistema ideal</h3>
+        <div className="cap-guide-progress">
+          <div className="cap-guide-progress-fill" style={{ width: `${(respondidas / totalPreguntas) * 100}%` }} />
+        </div>
       </div>
       <div className="cap-guide-body">
-        {preguntasVisibles.map((p, i) => (
-          <div key={p.id} className={`cap-guide-q${resp[p.id] ? " is-answered" : " is-active"}`}>
+        {PREGUNTAS_GUIA.slice(0, visibleCount).map((p, i) => (
+          <div key={i} className={`cap-guide-q${resp[i] !== undefined ? " is-answered" : " is-active"}`}>
             <div className="cap-guide-q-num">{i + 1}</div>
             <div className="cap-guide-q-content">
               <p className="cap-guide-q-texto">{p.texto}</p>
               <div className="cap-guide-opts">
-                {p.opts.map(o => (
+                {(["a", "b"] as const).map(val => (
                   <button
-                    key={o.val}
-                    className={`cap-guide-opt${resp[p.id] === o.val ? " is-selected" : ""}`}
-                    onClick={() => setResp(r => ({ ...r, [p.id]: o.val }))}
+                    key={val}
+                    className={`cap-guide-opt${resp[i] === val ? " is-selected" : ""}`}
+                    onClick={() => setResp(r => ({ ...r, [i]: val }))}
                   >
-                    {resp[p.id] === o.val && (
-                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
-                        <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-                      </svg>
-                    )}
-                    {o.txt}
+                    <span className="cap-guide-opt-letter">{val.toUpperCase()}</span>
+                    <span className="cap-guide-opt-text">{p[val]}</span>
                   </button>
                 ))}
               </div>
@@ -270,7 +248,7 @@ function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
             <div className="cap-guide-rec-tag">Sistema recomendado</div>
             <div className="cap-guide-rec-titulo">{rec.titulo}</div>
             <p className="cap-guide-rec-arg">{rec.argumento}</p>
-            <button className="cap-guide-reset" onClick={reset}>Cambiar respuestas</button>
+            <button className="cap-guide-reset" onClick={() => setResp({})}>Cambiar respuestas</button>
           </div>
         )}
       </div>
@@ -2083,28 +2061,48 @@ const CHAT_CSS = `
   }
   .cap-guide-opts {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 0.5rem;
   }
   .cap-guide-opt {
-    display: inline-flex; align-items: center; gap: 0.35rem;
-    padding: 0.4rem 0.9rem;
+    display: flex; align-items: flex-start; gap: 0.75rem; text-align: left;
+    padding: 0.8rem 1rem;
     border: 1.5px solid var(--c-border);
-    border-radius: 4px;
+    border-radius: 6px;
     background: var(--c-bg);
-    font-size: 0.82rem; font-weight: 600;
+    font-size: 0.85rem; font-weight: 400; line-height: 1.55;
     color: var(--c-body);
     cursor: pointer;
     transition: border-color 0.15s, background 0.15s, color 0.15s;
   }
-  .cap-guide-opt:hover {
-    border-color: var(--c-primary);
-    color: var(--c-primary);
-  }
+  .cap-guide-opt:hover { border-color: #2d5a27; }
   .cap-guide-opt.is-selected {
-    border-color: var(--c-primary);
-    background: var(--c-primary);
-    color: #fff;
+    border-color: #2d5a27;
+    background: #eaf2e8;
+    color: #1e3d1b;
+  }
+  .cap-guide-opt-letter {
+    flex-shrink: 0;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    border: 1.5px solid currentColor;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.65rem; font-weight: 700;
+    margin-top: 0.1rem;
+    opacity: 0.6;
+  }
+  .cap-guide-opt.is-selected .cap-guide-opt-letter {
+    background: #2d5a27; border-color: #2d5a27; color: #fff; opacity: 1;
+  }
+  .cap-guide-opt-text { flex: 1; }
+  .cap-guide-progress {
+    height: 3px; background: #e5e7eb; border-radius: 2px;
+    margin-top: 0.65rem; overflow: hidden;
+  }
+  .cap-guide-progress-fill {
+    height: 100%; background: #2d5a27; border-radius: 2px;
+    transition: width 0.35s ease;
   }
   .cap-guide-rec {
     margin-top: 0.5rem;
