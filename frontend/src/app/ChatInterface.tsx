@@ -192,8 +192,7 @@ function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
   const respondidas    = Object.keys(resp).length;
   const allAnswered    = respondidas === totalPreguntas;
 
-  const firstUnanswered = PREGUNTAS_GUIA.findIndex((_, i) => resp[i] === undefined);
-  const visibleCount    = firstUnanswered === -1 ? totalPreguntas : firstUnanswered + 1;
+  const currentIdx = PREGUNTAS_GUIA.findIndex((_, i) => resp[i] === undefined);
 
   function recomendar(): { titulo: string; argumento: string } {
     const countB = Object.values(resp).filter(v => v === "b").length;
@@ -222,8 +221,8 @@ function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
         </div>
       </div>
       <div className="cap-guide-body">
-        {PREGUNTAS_GUIA.slice(0, visibleCount).map((p, i) => (
-          <div key={i} className={`cap-guide-q${resp[i] !== undefined ? " is-answered" : " is-active"}`}>
+        {!allAnswered && currentIdx !== -1 && (() => { const i = currentIdx; const p = PREGUNTAS_GUIA[i]; return (
+          <div key={i} className="cap-guide-q is-active">
             <div className="cap-guide-q-num">{i + 1}</div>
             <div className="cap-guide-q-content">
               <p className="cap-guide-q-texto">{p.texto}</p>
@@ -241,7 +240,7 @@ function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
               </div>
             </div>
           </div>
-        ))}
+        ); })()}
 
         {rec && (
           <div className="cap-guide-rec">
@@ -1477,6 +1476,7 @@ const CHAT_CSS = `
   }
   .chat-intro-inner {
     padding: 2.75rem clamp(1rem, 4vw, 3rem) 2.25rem;
+    display: flex; flex-direction: column; align-items: center; text-align: center;
   }
   .chat-eyebrow {
     font-size: 0.68rem; color: var(--c-primary); margin-bottom: 0.55rem;
@@ -1491,7 +1491,7 @@ const CHAT_CSS = `
   .chat-tagline {
     font-size: 1rem; color: rgba(255,255,255,0.62);
     margin-top: 0.75rem; font-weight: 300; line-height: 1.65;
-    max-width: 52ch;
+    max-width: 48ch;
   }
 
   /* ── MAIN ── */
