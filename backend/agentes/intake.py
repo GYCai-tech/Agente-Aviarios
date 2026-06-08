@@ -4,11 +4,34 @@ from typing import Literal, Optional
 import numpy as np
 from scipy.optimize import milp, LinearConstraint, Bounds
 from pydantic import BaseModel, Field
+from agentes.nidal_layout import maximizar_nidal, ResultadoMaximizacion
 
 
 Sistema = Literal["suelo", "campero", "ecologico", "jaulas"]
 TipoNidal = Literal["individual", "colectivo"]
 TipoZona = Literal["nidal_colectivo", "aviario"]
+
+# ── Normativa de densidad por sistema ─────────────────────────────────────────
+# Para campero/ecológico la zona exterior computa en la base de densidad.
+_DENSIDAD_MAX: dict[str, float] = {
+    "suelo":     9.0,   # RD 3/2002 Anexo II
+    "campero":   6.0,   # Regl. CE 589/2008
+    "ecologico": 4.0,   # Regl. UE 2018/848
+    "jaulas":    9.0,
+}
+
+def _densidad_max_para(sistema: str) -> float:
+    return _DENSIDAD_MAX.get(sistema, 9.0)
+
+def _sup_base_nidal(sistema: str, sup_nave: float, sup_cuerpo: float,
+                    sup_exterior: float) -> float:
+    """Superficie base para calcular densidad normativa con nidal colectivo.
+    Campero/ecológico: interior − cuerpo + exterior.
+    Suelo/jaulas: solo interior − cuerpo."""
+    base = sup_nave - sup_cuerpo
+    if sistema in ("campero", "ecologico"):
+        base += sup_exterior
+    return max(base, 0.01)
 
 
 class DatosBasicos(BaseModel):
@@ -18,6 +41,7 @@ class DatosBasicos(BaseModel):
     altura_nave_cm: float
     ancho_nave_m: Optional[float] = None
     largo_nave_m: Optional[float] = None
+    sup_exterior_m2: Optional[float] = None   # zona exterior anexa (solo suelo)
 
 
 # Mantener alias para no romper código existente
@@ -46,16 +70,21 @@ class ResultadoFactibilidad(BaseModel):
     # Ajustes cuando aviario excede límite (o no cabe)
     sup_minima_avi: Optional[float] = None
     gallinas_max_avi: Optional[int] = None
+    # Resultado de maximización de nidal (nuevo flujo suelo)
+    maximizacion_nidal: Optional[ResultadoMaximizacion] = None
 
 
 def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    densidad_max = _densidad_max_para(datos.sistema)
     niveles = _niveles_aviario(datos.altura_nave_cm)
 
-    # Densidad con nidal (descontando solo cuerpo del módulo)
+    # Para campero/ecológico la zona exterior computa en la base de densidad
+    sup_ext = (datos.sup_exterior_m2 or 0.0) if datos.sistema in ("campero", "ecologico") else 0.0
+
+    # Densidad con nidal (descontando solo cuerpo del módulo; exterior suma en campero/eco)
     num_mod_nidal = math.ceil(datos.num_gallinas / 144)
     sup_cuerpo = round(num_mod_nidal * 1.20 * 1.40, 2)
-    sup_nidal = max(datos.superficie_nave_m2 - sup_cuerpo, 0.01)
+    sup_nidal = _sup_base_nidal(datos.sistema, datos.superficie_nave_m2, sup_cuerpo, sup_ext)
     densidad_nidal = round(datos.num_gallinas / sup_nidal, 2)
 
     # Densidad mínima alcanzable (aviario con todos los módulos que caben)
@@ -126,6 +155,21 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         sup_minima_avi = math.ceil(mods_needed * _AVI_HUELLA_M2 * 10) / 10
         gallinas_max_avi = None  # no aplica si no hay altura suficiente
 
+    # ── Maximización de nidal (solo para "suelo" con dimensiones disponibles) ──
+    maximizacion: Optional[ResultadoMaximizacion] = None
+    if (
+        datos.sistema in ("suelo", "campero", "ecologico")
+        and datos.ancho_nave_m is not None
+        and datos.largo_nave_m is not None
+    ):
+        maximizacion = maximizar_nidal(
+            ancho_nave=datos.ancho_nave_m,
+            largo_nave=datos.largo_nave_m,
+            gallinas=datos.num_gallinas,
+            sistema=datos.sistema,
+            sup_exterior_m2=datos.sup_exterior_m2 or 0.0,
+        )
+
     return ResultadoFactibilidad(
         factible=factible,
         densidad_actual=densidad_nidal,
@@ -138,6 +182,7 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         gallinas_max_nidal=gallinas_max_nidal,
         sup_minima_avi=sup_minima_avi,
         gallinas_max_avi=gallinas_max_avi,
+        maximizacion_nidal=maximizacion,
     )
 
 
@@ -165,8 +210,30 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
     """
     Genera las preguntas al cliente solo cuando tanto nidal como aviario son viables.
     Si una sola opción es técnicamente posible, no se pregunta y se recomienda directamente.
+    Para "suelo" con maximización disponible, añade la pregunta de zona exterior si
+    el escenario interior no cumple normativa para el número de gallinas objetivo.
     """
     preguntas: list[Pregunta] = []
+
+    # ── Pregunta de zona exterior (suelo: compensa densidad y yacija) ──────────
+    mx = factibilidad.maximizacion_nidal
+    if mx and mx.viable and mx.interior and not mx.interior.cumple:
+        preguntas.append(Pregunta(
+            id="zona_exterior",
+            texto=(
+                f"Con la nave actual ({mx.sup_nave_m2:.0f} m²) el máximo de gallinas "
+                f"cumpliendo normativa es {mx.interior.gallinas_max:,}. "
+                f"¿Dispone de zona exterior anexa a la nave que pueda incluirse "
+                f"en el cálculo de superficie? Si es así, ¿cuántos m² tiene?"
+            ),
+            tipo="opcion_unica",
+            opciones=[
+                Opcion(id="no", texto="No, solo cuento con la superficie de la nave"),
+                Opcion(id="si_pequeña",  texto="Sí, menos de 200 m² adicionales"),
+                Opcion(id="si_mediana",  texto="Sí, entre 200 y 500 m² adicionales"),
+                Opcion(id="si_grande",   texto="Sí, más de 500 m² adicionales"),
+            ],
+        ))
 
     nidal_viable  = factibilidad.densidad_actual <= factibilidad.densidad_max
     aviario_viable = (
@@ -209,7 +276,7 @@ def preguntas_dinamicas(factibilidad: ResultadoFactibilidad) -> list[Pregunta]:
         tipo="opcion_unica",
         opciones=[
             Opcion(id="maximizar_produccion", texto="Maximizar el número de gallinas por m²"),
-            Opcion(id="bienestar",            texto="Priorizar el bienestar animal y la calidad del huevo"),
+            Opcion(id="bienestar",            texto="Priorizar el bienestar animal"),
             Opcion(id="minima_inversion",     texto="Minimizar la inversión inicial"),
         ],
     ))
@@ -467,15 +534,16 @@ _NIDAL_HUELLA_TOTAL = round(_NIDAL_CUERPO + _NIDAL_SUP_SLOT, 4)        # 8.88 m�
 
 def _optimo_nidal_iterativo(S: float, densidad_max: float,
                              largo_nave: float | None,
-                             ancho_nave: float | None) -> tuple[int, int]:
+                             ancho_nave: float | None,
+                             sup_exterior: float = 0.0) -> tuple[int, int]:
     """
     Algoritmo iterativo geométrico:
       Paso 1 — N_max = floor(largo / 1.20)
       Paso 2 — gallinas = N × 144
-      Paso 3 — sup_disponible = S − N × 1.68  (densidad: descuenta solo cuerpo)
-      Paso 4 — sup_yacija = S − N × 8.88  (cuerpo + 3m slot cada lado)
+      Paso 3 — sup_efectiva = S − N × 1.68 [+ sup_exterior en campero/eco]
+               Densidad = gallinas / sup_efectiva ≤ densidad_max
+      Paso 4 — sup_yacija = S − N × 8.88  (cuerpo + 3m slot cada lado; siempre interior)
                Requiere: sup_yacija ≥ S / 3
-      Paso 5 — densidad = gallinas / sup_disponible ≤ densidad_max
     Si no cumple, N -= 1 y se repite.
     """
     if largo_nave is not None:
@@ -486,12 +554,12 @@ def _optimo_nidal_iterativo(S: float, densidad_max: float,
 
     for N in range(N_max, 0, -1):
         sup_cuerpo = N * _NIDAL_CUERPO
-        sup_efectiva = S - sup_cuerpo
+        sup_efectiva = S - sup_cuerpo + sup_exterior
         if sup_efectiva <= 0:
             continue
         gallinas = N * _NIDAL_CAP
         densidad = gallinas / sup_efectiva
-        sup_yacija = S - N * _NIDAL_HUELLA_TOTAL
+        sup_yacija = S - N * _NIDAL_HUELLA_TOTAL   # yacija: solo interior
         if densidad <= densidad_max and sup_yacija >= S / 3:
             return N, gallinas
 
@@ -499,15 +567,16 @@ def _optimo_nidal_iterativo(S: float, densidad_max: float,
 
 
 def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    densidad_max = _densidad_max_para(datos.sistema)
+    sup_ext = (datos.sup_exterior_m2 or 0.0) if datos.sistema in ("campero", "ecologico") else 0.0
     S = datos.superficie_nave_m2
     opciones: list[OpcionCapacidad] = []
 
     # ── Nidal colectivo — iterativo geométrico (slot 3 m fijo, 1 fila) ──
-    m_opt, n_opt = _optimo_nidal_iterativo(S, densidad_max, datos.largo_nave_m, datos.ancho_nave_m)
+    m_opt, n_opt = _optimo_nidal_iterativo(S, densidad_max, datos.largo_nave_m, datos.ancho_nave_m, sup_exterior=sup_ext)
 
     if n_opt > 0:
-        sup_disp   = round(S - m_opt * _NIDAL_CUERPO, 2)
+        sup_disp   = round(S - m_opt * _NIDAL_CUERPO + sup_ext, 2)
         sup_yacija = round(S - m_opt * _NIDAL_HUELLA_TOTAL, 2)
         opciones.append(OpcionCapacidad(
             sistema="nidal_colectivo",
@@ -577,9 +646,10 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
             dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
 
-        sup_yacija_av = S
+        # Yacija = suelo libre (nave menos huella) + superficies de plataformas de cada planta
+        sup_yacija_av = round(max(0.0, S - num_mod_avi * _AVI_HUELLA_M2 + sup_disp), 1)
         yacija_min_av = round((S + sup_disp) / 3, 1)
-        yacija_pct_av = round(S / (S + sup_disp) * 100, 1) if (S + sup_disp) > 0 else 0.0
+        yacija_pct_av = round(sup_yacija_av / (S + sup_disp) * 100, 1) if (S + sup_disp) > 0 else 0.0
         parque_m2 = max(0.0, round((sup_disp - 2 * S) / 2, 1))
         sup_disp_por_mod = _AVI_SUP_DISP[niveles]
         if parque_m2 > 0:
@@ -636,12 +706,13 @@ def recomendar_zona(datos: DatosRecomendacion, respuestas: dict[str, str] | None
     respuestas = respuestas or {}
     niveles_posibles = _niveles_aviario(datos.altura_nave_cm)
     densidad_bruta = datos.num_gallinas / datos.superficie_nave_m2
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    densidad_max = _densidad_max_para(datos.sistema)
+    sup_ext_rec = (getattr(datos, "sup_exterior_m2", None) or 0.0) if datos.sistema in ("campero", "ecologico") else 0.0
 
-    # Densidad efectiva con nidal colectivo: descontar huella real de módulos
+    # Densidad efectiva con nidal colectivo: descontar huella real de módulos (+ exterior campero/eco)
     num_modulos = math.ceil(datos.num_gallinas / 144)
     sup_modulos = round(num_modulos * 1.20 * 1.40, 2)
-    sup_efectiva_nidal = datos.superficie_nave_m2 - sup_modulos
+    sup_efectiva_nidal = datos.superficie_nave_m2 - sup_modulos + sup_ext_rec
     densidad_nidal = (
         datos.num_gallinas / sup_efectiva_nidal if sup_efectiva_nidal > 0 else float("inf")
     )

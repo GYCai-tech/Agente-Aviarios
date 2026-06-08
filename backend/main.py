@@ -1,5 +1,7 @@
 import logging
 import os
+import base64
+import json as _json
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -10,7 +12,9 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-from fastapi import FastAPI
+import google.generativeai as _genai
+from fastapi import FastAPI, File, UploadFile
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from schemas.pydantic_models import (
     QueryRequest, QueryResponse, ValidarRequest, ValidarResponse,
@@ -22,7 +26,7 @@ from agentes.grafo import app as grafo
 from agentes.semantic_cache import inicializar_cache
 from agentes.validador_legal import validar_conformidad, calcular_granja
 from agentes.intake import generar_informe, recomendar_zona, consulta_ventas, calcular_factibilidad, preguntas_dinamicas, calcular_capacidad, ResultadoCapacidad
-from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal
+from agentes.nidal_layout import optimizar_nidal, ResultadoLayoutNidal, maximizar_nidal, ResultadoMaximizacion
 from agentes.plano_agent import (
     PlanoRequest, PlanoResponse, generar_plano_svg,
     LayoutConfig, LayoutConfigResponse, generar_desde_config,
@@ -37,6 +41,14 @@ async def lifespan(app: FastAPI):
     yield
 
 app = FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 @app.post("/query", response_model=QueryResponse)
@@ -80,6 +92,25 @@ class LayoutNidalRequest(BaseModel):
 @app.post("/layout-nidal", response_model=ResultadoLayoutNidal)
 def layout_nidal(request: LayoutNidalRequest):
     return optimizar_nidal(request.ancho_nave, request.largo_nave, request.sistema)
+
+
+class MaximizarNidalRequest(BaseModel):
+    ancho_nave: float
+    largo_nave: float
+    gallinas: int
+    sistema: str = "suelo"
+    sup_exterior_m2: float = 0.0
+
+
+@app.post("/maximizar-nidal", response_model=ResultadoMaximizacion)
+def maximizar_nidal_endpoint(request: MaximizarNidalRequest):
+    return maximizar_nidal(
+        ancho_nave=request.ancho_nave,
+        largo_nave=request.largo_nave,
+        gallinas=request.gallinas,
+        sistema=request.sistema,
+        sup_exterior_m2=request.sup_exterior_m2,
+    )
 
 
 @app.post("/recomendar")
@@ -218,6 +249,114 @@ def plano(request: PlanoRequest):
 @app.post("/plano-config", response_model=LayoutConfigResponse)
 def plano_config(request: LayoutConfig):
     return generar_desde_config(request)
+
+
+class PlanoImagenResponse(BaseModel):
+    ancho_m: float | None = None
+    largo_m: float | None = None
+    altura_cm: float | None = None
+    confianza: float = 0.0
+    notas: str = ""
+
+
+@app.post("/analizar-plano-imagen", response_model=PlanoImagenResponse)
+async def analizar_plano_imagen(file: UploadFile = File(...)):
+    contents = await file.read()
+    mime_type = file.content_type or "image/jpeg"
+    b64 = base64.b64encode(contents).decode()
+
+    _genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    model = _genai.GenerativeModel("gemini-2.0-flash")
+
+    prompt = (
+        "Analiza esta imagen. Puede ser un plano arquitectónico, fotografía de una nave agrícola "
+        "o avícola, croquis, o cualquier imagen que muestre dimensiones de un edificio o recinto.\n\n"
+        "Extrae las siguientes medidas si son visibles:\n"
+        "- ancho_m: dimensión más corta de la nave en metros (número decimal)\n"
+        "- largo_m: dimensión más larga de la nave en metros (número decimal)\n"
+        "- altura_cm: altura libre interior si aparece (en centímetros, número decimal)\n\n"
+        "Responde ÚNICAMENTE con JSON válido sin markdown ni texto adicional:\n"
+        '{"ancho_m":<float|null>,"largo_m":<float|null>,"altura_cm":<float|null>,'
+        '"confianza":<0.0-1.0>,"notas":"<descripción breve en español de lo detectado>"}'
+    )
+
+    try:
+        response = model.generate_content([
+            {"inline_data": {"mime_type": mime_type, "data": b64}},
+            prompt,
+        ])
+        text = response.text.strip()
+        if "```" in text:
+            text = text.split("```")[1].lstrip("json").strip()
+        parsed = _json.loads(text)
+        return PlanoImagenResponse(**{k: parsed.get(k) for k in PlanoImagenResponse.model_fields})
+    except Exception as e:
+        logging.error(f"Error analizando plano: {e}")
+        return PlanoImagenResponse(notas="No se pudieron extraer dimensiones de la imagen.")
+
+
+class ConsultaLibreRequest(BaseModel):
+    pregunta: str
+    num_gallinas: int
+    sistema: str
+    superficie_nave_m2: float
+    altura_nave_cm: float
+    tipo_zona: str | None = None
+
+
+class ConsultaLibreResponse(BaseModel):
+    respuesta: str
+
+
+@app.post("/consulta-libre", response_model=ConsultaLibreResponse)
+async def consulta_libre(request: ConsultaLibreRequest):
+    from agentes.retriever import retriever_context
+    from agentes.reranker import reranking
+
+    sistema_label = {
+        "suelo": "en suelo", "campero": "campero",
+        "ecologico": "ecológico", "jaulas": "en jaulas enriquecidas",
+    }.get(request.sistema, request.sistema)
+
+    producto_label = "aviario industrial multinivel" if request.tipo_zona == "aviario" else "nidal colectivo A-Nida"
+
+    query_enriquecida = (
+        f"Granja de {request.num_gallinas} gallinas en sistema {sistema_label}, "
+        f"nave de {request.superficie_nave_m2} m², altura {request.altura_nave_cm} cm, "
+        f"producto recomendado: {producto_label}. "
+        f"Pregunta del cliente: {request.pregunta}"
+    )
+
+    chunks = retriever_context(
+        text=query_enriquecida,
+        model=os.getenv("EMBEDDING_MODEL"),
+        api=os.getenv("GOOGLE_API_KEY"),
+        collection_name=os.getenv("COLLECTION_NAME", "normativa_aviario"),
+    )
+    chunks = reranking(query=query_enriquecida, chunks=chunks)
+    contexto = "\n\n".join(c["contenido"] for c in chunks[:6])
+
+    system_prompt = (
+        "Eres el asesor técnico-comercial de Gómez y Crespo durante una visita a una granja avícola. "
+        "El comercial te hace llegar una pregunta del cliente. Responde de forma clara, directa y profesional. "
+        "Cita normativa cuando sea relevante (RD 3/2002, Directiva 1999/74/CE, etc.). "
+        "Si el contexto no cubre la pregunta, responde con lo que sabes y señala qué habría que consultar. "
+        "Responde SIEMPRE en español. Máximo 4 párrafos cortos.\n\n"
+        f"CONTEXTO DEL CLIENTE:\n"
+        f"- {request.num_gallinas} gallinas ponedoras\n"
+        f"- Sistema: {sistema_label}\n"
+        f"- Nave: {request.superficie_nave_m2} m², altura {request.altura_nave_cm} cm\n"
+        f"- Producto recomendado: {producto_label}\n\n"
+        f"DOCUMENTACIÓN DE REFERENCIA:\n{contexto}"
+    )
+
+    _genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
+    model = _genai.GenerativeModel(
+        os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
+        system_instruction=system_prompt,
+    )
+    response = model.generate_content(request.pregunta)
+    return ConsultaLibreResponse(respuesta=response.text.strip())
 
 
 @app.get("/health")

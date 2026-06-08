@@ -4,6 +4,15 @@ from pydantic import BaseModel
 
 
 Sistema = Literal["suelo", "campero", "ecologico"]
+
+_DENSIDAD_MAX: dict[str, float] = {
+    "suelo":     9.0,   # RD 3/2002 Anexo II
+    "campero":   6.0,   # Regl. CE 589/2008
+    "ecologico": 4.0,   # Regl. UE 2018/848
+}
+
+def _densidad_max_para(sistema: str) -> float:
+    return _DENSIDAD_MAX.get(sistema, 9.0)
 TipoNidal = Literal["individual", "colectivo", "aviario"]
 TipoComedero = Literal["lineal", "circular"]
 TipoBebedero = Literal["canal", "pezon"]
@@ -87,11 +96,19 @@ def validar_conformidad(datos: DatosGranja) -> InformeConformidad:
     checks: list[Verificacion] = []
 
     # --- DENSIDAD (gallinas/m²) ---
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
-    densidad_real = n / datos.superficie_nave_m2
+    densidad_max = _densidad_max_para(datos.sistema)
+    sup_base = datos.superficie_nave_m2
+    if datos.sistema in ("campero", "ecologico"):
+        sup_base += datos.superficie_exterior_m2 or 0.0
+    densidad_real = n / sup_base if sup_base > 0 else float("inf")
+    articulo_dens = "RD 3/2002 Anexo II"
+    if datos.sistema == "campero":
+        articulo_dens = "Regl. CE 589/2008 Art. 4"
+    elif datos.sistema == "ecologico":
+        articulo_dens = "Regl. CE 589/2008 Art. 4 + Regl. UE 2018/848"
     checks.append(_check_max(
-        "Densidad interior", densidad_real, densidad_max, "gallinas/m²",
-        "RD 3/2002 Anexo II" + (" + Regl. UE 2018/848" if datos.sistema == "ecologico" else "")
+        "Densidad" + (" total (nave + exterior)" if datos.sistema in ("campero", "ecologico") else " interior"),
+        densidad_real, densidad_max, "gallinas/m²", articulo_dens
     ))
 
     # --- ALTURA LIBRE ---
@@ -221,11 +238,19 @@ def calcular_granja(datos: DatosCalculadora) -> InformeCalculadora:
     req: list[RequisitoEquipamiento] = []
 
     # --- Verificaciones de nave ---
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
-    densidad_real = n / datos.superficie_nave_m2
+    densidad_max = _densidad_max_para(datos.sistema)
+    sup_base = datos.superficie_nave_m2
+    if datos.sistema in ("campero", "ecologico"):
+        sup_base += datos.superficie_exterior_m2 or 0.0
+    densidad_real = n / sup_base if sup_base > 0 else float("inf")
+    articulo_dens = "RD 3/2002 Anexo II"
+    if datos.sistema == "campero":
+        articulo_dens = "Regl. CE 589/2008 Art. 4"
+    elif datos.sistema == "ecologico":
+        articulo_dens = "Regl. CE 589/2008 Art. 4 + Regl. UE 2018/848"
     checks.append(_check_max(
-        "Densidad interior", densidad_real, densidad_max, "gallinas/m²",
-        "RD 3/2002 Anexo II" + (" + Regl. UE 2018/848" if datos.sistema == "ecologico" else "")
+        "Densidad" + (" total (nave + exterior)" if datos.sistema in ("campero", "ecologico") else " interior"),
+        densidad_real, densidad_max, "gallinas/m²", articulo_dens
     ))
     checks.append(_check_min(
         "Altura libre sobre el suelo", datos.altura_libre_cm, 45.0, "cm",

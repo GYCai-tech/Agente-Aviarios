@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import JourneyHeader from "../JourneyHeader";
 
 interface RequisitoCalculado {
   nombre: string;
@@ -69,90 +70,60 @@ function GycLogoImg({ size = "md", white = false }: { size?: "sm" | "md" | "lg";
   );
 }
 
-// ── Plano generado por IA ─────────────────────────────────────────────────────
+// ── Plano de distribución (determinista) ──────────────────────────────────────
 
-function AiPlanoSection({
-  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie,
+function PlanoEmbed({
+  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles,
 }: {
   ancho_nave_m: number; largo_nave_m: number; gallinas: number;
-  sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; superficie: number;
+  sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; niveles?: number;
 }) {
-  const [svg, setSvg]       = useState<string | null>(null);
-  const [error, setError]   = useState<string | null>(null);
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const backendUrl = process.env.NEXT_PUBLIC_BACKEND_URL ?? "http://localhost:8000";
-
-    async function fetchPlano() {
-      setLoading(true);
-      setSvg(null);
-      setError(null);
+    async function load() {
+      setLoading(true); setSvg(null); setError(null);
       try {
-        // Primero obtenemos el layout real de módulos
-        const layoutRes = await fetch(`${backendUrl}/layout-nidal`, {
+        const res = await fetch("/api/plano-config", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            ancho_nave: ancho_nave_m,
-            largo_nave: largo_nave_m,
-            sistema,
+            ancho_nave_m, largo_nave_m,
+            tipo_zona, sistema, gallinas,
+            niveles: niveles ?? 2,
+            num_filas: 0, mods_por_fila: 0,
+            clearance_pared_m: 0.85, pasillo_m: 1.20,
+            clearance_lateral_m: 4.00, ancho_alero_m: 0,
           }),
         });
-        if (!layoutRes.ok) throw new Error("layout error");
-        const layout = await layoutRes.json();
-
-        // Luego pedimos el SVG a Gemini con el layout calculado
-        const planoRes = await fetch(`${backendUrl}/plano`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            ancho_nave_m,
-            largo_nave_m,
-            filas: layout.filas ?? [],
-            tipo_zona,
-            gallinas,
-            sistema,
-            total_modulos: layout.total_modulos ?? 0,
-            yacija_interior_m2: layout.yacija_interior_m2 ?? 0,
-          }),
-        });
-        if (!planoRes.ok) throw new Error("plano error");
-        const data = await planoRes.json();
-        if (data.error || !data.svg) throw new Error(data.error ?? "SVG vacío");
-        setSvg(data.svg);
-      } catch (e: unknown) {
-        setError(e instanceof Error ? e.message : "Error generando el plano");
+        const data = await res.json();
+        if (data.svg) setSvg(data.svg);
+        else setError(data.error ?? "Sin plano");
+      } catch {
+        setError("Error al generar el plano");
       } finally {
         setLoading(false);
       }
     }
-
-    fetchPlano();
-  }, [ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, superficie]);
+    load();
+  }, [ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles]);
 
   if (loading) return (
     <div className="ai-plano-loading">
       <div className="ai-plano-dots"><span /><span /><span /></div>
-      <p>Generando plano con IA…</p>
+      <p>Calculando distribución de módulos…</p>
     </div>
   );
 
   if (error || !svg) return (
-    <NaveSchematic
-      superficie={superficie}
-      gallinas={gallinas}
-      tipoZona={tipo_zona}
-      requisitos={[]}
-    />
+    <div className="plano-embed-fallback">
+      <p>No se pudo generar el plano. <a href="/plano">Abrir editor →</a></p>
+    </div>
   );
 
-  return (
-    <div
-      className="ai-plano-svg"
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
-  );
+  return <div className="plano-embed-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
 // ── Plano esquemático (fallback) ──────────────────────────────────────────────
@@ -185,7 +156,7 @@ function NaveSchematic({
   const ySlot2 = yMod + hMod; const yYac2 = ySlot2 + hSlot;
   const hYac2 = yacijaM * sy; const modPx = modAncho * sx;
 
-  const LS = { fontSize: "7", fontFamily: "'Source Sans Pro', sans-serif", fontWeight: "700", letterSpacing: "0.1em" } as const;
+  const LS = { fontSize: "7", fontFamily: "var(--font-body), sans-serif", fontWeight: "700", letterSpacing: "0.1em" } as const;
 
   return (
     <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="nave-schematic">
@@ -204,11 +175,11 @@ function NaveSchematic({
       {hYac2 > 11 && <text x={PAD + 5} y={yYac2 + hYac2 / 2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
       <g transform={`translate(${PAD}, ${PAD + drawH + 6})`}>
         <rect x={0} y={0} width={8} height={8} fill="#000823" rx="1" />
-        <text x={11} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="'Source Sans Pro', sans-serif">{isAviario ? "Aviarios" : "Nidales"} ({numModulos})</text>
+        <text x={11} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">{isAviario ? "Aviarios" : "Nidales"} ({numModulos})</text>
         <rect x={80} y={0} width={8} height={8} fill="#e8ede8" />
-        <text x={91} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="'Source Sans Pro', sans-serif">Yacija</text>
+        <text x={91} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">Yacija</text>
         <rect x={130} y={1} width={8} height={6} fill="#4f764d" opacity="0.4" />
-        <text x={141} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="'Source Sans Pro', sans-serif">{isAviario ? "Pasillo" : "Slot"}</text>
+        <text x={141} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">{isAviario ? "Pasillo" : "Slot"}</text>
       </g>
     </svg>
   );
@@ -236,12 +207,14 @@ const FEATURES_NIDAL = [
 ];
 
 const FEATURES_AVIARIO = [
-  { icon: "/icons/recurso-10.svg", titulo: "Hasta 3 niveles", desc: "Multiplica la densidad útil sin ampliar la nave. Cada nivel suma 13,18 m² disponibles para las aves por módulo instalado." },
-  { icon: "/icons/galvanizado.svg", titulo: "Acero + polímeros", desc: "Estructura de 532 kg por módulo con polímeros de alta resistencia. Diseñada para más de 20 años de operación continua." },
-  { icon: "/icons/recurso-19.svg", titulo: "Densidad certificada", desc: "Superficie disponible validada por el diseñador. Cumple Directiva 1999/74/CE Art. 4.3.a en todos los niveles operativos." },
-  { icon: "/icons/gallinas.svg", titulo: "Código 0 y código 1", desc: "Sistema homologado para producción campero y ecológico. Permite el etiquetado de huevo en las categorías de mayor valor." },
-  { icon: "/icons/manejo.svg", titulo: "Gestión de estiércol", desc: "Bandejas extractables por nivel con recogida cada 2-3 días. Sin contaminación cruzada entre plantas ni acumulación de amoníaco." },
-  { icon: "/icons/suministros.svg", titulo: "ROI en < 3 años", desc: "La superficie extra por metro cuadrado de nave amortiza la inversión en el primer ciclo productivo ampliado." },
+  { icon: "/icons/gallinas.svg", titulo: "Escalable", desc: "Sistema modular que permite buscar una solución a cada proyecto individual." },
+  { icon: "/icons/Recurso 20.svg", titulo: "Huevo de calidad", desc: "Su diseño garantiza la obtención huevo de calidad,limpio y minimizando roturas." },
+  { icon: "/icons/gallinas felices.svg", titulo: "Gallinas felices", desc: "Máxima producción respetando los estándares de bienestar para mejorar la calidad de vida de las ponedoras." },
+  { icon: "/icons/Recurso 17.svg", titulo: " Suministros Adaptados", desc: "El sistema de alimentación y bebida se regula y adapta en función de la raza ponedora." },
+  { icon: "/icons/Sin plagas.svg", titulo: "Sin plagas", desc: "Especialmente desarrollo para evitar proliferación de plagas e insectos" },
+  { icon: "/icons/manejo_sencillop.svg", titulo: "Manejo sencillo", desc: "Pensando para el manejo diario,facilita la revisión del nidal y la revisión de suministros" },
+  { icon: "/icons/Recurso 14.svg", titulo: "Nidos confort", desc: "Gran suavidad para las patas de las aves, privacidad y temperaturas óptimas" },
+
 ];
 
 // ── Página ────────────────────────────────────────────────────────────────────
@@ -263,7 +236,6 @@ export default function PropuestaPage() {
   if (!data) {
     return (
       <div className="empty-state">
-        <style>{FONTS}</style>
         <style>{BASE_CSS}</style>
         <GycLogoImg size="lg" />
         <p className="empty-title">Sin datos de propuesta</p>
@@ -274,15 +246,19 @@ export default function PropuestaPage() {
   }
 
   const { informe, argumentario_ventas, gallinas, sistema, superficie, tipo_zona, niveles, ancho_nave, largo_nave } = data;
-  const anchoM  = ancho_nave  ? parseFloat(ancho_nave)  : 0;
-  const largoM  = largo_nave  ? parseFloat(largo_nave)  : 0;
+  const anchoM = ancho_nave ? parseFloat(ancho_nave) : 0;
+  const largoM = largo_nave ? parseFloat(largo_nave) : 0;
   const tieneNaveDims = anchoM > 0 && largoM > 0;
   const sistemaLabel = SISTEMA_LABEL[sistema] ?? sistema;
   const nivelesEfectivos = tipo_zona === "aviario" ? (niveles ?? 2) : 1;
   const isAviario = tipo_zona === "aviario";
   const cumple = informe.cumple_nave;
   const fechaHoy = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "long", year: "numeric" });
-  const numModulos = Math.ceil(parseInt(gallinas) / (isAviario ? 60 : 144));
+  const densMax = sistema === "ecologico" ? 6 : 9;
+  const supDispPorMod = nivelesEfectivos === 3 ? 16.194 : 13.18;
+  const numModulos = isAviario
+    ? Math.ceil(parseInt(gallinas) / Math.floor(densMax * supDispPorMod))
+    : Math.ceil(parseInt(gallinas) / 144);
   const densidadVerif = informe.verificaciones_nave.find(v => v.parametro.toLowerCase().includes("densidad"));
   const densidadReal = densidadVerif ? densidadVerif.valor_real.toFixed(1) : "—";
   const densidadLimite = densidadVerif ? densidadVerif.valor_limite : 9;
@@ -295,39 +271,20 @@ export default function PropuestaPage() {
 
   return (
     <>
-      <style>{FONTS}</style>
       <style>{BASE_CSS}</style>
 
       {/* ── HEADER ─────────────────────────────────────────────────── */}
-      <header className="hdr">
-        <div className="hdr-inner wrap">
-          <div className="hdr-brand">
-            <GycLogoImg size="sm" white />
-            <div className="hdr-brand-text">
-              <span className="hdr-brand-name">Gómez y Crespo</span>
-              <span className="hdr-brand-sub">Agente Aviario</span>
-            </div>
-          </div>
-          <nav className="hdr-nav">
-            {["Proyecto", "Análisis", "Sistema", "Informe"].map(t => (
-              <span key={t} className={`hdr-tab${t === "Informe" ? " is-active" : ""}`}>{t}</span>
-            ))}
-          </nav>
-          <a href="/plano" className="hdr-action" style={{ marginLeft: "auto", marginRight: 8, textDecoration: "none" }}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-              <rect x="1" y="1" width="10" height="10" rx="1" stroke="currentColor" strokeWidth="1.3" fill="none"/>
-              <path d="M3 4h6M3 6h4M3 8h5" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
-            </svg>
-            Editor de plano
-          </a>
-          <button className="hdr-action" onClick={() => window.print()} style={{ marginLeft: 0 }}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+      <JourneyHeader
+        activeStep={4}
+        actions={
+          <button className="hdr-action" onClick={() => window.print()}>
+            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Exportar PDF
           </button>
-        </div>
-      </header>
+        }
+      />
 
       {/* ── HERO ───────────────────────────────────────────────────── */}
       <section className={`hero ${isAviario ? "hero--aviario" : ""}`}>
@@ -340,9 +297,9 @@ export default function PropuestaPage() {
             </div>
             <span className={`hero-status ${cumple ? "is-ok" : "is-fail"}`}>
               {cumple ? (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable</>
+                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable</>
               ) : (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none"><path d="M2 2l5 5M7 2L2 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg> Revisar parámetros</>
+                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><path d="M2 2l5 5M7 2L2 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg> Revisar parámetros</>
               )}
             </span>
           </div>
@@ -474,23 +431,12 @@ export default function PropuestaPage() {
                 <span className="dim-panel-title">Plano de distribución · vista de planta</span>
               </div>
               <div className="dim-plano">
-                {tieneNaveDims ? (
-                  <AiPlanoSection
-                    ancho_nave_m={anchoM}
-                    largo_nave_m={largoM}
-                    gallinas={parseInt(gallinas)}
-                    sistema={sistema}
-                    tipo_zona={tipo_zona}
-                    superficie={parseFloat(superficie)}
-                  />
-                ) : (
-                  <NaveSchematic
-                    superficie={parseFloat(superficie)}
-                    gallinas={parseInt(gallinas)}
-                    tipoZona={tipo_zona}
-                    requisitos={informe.requisitos}
-                  />
-                )}
+                <NaveSchematic
+                  superficie={parseFloat(superficie)}
+                  gallinas={parseInt(gallinas)}
+                  tipoZona={tipo_zona}
+                  requisitos={informe.requisitos}
+                />
               </div>
             </div>
           </div>
@@ -536,6 +482,46 @@ export default function PropuestaPage() {
         </section>
       )}
 
+      {/* ── PLANO EMBEBIDO ─────────────────────────────────────────── */}
+      <section className="section-plano-embed">
+        <div className="wrap">
+          <div className="sec-header">
+            <h2 className="sec-title">Plano de distribución</h2>
+            <span className="sec-rule" />
+          </div>
+          {tieneNaveDims ? (
+            <>
+              <PlanoEmbed
+                ancho_nave_m={anchoM}
+                largo_nave_m={largoM}
+                gallinas={parseInt(gallinas)}
+                sistema={sistema}
+                tipo_zona={tipo_zona}
+                niveles={nivelesEfectivos}
+              />
+              <div className="plano-edit-row">
+                <a href="/plano" className="plano-edit-link">
+                  Abrir editor interactivo
+                  <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
+                    <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </a>
+              </div>
+            </>
+          ) : (
+            <div className="plano-no-dims">
+              <p>Introduce el ancho y largo de la nave en la calculadora para ver el plano de distribución.</p>
+              <a href="/plano" className="plano-edit-link">
+                Abrir editor de plano
+                <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
+                  <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </a>
+            </div>
+          )}
+        </div>
+      </section>
+
       {/* ── CTA ────────────────────────────────────────────────────── */}
       <section className="section-cta">
         <div className="wrap">
@@ -547,7 +533,7 @@ export default function PropuestaPage() {
             <div className="cta-actions">
               <a href="mailto:info@gomezycrespo.com" className="btn-pill btn-pill--light">
                 Solicitar presupuesto
-                <svg width="14" height="10" viewBox="0 0 14 10" fill="none">
+                <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true">
                   <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
               </a>
@@ -574,12 +560,6 @@ export default function PropuestaPage() {
   );
 }
 
-// ── Fuentes ───────────────────────────────────────────────────────────────────
-
-const FONTS = `
-  @import url('https://fonts.googleapis.com/css2?family=Source+Sans+Pro:wght@300;400;600;700&family=Montserrat:wght@600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap');
-`;
-
 // ── Estilos ───────────────────────────────────────────────────────────────────
 
 const BASE_CSS = `
@@ -597,12 +577,15 @@ const BASE_CSS = `
     --c-ok-text:     #1d6b22;
     --c-fail-bg:     #fdecea;
     --c-fail-text:   #b5261e;
+    --font-display:  var(--font-montserrat, 'Montserrat');
+    --font-body:     var(--font-source-sans, 'Source Sans Pro');
+    --font-mono:     var(--font-jetbrains, 'JetBrains Mono');
   }
 
   html { scroll-behavior: smooth; }
 
   body {
-    font-family: 'Source Sans Pro', sans-serif;
+    font-family: var(--font-body), sans-serif;
     font-size: 1rem;
     line-height: 1.65;
     background: var(--c-bg);
@@ -610,9 +593,9 @@ const BASE_CSS = `
     -webkit-font-smoothing: antialiased;
   }
 
-  .mono { font-family: 'JetBrains Mono', monospace; }
+  .mono { font-family: var(--font-mono), monospace; }
 
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+  .wrap { width: 100%; padding: 0 clamp(1rem, 4vw, 3rem); }
 
   .nave-schematic { display: block; }
 
@@ -620,39 +603,15 @@ const BASE_CSS = `
   .logo-img          { display: block; width: auto; height: auto; }
   .logo-img--sm      { height: 32px; }
   .logo-img--md      { height: 40px; }
-  .logo-img--lg      { height: 48px; }
+  .logo-img--lg      { height: 72px; }
   .logo-img--white   { filter: brightness(0) invert(1); }
 
-  /* ── HEADER ── */
-  .hdr {
-    background: var(--c-title);
-    position: sticky; top: 0; z-index: 100;
-    border-bottom: 1px solid rgba(255,255,255,0.06);
-  }
-  .hdr-inner {
-    height: 54px; display: flex; align-items: center; gap: 2rem;
-  }
-  .hdr-brand {
-    display: flex; align-items: center; gap: 0.75rem;
-    padding-right: 2rem; border-right: 1px solid rgba(255,255,255,0.1);
-    flex-shrink: 0;
-  }
-  .hdr-brand-text { display: flex; flex-direction: column; gap: 2px; }
-  .hdr-brand-name { font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; color: rgba(255,255,255,0.9); letter-spacing: 0.14em; text-transform: uppercase; line-height: 1; }
-  .hdr-brand-sub  { font-size: 0.58rem; color: rgba(255,255,255,0.35); letter-spacing: 0.1em; text-transform: uppercase; }
-  .hdr-nav { display: flex; align-items: stretch; gap: 0; }
-  .hdr-tab {
-    display: flex; align-items: center; padding: 0 1rem;
-    font-family: 'Montserrat', sans-serif; font-size: 0.65rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    color: rgba(255,255,255,0.35); border-bottom: 2px solid transparent;
-    cursor: default; white-space: nowrap;
-  }
-  .hdr-tab.is-active { color: #ffffff; border-bottom-color: var(--c-primary); }
+  /* ── HEADER action (passed into JourneyHeader) ── */
   .hdr-action {
     margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem;
     background: var(--c-primary); color: #ffffff;
     border: none; border-radius: 30px;
-    padding: 0.4rem 1rem; font-family: 'Source Sans Pro', sans-serif;
+    padding: 0.4rem 1rem; font-family: var(--font-body), sans-serif;
     font-size: 0.72rem; font-weight: 600; cursor: pointer;
     letter-spacing: 0.06em; text-transform: uppercase;
     transition: background 0.15s;
@@ -694,27 +653,27 @@ const BASE_CSS = `
     margin-bottom: 2rem;
   }
   .hero-tag {
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
     letter-spacing: 0.22em; text-transform: uppercase; color: var(--c-primary);
   }
   .hero-sep { color: rgba(255,255,255,0.2); font-size: 0.7rem; }
-  .hero-date { font-size: 0.62rem; color: rgba(255,255,255,0.3); letter-spacing: 0.08em; text-transform: uppercase; }
+  .hero-date { font-size: 0.62rem; color: rgba(255,255,255,0.52); letter-spacing: 0.08em; text-transform: uppercase; }
   .hero-status {
     margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem;
-    font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
     letter-spacing: 0.1em; text-transform: uppercase;
     padding: 0.25rem 0.75rem; border-radius: 30px; border: 1px solid transparent;
   }
   .hero-status.is-ok   { background: rgba(79,118,77,0.2); color: #8fd68f; border-color: rgba(79,118,77,0.3); }
   .hero-status.is-fail { background: rgba(181,38,30,0.2); color: #f09090; border-color: rgba(181,38,30,0.3); }
   .hero-title {
-    font-family: 'Montserrat', sans-serif; font-weight: 800;
+    font-family: var(--font-display), sans-serif; font-weight: 800;
     font-size: clamp(2.8rem, 7vw, 5.5rem);
     color: #ffffff; line-height: 0.95; letter-spacing: -0.02em;
     margin-bottom: 1rem;
   }
   .hero-subtitle {
-    font-size: 1rem; color: rgba(255,255,255,0.45); font-weight: 400;
+    font-size: 1rem; color: rgba(255,255,255,0.78); font-weight: 400;
     line-height: 1.6; max-width: 500px; margin-bottom: 2.5rem;
   }
   .hero-stats {
@@ -730,7 +689,7 @@ const BASE_CSS = `
   }
   .hero-stat:last-child { border-right: none; margin-right: 0; padding-right: 0; }
   .hero-stat-val { font-size: 2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.04em; line-height: 1; }
-  .hero-stat-lbl { font-size: 0.62rem; color: rgba(255,255,255,0.35); letter-spacing: 0.1em; text-transform: uppercase; font-family: 'Montserrat', sans-serif; font-weight: 600; }
+  .hero-stat-lbl { font-size: 0.62rem; color: rgba(255,255,255,0.62); letter-spacing: 0.1em; text-transform: uppercase; font-family: var(--font-display), sans-serif; font-weight: 600; }
 
   /* ── SECTION COMMON ── */
   .sec-header {
@@ -738,7 +697,7 @@ const BASE_CSS = `
     margin-bottom: 2rem;
   }
   .sec-title {
-    font-family: 'Montserrat', sans-serif; font-size: 1.17rem; font-weight: 700;
+    font-family: var(--font-display), sans-serif; font-size: 1.17rem; font-weight: 700;
     color: var(--c-title); white-space: nowrap; letter-spacing: -0.01em;
   }
   .sec-rule { flex: 1; height: 1px; background: var(--c-border); }
@@ -770,7 +729,7 @@ const BASE_CSS = `
     display: block; object-fit: contain;
     filter: brightness(0) saturate(100%) invert(35%) sepia(22%) saturate(500%) hue-rotate(80deg) brightness(90%);
   }
-  .feat-titulo { font-family: 'Montserrat', sans-serif; font-size: 0.88rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.35rem; line-height: 1.3; }
+  .feat-titulo { font-family: var(--font-display), sans-serif; font-size: 0.88rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.35rem; line-height: 1.3; }
   .feat-desc   { font-size: 0.82rem; color: var(--c-body); line-height: 1.65; }
   .feat-content { flex: 1; }
 
@@ -785,7 +744,7 @@ const BASE_CSS = `
     border: 1px solid var(--c-border); border-radius: 2px;
     border-top: 3px solid var(--c-primary);
   }
-  .kpi-label { font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.25rem; }
+  .kpi-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.25rem; }
   .kpi-val   { font-size: 1.8rem; font-weight: 700; color: var(--c-title); letter-spacing: -0.03em; line-height: 1; }
   .kpi-val--md { font-size: 1.15rem; }
   .kpi-val--sm { font-size: 1rem; }
@@ -794,7 +753,7 @@ const BASE_CSS = `
 
   /* ── STATUS BADGE ── */
   .status-badge {
-    display: inline-block; font-family: 'Montserrat', sans-serif;
+    display: inline-block; font-family: var(--font-display), sans-serif;
     font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
     padding: 0.18rem 0.6rem; border-radius: 30px; width: fit-content; margin-top: 0.2rem;
   }
@@ -816,7 +775,7 @@ const BASE_CSS = `
   .verif-dot.is-ok   { background: var(--c-ok-text); }
   .verif-dot.is-fail { background: var(--c-fail-text); }
   .verif-content { display: flex; flex-direction: column; gap: 0.15rem; }
-  .verif-name   { font-family: 'Montserrat', sans-serif; font-size: 0.78rem; font-weight: 700; color: var(--c-title); line-height: 1.3; }
+  .verif-name   { font-family: var(--font-display), sans-serif; font-size: 0.78rem; font-weight: 700; color: var(--c-title); line-height: 1.3; }
   .verif-detail { font-size: 0.72rem; color: var(--c-body); line-height: 1.5; }
   .verif-detail strong { color: var(--c-title); font-weight: 600; }
   .verif-detail em { font-style: normal; opacity: 0.65; }
@@ -831,13 +790,13 @@ const BASE_CSS = `
     background: var(--c-bg-alt);
   }
   .dim-panel-badge {
-    font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 800;
+    font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 800;
     background: var(--c-primary); color: #ffffff;
     width: 22px; height: 22px; border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
     flex-shrink: 0;
   }
-  .dim-panel-title { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-title); }
+  .dim-panel-title { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-title); }
   .dim-panel-body { padding: 0.5rem 1.25rem 1.25rem; }
   .dim-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.6rem 0; border-bottom: 1px solid var(--c-border); gap: 1rem; }
   .dim-row:last-child { border-bottom: none; }
@@ -875,37 +834,53 @@ const BASE_CSS = `
     transition: box-shadow 0.15s;
   }
   .eq-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
-  .eq-name    { font-family: 'Montserrat', sans-serif; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.75rem; line-height: 1.4; }
+  .eq-name    { font-family: var(--font-display), sans-serif; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.75rem; line-height: 1.4; }
   .eq-val     { font-size: 1.7rem; font-weight: 700; color: var(--c-primary); letter-spacing: -0.03em; line-height: 1; margin-bottom: 0.3rem; }
   .eq-unit    { font-size: 0.72rem; color: var(--c-body); font-weight: 400; margin-left: 0.2rem; }
   .eq-formula { font-size: 0.72rem; color: var(--c-body); font-style: italic; line-height: 1.45; margin-bottom: 0.75rem; flex: 1; }
-  .eq-ref     { font-family: 'Montserrat', sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-primary); border-top: 1px solid var(--c-border); padding-top: 0.5rem; display: block; }
+  .eq-ref     { font-family: var(--font-display), sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-primary); border-top: 1px solid var(--c-border); padding-top: 0.5rem; display: block; }
 
   /* ── ARGUMENTARIO ── */
   .section-dark { background: var(--c-title); padding: 4rem 0; border-top: 2px solid var(--c-primary); }
   .arg-layout { display: grid; grid-template-columns: 260px 1fr; gap: 4rem; align-items: start; }
   .arg-aside-label {
-    display: inline-block; font-family: 'Montserrat', sans-serif;
+    display: inline-block; font-family: var(--font-display), sans-serif;
     font-size: 0.58rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
     color: var(--c-primary); border: 1px solid rgba(79,118,77,0.35);
     padding: 0.2rem 0.7rem; border-radius: 30px; margin-bottom: 1.25rem;
   }
   .arg-aside-title {
-    font-family: 'Montserrat', sans-serif; font-weight: 800;
+    font-family: var(--font-display), sans-serif; font-weight: 800;
     font-size: 2.2rem; color: #ffffff; line-height: 1.05; letter-spacing: -0.02em;
     margin-bottom: 1rem;
   }
-  .arg-aside-desc { font-size: 0.85rem; color: rgba(255,255,255,0.35); line-height: 1.7; }
+  .arg-aside-desc { font-size: 0.85rem; color: rgba(255,255,255,0.62); line-height: 1.7; }
   .arg-body { font-size: 1rem; line-height: 1.85; color: rgba(255,255,255,0.68); font-weight: 400; }
   .arg-body p { margin-bottom: 1rem; }
   .arg-body p:last-child { margin-bottom: 0; }
   .arg-body strong { color: #ffffff; font-weight: 700; }
   .arg-body em { color: #8fd68f; font-style: normal; font-weight: 600; }
 
-  /* ── CTA ── */
+  /* ── Plano embebido ── */
+  .section-plano-embed { background: var(--c-bg-alt); padding: 3rem 0; }
+  .plano-embed-svg { width: 100%; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,.1); }
+  .plano-embed-svg svg { display: block; width: 100%; height: auto; }
+  .plano-embed-fallback { padding: 2rem; text-align: center; color: var(--c-text-muted); font-size: 0.9rem; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
+  .plano-embed-fallback a { color: var(--c-primary); text-decoration: underline; }
+  .plano-edit-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
+  .plano-edit-link {
+    display: inline-flex; align-items: center; gap: 0.4rem;
+    color: var(--c-primary); font-size: 0.82rem; font-weight: 700;
+    text-decoration: none; letter-spacing: 0.04em;
+    transition: opacity 0.15s;
+  }
+  .plano-edit-link:hover { opacity: 0.7; }
+  .plano-no-dims { padding: 2.5rem; text-align: center; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
+  .plano-no-dims p { color: var(--c-text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+
   .section-cta { background: var(--c-primary); padding: 2.5rem 0; }
   .cta-layout { display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
-  .cta-title { font-family: 'Montserrat', sans-serif; font-size: 1.52rem; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; margin-bottom: 0.3rem; }
+  .cta-title { font-family: var(--font-display), sans-serif; font-size: 1.52rem; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; margin-bottom: 0.3rem; }
   .cta-desc  { font-size: 0.95rem; color: rgba(255,255,255,0.75); }
   .cta-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0; }
 
@@ -914,7 +889,7 @@ const BASE_CSS = `
     display: inline-flex; align-items: center; gap: 0.5rem;
     background: var(--c-primary); color: #ffffff;
     border: none; border-radius: 30px;
-    padding: 0.7rem 1.6rem; font-family: 'Source Sans Pro', sans-serif;
+    padding: 0.7rem 1.6rem; font-family: var(--font-body), sans-serif;
     font-size: 0.88rem; font-weight: 700; cursor: pointer;
     letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none;
     transition: background 0.15s;
@@ -928,7 +903,7 @@ const BASE_CSS = `
     display: inline-flex; align-items: center; gap: 0.5rem;
     background: transparent; color: var(--c-primary);
     border: 2px solid var(--c-primary); border-radius: 30px;
-    padding: 0.7rem 1.4rem; font-family: 'Source Sans Pro', sans-serif;
+    padding: 0.7rem 1.4rem; font-family: var(--font-body), sans-serif;
     font-size: 0.88rem; font-weight: 600; cursor: pointer;
     letter-spacing: 0.04em; text-decoration: none;
     transition: background 0.15s, color 0.15s;
@@ -942,17 +917,21 @@ const BASE_CSS = `
   /* ── FOOTER ── */
   .ftr { background: var(--c-title); padding: 1.25rem 0; border-top: 1px solid rgba(255,255,255,0.06); }
   .ftr-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
-  .ftr-brand { font-size: 0.65rem; color: rgba(255,255,255,0.3); letter-spacing: 0.12em; text-transform: uppercase; font-family: 'Montserrat', sans-serif; font-weight: 600; }
-  .ftr-norm  { font-size: 0.62rem; color: rgba(255,255,255,0.2); letter-spacing: 0.04em; }
-  .ftr-back  { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.68rem; color: rgba(255,255,255,0.4); text-decoration: none; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; font-family: 'Montserrat', sans-serif; transition: color 0.15s; }
-  .ftr-back:hover { color: rgba(255,255,255,0.8); }
+  .ftr-brand { font-size: 0.65rem; color: rgba(255,255,255,0.5); letter-spacing: 0.12em; text-transform: uppercase; font-family: var(--font-display), sans-serif; font-weight: 600; }
+  .ftr-norm  { font-size: 0.62rem; color: rgba(255,255,255,0.42); letter-spacing: 0.04em; }
+  .ftr-back  { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.68rem; color: rgba(255,255,255,0.62); text-decoration: none; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; font-family: var(--font-display), sans-serif; transition: color 0.15s; }
+  .ftr-back:hover { color: rgba(255,255,255,0.9); }
 
   /* ── EMPTY STATE ── */
-  .empty-state { min-height: 100vh; background: var(--c-bg-alt); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; font-family: 'Source Sans Pro', sans-serif; }
-  .empty-title { font-family: 'Montserrat', sans-serif; font-size: 1.52rem; font-weight: 800; color: var(--c-title); }
+  .empty-state { min-height: 100vh; background: var(--c-bg-alt); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; font-family: var(--font-body), sans-serif; }
+  .empty-title { font-family: var(--font-display), sans-serif; font-size: 1.52rem; font-weight: 800; color: var(--c-title); }
   .empty-sub   { font-size: 1rem; color: var(--c-body); }
 
   /* ── RESPONSIVE ── */
+  @media (max-width: 1024px) {
+    .hero-stats { grid-template-columns: repeat(2, auto); gap: 1.5rem 3rem; }
+    .hero-stat { border-right: none !important; margin-right: 0 !important; padding-right: 0 !important; }
+  }
   @media (max-width: 900px) {
     .features-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -961,18 +940,138 @@ const BASE_CSS = `
     .dim-panel + .dim-panel { border-left: none; border-top: 1px solid var(--c-border); }
   }
   @media (max-width: 640px) {
-    .wrap { padding: 0 1.25rem; }
-    .hero { padding: 3rem 0 2.5rem; }
-    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 0; }
-    .hero-stat { padding: 0; border-right: none !important; margin-right: 0 !important; }
+    .hero { padding: 2.5rem 0 2rem; }
+    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 1rem; }
+    .hero-stat { padding: 0; }
     .features-grid { grid-template-columns: 1fr; }
-    .hdr-nav { display: none; }
+    .kpi-row { grid-template-columns: 1fr 1fr; }
     .cta-layout { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 420px) {
+    .kpi-row { grid-template-columns: 1fr; }
+    .hero-stat-val { font-size: 1.6rem; }
   }
 
   @media print {
-    .hdr, .section-cta, .ftr { display: none !important; }
-    body { background: #ffffff !important; }
-    .section-dark { background: var(--c-title) !important; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    @page {
+      size: A4 portrait;
+      margin: 12mm 14mm 14mm 14mm;
+    }
+
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+
+    /* Ocultar elementos interactivos */
+    .jrn-hdr, .section-cta, .ftr, .hdr-action, .ai-plano-loading, .plano-edit-row { display: none !important; }
+
+    body { background: #fff !important; font-size: 0.88rem; }
+
+    .wrap { max-width: 100%; padding: 0; }
+
+    /* Hero compacto */
+    .hero {
+      padding: 1.8rem 1.2rem 1.5rem;
+      background-color: var(--c-title) !important;
+      background-image: none !important;
+      page-break-after: avoid;
+    }
+    .hero::before, .hero::after { display: none !important; }
+    .hero-inner { position: relative; z-index: 1; }
+    .hero-stats { gap: 1.5rem; margin-top: 1.2rem; }
+    .hero-stat-val { font-size: 1.6rem; }
+    .hero-title { font-size: 1.8rem; }
+
+    /* Secciones */
+    .section-features, .section-alt { padding: 1.2rem 1rem; }
+    .features-grid { grid-template-columns: repeat(2, 1fr); gap: 0.8rem; }
+    .feat-card { padding: 0.7rem; }
+
+    /* Verificación normativa */
+    .check-list { gap: 0.4rem; }
+    .check-item { padding: 0.5rem 0.7rem; page-break-inside: avoid; }
+
+    /* Dimensionamiento — paneles A y B uno debajo del otro */
+    .dim-grid { grid-template-columns: 1fr !important; border: none; }
+    .dim-panel { page-break-inside: avoid; border: 1px solid var(--c-border) !important; margin-bottom: 0.6rem; }
+    .dim-panel + .dim-panel { border-left: 1px solid var(--c-border) !important; border-top: 1px solid var(--c-border) !important; }
+    .dim-plano { padding: 0.8rem; }
+    .ai-plano-svg svg { width: 100% !important; height: auto !important; }
+
+    /* Equipamiento */
+    .eq-grid { grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
+    .eq-card { padding: 0.6rem; page-break-inside: avoid; }
+
+    /* Argumentario */
+    .section-dark {
+      background: var(--c-title) !important;
+      padding: 1.4rem 1.2rem;
+      page-break-before: always;
+    }
+    .arg-layout { gap: 2rem; }
+    .arg-aside { min-width: 140px; }
+    .arg-aside-title { font-size: 1.4rem; }
+
+    /* Evitar cortes en medio de bloques */
+    h2, h3 { page-break-after: avoid; }
+    section { page-break-inside: avoid; }
+  }
+
+  /* ── TEXT WRAP ── */
+  .hero-title  { text-wrap: balance; }
+  .cta-title   { text-wrap: balance; }
+  .empty-title { text-wrap: balance; }
+
+  /* ── FOCUS VISIBLE ── */
+  .hdr-action:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.8);
+    outline-offset: 3px;
+  }
+  .btn-pill:focus-visible {
+    outline: 2px solid #ffffff;
+    outline-offset: 3px;
+  }
+  .btn-pill--light:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 3px;
+  }
+  .btn-outline:focus-visible {
+    outline: 2px solid var(--c-primary);
+    outline-offset: 3px;
+  }
+  .btn-outline--light:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.8);
+    outline-offset: 3px;
+  }
+  .ftr-back:focus-visible {
+    outline: 2px solid rgba(255,255,255,0.7);
+    outline-offset: 3px;
+    border-radius: 2px;
+  }
+
+  /* ── TOUCH TARGETS ── */
+  @media (pointer: coarse) {
+    .hdr-action { min-height: 44px; padding: 0.6rem 1.25rem; }
+  }
+
+  /* ── REDUCED MOTION ── */
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+
+    /* Dot loading animation: show at full opacity, no bounce */
+    .ai-plano-dots span {
+      animation: none;
+      opacity: 1;
+      transform: none;
+    }
+
+    /* State transitions: instant */
+    .feat-card,
+    .verif-item,
+    .eq-card,
+    .hdr-action,
+    .btn-pill,
+    .btn-outline,
+    .ftr-back {
+      transition: none;
+    }
   }
 `;
