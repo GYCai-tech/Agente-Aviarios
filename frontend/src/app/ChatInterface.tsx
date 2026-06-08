@@ -60,6 +60,224 @@ function renderMd(text: string): string {
 
 interface ChatMsg { from: "user" | "bot"; text: string; }
 
+// ── Iconos inline ──────────────────────────────────────────────────────────────
+const IcoArea = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <rect x="1" y="1" width="11" height="11" rx="1.5" stroke="currentColor" strokeWidth="1.25"/>
+    <path d="M1 4.5h4M4.5 1v4" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+    <path d="M12 8.5H8M8.5 12V8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/>
+  </svg>
+);
+const IcoDensity = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <path d="M6.5 1.5L1 4l5.5 2.5L12 4 6.5 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M1 7l5.5 2.5L12 7" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M1 10l5.5 2.5L12 10" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+  </svg>
+);
+const IcoHay = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <path d="M1 10h11" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round"/>
+    <path d="M3 10V6.5M6.5 10V4M10 10V7" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/>
+  </svg>
+);
+const IcoCheck = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <path d="M6.5 1.2L1.5 3.5v3.8c0 2.6 2.1 4.8 5 5 2.9-.2 5-2.4 5-5V3.5L6.5 1.2z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M4 6.5l2 2 3-3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round"/>
+  </svg>
+);
+const IcoGrid = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <rect x="1" y="1" width="4.5" height="4.5" rx="0.8" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="7.5" y="1" width="4.5" height="4.5" rx="0.8" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="1" y="7.5" width="4.5" height="4.5" rx="0.8" stroke="currentColor" strokeWidth="1.2"/>
+    <rect x="7.5" y="7.5" width="4.5" height="4.5" rx="0.8" stroke="currentColor" strokeWidth="1.2"/>
+  </svg>
+);
+const IcoPath = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <path d="M4.5 1.5v10M8.5 1.5v10" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeDasharray="2 1.8"/>
+  </svg>
+);
+const IcoBox = () => (
+  <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
+    <path d="M6.5 1.5L1.5 4.2v4.6l5 2.7 5-2.7V4.2L6.5 1.5z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round"/>
+    <path d="M1.5 4.2l5 2.8 5-2.8M6.5 7v4.5" stroke="currentColor" strokeWidth="1.1" strokeLinejoin="round"/>
+  </svg>
+);
+
+// ── Selector parque de invierno ─────────────────────────────────────────────────
+function ParqueSelector({ op }: { op: OpcionCapacidad }) {
+  const [modo, setModo] = useState<"sin" | "con">("con");
+
+  const supPorMod = op.num_modulos > 0 ? (op.sup_disponible_m2 ?? 0) / op.num_modulos : 0;
+  const supDispA  = (op.modulos_opcion_a ?? 0) * supPorMod;
+  const densA     = supDispA > 0 ? (op.gallinas_opcion_a ?? 0) / supDispA : 0;
+
+  const data = modo === "sin"
+    ? { gallinas: op.gallinas_opcion_a ?? 0, modulos: op.modulos_opcion_a ?? 0, densidad: densA, tagType: "ok" as const, tag: "✓ Yacija OK · nave sola" }
+    : { gallinas: op.max_gallinas, modulos: op.num_modulos, densidad: op.densidad_real, tagType: "parque" as const, tag: `+ ${op.parque_invierno_m2} m² parque de invierno` };
+
+  return (
+    <div className="cap-card-parque">
+      <div className="cap-parque-toggle">
+        <button className={`cap-parque-toggle-btn${modo === "sin" ? " is-active" : ""}`} onClick={() => setModo("sin")}>
+          Sin parque
+        </button>
+        <button className={`cap-parque-toggle-btn${modo === "con" ? " is-active" : ""}`} onClick={() => setModo("con")}>
+          Con parque
+        </button>
+      </div>
+      <div className="cap-parque-panel">
+        <div className="cap-parque-opcion-gallinas">
+          {data.gallinas.toLocaleString("es-ES")}
+          <span className="cap-card-unit"> aves</span>
+        </div>
+        <div className="cap-parque-sel-stats">
+          <div className="cap-parque-sel-stat">
+            <span className="cap-parque-sel-label"><IcoBox /> Módulos</span>
+            <span className="cap-parque-sel-val">{data.modulos}</span>
+          </div>
+          <div className="cap-parque-sel-stat">
+            <span className="cap-parque-sel-label"><IcoDensity /> Densidad</span>
+            <span className="cap-parque-sel-val">{data.densidad.toFixed(1)} gal/m²</span>
+          </div>
+        </div>
+        <span className={`cap-parque-opcion-tag cap-parque-opcion-tag--${data.tagType}`}>{data.tag}</span>
+      </div>
+    </div>
+  );
+}
+
+// ── Guía de selección de sistema ──────────────────────────────────────────────
+
+function CapacidadGuide({ opciones }: { opciones: OpcionCapacidad[] }) {
+  const [resp, setResp] = useState<Record<string, string>>({});
+
+  const viables    = opciones.filter(o => o.viable);
+  const tieneNidal = viables.some(o => o.sistema === "nidal_colectivo");
+  const tieneAv2   = viables.some(o => o.sistema === "aviario_2_niveles");
+  const tieneAv3   = viables.some(o => o.sistema === "aviario_3_niveles");
+  const tieneAv    = tieneAv2 || tieneAv3;
+  const tieneParque= viables.some(o => (o.parque_invierno_m2 ?? 0) > 0);
+
+  type Pregunta = { id: string; texto: string; opts: { val: string; txt: string }[] };
+  const preguntas: Pregunta[] = [];
+
+  if (tieneNidal && tieneAv)
+    preguntas.push({ id: "objetivo", texto: "¿Cuál es el objetivo principal?", opts: [
+      { val: "maximo",     txt: "Alojar el mayor número de gallinas posible" },
+      { val: "sencillez",  txt: "Instalación simple, fácil de mantener" },
+      { val: "equilibrio", txt: "Buen balance entre capacidad e inversión" },
+    ]});
+  else if (!tieneAv)
+    preguntas.push({ id: "objetivo", texto: "¿Qué prioriza en la instalación?", opts: [
+      { val: "bienestar",  txt: "Bienestar animal y cumplimiento normativo" },
+      { val: "sencillez",  txt: "Facilidad de manejo y limpieza diaria" },
+    ]});
+
+  if (tieneAv2 && tieneAv3 && resp.objetivo !== "sencillez" && resp.objetivo !== "bienestar")
+    preguntas.push({ id: "inversion", texto: "¿Qué nivel de inversión busca?", opts: [
+      { val: "alta",     txt: "Máxima capacidad, mayor inversión inicial" },
+      { val: "moderada", txt: "Alta capacidad con inversión más contenida" },
+    ]});
+
+  if (tieneParque && resp.objetivo !== "sencillez" && resp.objetivo !== "bienestar")
+    preguntas.push({ id: "parque", texto: "¿Dispone de terreno para parque de invierno?", opts: [
+      { val: "si", txt: "Sí, hay terreno disponible junto a la nave" },
+      { val: "no", txt: "No, solo la superficie de nave actual" },
+    ]});
+
+  // Calcula recomendación
+  function recomendar(): { sistema: string; conParque: boolean; titulo: string; argumento: string } | null {
+    const respondidas = preguntas.filter(p => resp[p.id]);
+    if (respondidas.length < preguntas.length) return null;
+
+    const obj    = resp.objetivo;
+    const inv    = resp.inversion;
+    const parque = resp.parque === "si";
+    const opNidal = viables.find(o => o.sistema === "nidal_colectivo");
+    const opAv2   = viables.find(o => o.sistema === "aviario_2_niveles");
+    const opAv3   = viables.find(o => o.sistema === "aviario_3_niveles");
+
+    if (obj === "sencillez" || obj === "bienestar") return {
+      sistema: "nidal_colectivo", conParque: false,
+      titulo: opNidal?.label ?? "Nidal A-Nida",
+      argumento: `La instalación más sencilla de manejar y limpiar. Cada módulo aloja 144 aves a nivel de suelo, sin estructuras en altura. Mínimo mantenimiento, máximo bienestar animal y cumplimiento garantizado de normativa campero/ecológico.`,
+    };
+
+    if ((obj === "maximo" || inv === "alta") && tieneAv3 && opAv3) {
+      const aves = parque ? opAv3.max_gallinas : (opAv3.gallinas_opcion_a ?? opAv3.max_gallinas);
+      return {
+        sistema: "aviario_3_niveles", conParque: parque,
+        titulo: opAv3.label + (parque ? " · Con parque" : " · Sin parque"),
+        argumento: `Máxima densidad permitida por normativa: ${aves.toLocaleString("es-ES")} aves con ${parque ? opAv3.num_modulos : (opAv3.modulos_opcion_a ?? opAv3.num_modulos)} módulos. La opción de mayor retorno por m² de nave. Estructura de acero galvanizado con vida útil superior a 20 años.`,
+      };
+    }
+
+    if ((obj === "equilibrio" || inv === "moderada" || obj === "maximo") && tieneAv2 && opAv2) {
+      const aves = parque ? opAv2.max_gallinas : (opAv2.gallinas_opcion_a ?? opAv2.max_gallinas);
+      return {
+        sistema: "aviario_2_niveles", conParque: parque,
+        titulo: opAv2.label + (parque ? " · Con parque" : " · Sin parque"),
+        argumento: `${aves.toLocaleString("es-ES")} aves aprovechando la altura de la nave existente${opNidal ? `, frente a ${opNidal.max_gallinas.toLocaleString("es-ES")} con nidal` : ""}. Inversión moderada con rápido retorno. Compatible con producción libre de jaulas.`,
+      };
+    }
+
+    return null;
+  }
+
+  const rec = recomendar();
+  const preguntasVisibles = preguntas.slice(0, preguntas.findIndex(p => !resp[p.id]) + 1 || preguntas.length);
+
+  function reset() { setResp({}); }
+
+  return (
+    <div className="cap-guide">
+      <div className="cap-guide-header">
+        <span className="cap-guide-eyebrow">Asistente de selección</span>
+        <h3 className="cap-guide-title">Ayuda para elegir el sistema ideal</h3>
+      </div>
+      <div className="cap-guide-body">
+        {preguntasVisibles.map((p, i) => (
+          <div key={p.id} className={`cap-guide-q${resp[p.id] ? " is-answered" : " is-active"}`}>
+            <div className="cap-guide-q-num">{i + 1}</div>
+            <div className="cap-guide-q-content">
+              <p className="cap-guide-q-texto">{p.texto}</p>
+              <div className="cap-guide-opts">
+                {p.opts.map(o => (
+                  <button
+                    key={o.val}
+                    className={`cap-guide-opt${resp[p.id] === o.val ? " is-selected" : ""}`}
+                    onClick={() => setResp(r => ({ ...r, [p.id]: o.val }))}
+                  >
+                    {resp[p.id] === o.val && (
+                      <svg width="10" height="8" viewBox="0 0 10 8" fill="none" aria-hidden="true">
+                        <path d="M1 4l3 3 5-6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+                      </svg>
+                    )}
+                    {o.txt}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        ))}
+
+        {rec && (
+          <div className="cap-guide-rec">
+            <div className="cap-guide-rec-tag">Sistema recomendado</div>
+            <div className="cap-guide-rec-titulo">{rec.titulo}</div>
+            <p className="cap-guide-rec-arg">{rec.argumento}</p>
+            <button className="cap-guide-reset" onClick={reset}>Cambiar respuestas</button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ConsultaLibreWidget({ datos }: {
   datos: { num_gallinas: number; sistema: string; superficie_nave_m2: number; altura_nave_cm: number; tipo_zona?: string };
 }) {
@@ -702,89 +920,58 @@ export default function ChatInterface() {
 
                       {/* Stats grid */}
                       {op.viable && (
-                        <div className="cap-stats-grid">
-                          <div className="cap-stat">
-                            <span className="cap-stat-label">Sup. normativa</span>
-                            <span className="cap-stat-val">{(op.sup_disponible_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
-                          </div>
-                          <div className="cap-stat">
-                            <span className="cap-stat-label">Densidad</span>
-                            <span className="cap-stat-val">{op.densidad_real.toFixed(1)} / {op.densidad_max.toFixed(0)} gal/m²</span>
-                          </div>
-                          {op.sup_yacija_m2 != null && <>
+                        <>
+                          <div className="cap-stats-grid">
                             <div className="cap-stat">
-                              <span className="cap-stat-label">Yacija disponible</span>
-                              <span className={`cap-stat-val${(op.sup_yacija_m2 ?? 0) < (op.yacija_min_m2 ?? 0) ? " is-warn" : ""}`}>
-                                {op.sup_yacija_m2.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
-                              </span>
+                              <span className="cap-stat-label"><IcoArea /> Sup. normativa</span>
+                              <span className="cap-stat-val">{(op.sup_disponible_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
                             </div>
                             <div className="cap-stat">
-                              <span className="cap-stat-label">Yacija requerida</span>
-                              <span className="cap-stat-val">{(op.yacija_min_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+                              <span className="cap-stat-label"><IcoDensity /> Densidad</span>
+                              <span className="cap-stat-val">{op.densidad_real.toFixed(1)} / {op.densidad_max.toFixed(0)} gal/m²</span>
                             </div>
-                          </>}
-                        </div>
+                          </div>
+                          <div className="cap-density-bar-wrap">
+                            <div
+                              className={`cap-density-bar-fill${op.densidad_real >= op.densidad_max ? " is-full" : ""}`}
+                              style={{ width: `${Math.min(100, (op.densidad_real / op.densidad_max) * 100)}%` }}
+                            />
+                          </div>
+                          {op.sup_yacija_m2 != null && (
+                            <div className="cap-stats-grid">
+                              <div className="cap-stat">
+                                <span className="cap-stat-label"><IcoHay /> Yacija disponible</span>
+                                <span className={`cap-stat-val${(op.sup_yacija_m2 ?? 0) < (op.yacija_min_m2 ?? 0) ? " is-warn" : ""}`}>
+                                  {op.sup_yacija_m2.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
+                                </span>
+                              </div>
+                              <div className="cap-stat">
+                                <span className="cap-stat-label"><IcoCheck /> Yacija requerida</span>
+                                <span className="cap-stat-val">{(op.yacija_min_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+                              </div>
+                            </div>
+                          )}
+                        </>
                       )}
 
                       {/* Layout */}
                       {op.viable && op.layout && (
                         <div className="cap-card-layout">
                           <span className="cap-layout-row">
-                            <span className="cap-layout-label">En planta</span>
+                            <span className="cap-layout-label"><IcoGrid /> En planta</span>
                             <span className="cap-layout-val">{op.layout.num_filas} filas × {op.layout.mods_por_fila} módulos</span>
                           </span>
                           <span className="cap-layout-row">
-                            <span className="cap-layout-label">Pasillos</span>
+                            <span className="cap-layout-label"><IcoPath /> Pasillos</span>
                             <span className="cap-layout-val">1 m entre cada par de filas</span>
                           </span>
                         </div>
                       )}
 
-                      {/* Bifurcación parque de invierno */}
-                      {op.viable && (op.parque_invierno_m2 ?? 0) > 0 && (() => {
-                        const supPorMod = op.num_modulos > 0 ? (op.sup_disponible_m2 ?? 0) / op.num_modulos : 0;
-                        const supDispA  = (op.modulos_opcion_a ?? 0) * supPorMod;
-                        const densA     = supDispA > 0 ? (op.gallinas_opcion_a ?? 0) / supDispA : 0;
-                        return (
-                          <div className="cap-card-parque">
-                            <div className="cap-parque-title">Para cumplir la normativa de yacija</div>
-                            <div className="cap-parque-grid">
-                              <div className="cap-parque-opcion cap-parque-opcion--a">
-                                <div className="cap-parque-opcion-head">Sin parque de invierno</div>
-                                <div className="cap-parque-opcion-gallinas">
-                                  {(op.gallinas_opcion_a ?? 0).toLocaleString("es-ES")}
-                                  <span className="cap-card-unit"> aves</span>
-                                </div>
-                                <div className="cap-parque-opcion-row">
-                                  <span className="cap-parque-opcion-key">Módulos</span>
-                                  <span className="cap-parque-opcion-val">{op.modulos_opcion_a}</span>
-                                </div>
-                                <div className="cap-parque-opcion-row">
-                                  <span className="cap-parque-opcion-key">Densidad</span>
-                                  <span className="cap-parque-opcion-val">{densA.toFixed(1)} gal/m²</span>
-                                </div>
-                                <div className="cap-parque-opcion-tag cap-parque-opcion-tag--ok">✓ Yacija OK · nave sola</div>
-                              </div>
-                              <div className="cap-parque-opcion cap-parque-opcion--b">
-                                <div className="cap-parque-opcion-head">Con parque de invierno</div>
-                                <div className="cap-parque-opcion-gallinas">
-                                  {op.max_gallinas.toLocaleString("es-ES")}
-                                  <span className="cap-card-unit"> aves</span>
-                                </div>
-                                <div className="cap-parque-opcion-row">
-                                  <span className="cap-parque-opcion-key">Módulos</span>
-                                  <span className="cap-parque-opcion-val">{op.num_modulos}</span>
-                                </div>
-                                <div className="cap-parque-opcion-row">
-                                  <span className="cap-parque-opcion-key">Densidad</span>
-                                  <span className="cap-parque-opcion-val">{op.densidad_real.toFixed(1)} gal/m²</span>
-                                </div>
-                                <div className="cap-parque-opcion-tag cap-parque-opcion-tag--parque">+ {op.parque_invierno_m2} m² parque</div>
-                              </div>
-                            </div>
-                          </div>
-                        );
-                      })()}
+                      {/* Selector parque de invierno */}
+                      {op.viable && (op.parque_invierno_m2 ?? 0) > 0 && (
+                        <ParqueSelector op={op} />
+                      )}
 
                       {op.viable && (
                         <button className="cap-card-cta" onClick={() => onSeleccionarCapacidad(op)}>
@@ -797,6 +984,10 @@ export default function ChatInterface() {
                     </div>
                   ))}
                 </div>
+
+                {/* ── Guía interactiva de selección ── */}
+                <CapacidadGuide opciones={capResult.opciones} />
+
                 <div className="btn-row">
                   <button className="btn-outline" onClick={reset}>Nueva consulta</button>
                 </div>
@@ -1299,7 +1490,7 @@ const CHAT_CSS = `
 
 
   /* ── ROOT ── */
-  .chat-root { max-width: 760px; margin: 0 auto; }
+  .chat-root { width: 100%; }
 
   /* ── INTRO (full-width dark zone) ── */
   .chat-intro {
@@ -1307,8 +1498,7 @@ const CHAT_CSS = `
     border-bottom: 2px solid var(--c-primary);
   }
   .chat-intro-inner {
-    max-width: 760px; margin: 0 auto;
-    padding: 2.75rem 2rem 2.25rem;
+    padding: 2.75rem clamp(1rem, 4vw, 3rem) 2.25rem;
   }
   .chat-eyebrow {
     font-size: 0.68rem; color: var(--c-primary); margin-bottom: 0.55rem;
@@ -1327,7 +1517,7 @@ const CHAT_CSS = `
   }
 
   /* ── MAIN ── */
-  .chat-main { padding: 2.5rem 2rem 4rem; }
+  .chat-main { padding: 2.5rem clamp(1rem, 4vw, 3rem) 4rem; }
 
 
   @keyframes stepIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
@@ -1338,6 +1528,16 @@ const CHAT_CSS = `
   .form-subtitle { font-size: 0.95rem; color: var(--c-body); margin-bottom: 1.75rem; font-weight: 300; line-height: 1.65; }
   .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; }
   .field { margin-bottom: 1.1rem; }
+
+  /* Desktop: todos los campos en una fila de 4 columnas */
+  @media (min-width: 1024px) {
+    form { display: grid; grid-template-columns: repeat(4, 1fr); gap: 1rem; align-items: start; }
+    form .field-row { display: contents; }
+    form .field { margin-bottom: 0; }
+    form .plano-upload-row,
+    form .btn-row,
+    form .field-computed { grid-column: 1 / -1; }
+  }
   .field-label { display: block; font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.4rem; letter-spacing: 0.08em; text-transform: uppercase; }
   .field-input-wrap { position: relative; display: flex; align-items: center; }
   .field-unit { position: absolute; right: 0.9rem; font-size: 0.82rem; color: #bbb; pointer-events: none; }
@@ -1486,14 +1686,14 @@ const CHAT_CSS = `
   .q-option-text { font-size: 0.92rem; color: var(--c-title); }
 
   /* ── RECOMENDACIÓN ── */
-  .rec-badge { display: inline-block; padding: 0.25rem 0.85rem; background: var(--c-ok-bg); color: var(--c-primary); border-radius: 30px; font-size: 0.75rem; font-weight: 700; margin-bottom: 1.25rem; letter-spacing: 0.04em; font-family: var(--font-display), sans-serif; }
+  .rec-badge { display: inline-flex; align-items: center; gap: 0.35rem; padding: 0.3rem 0.9rem; background: #eaf2e8; color: #2d5a27; border-radius: 30px; font-size: 0.75rem; font-weight: 700; margin-bottom: 1.25rem; letter-spacing: 0.04em; font-family: var(--font-display), sans-serif; }
   .rec-result-card { background: var(--c-bg); border: 1px solid var(--c-border); padding: 1.5rem 1.75rem; margin-bottom: 1.25rem; display: flex; align-items: flex-start; gap: 1rem; }
   .rec-result-icon { width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .rec-result-icon.is-aviario { background: var(--c-ok-bg); color: var(--c-primary); }
   .rec-result-icon.is-nidal   { background: var(--c-bg-alt); color: var(--c-body); }
   .rec-result-name { font-family: var(--font-display), sans-serif; font-size: 1.17rem; font-weight: 800; margin-bottom: 0.25rem; color: var(--c-title); }
   .rec-result-reason { font-size: 0.92rem; color: var(--c-body); line-height: 1.65; margin: 0; }
-  .rec-compare { display: grid; grid-template-columns: 1fr 1fr; gap: 0.85rem; margin-bottom: 1.5rem; }
+  .rec-compare { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 0.85rem; margin-bottom: 1.5rem; }
   .rec-card {
     border: 2px solid var(--c-border); padding: 1rem 1.1rem;
     background: var(--c-bg-alt); position: relative;
@@ -1594,10 +1794,10 @@ const CHAT_CSS = `
   .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 2px; }
 
   /* ── MODE SELECTOR ── */
-  .mode-grid { display: flex; flex-direction: column; gap: 0.85rem; margin-top: 0.5rem; }
+  .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; }
   .mode-card {
     display: flex; align-items: center; gap: 1.25rem;
-    padding: 1.5rem 1.75rem; text-align: left; width: 100%;
+    padding: 1.5rem 1.75rem; text-align: left; width: 100%; height: 100%;
     border: 2px solid var(--c-border); background: var(--c-bg-alt);
     cursor: pointer; transition: border-color 0.18s, background 0.18s, box-shadow 0.18s, transform 0.18s;
     font-family: inherit;
@@ -1621,68 +1821,323 @@ const CHAT_CSS = `
   .mode-card:hover .mode-card-arrow { color: var(--c-primary); transform: translateX(4px); }
 
   /* ── CAPACIDAD ── */
-  .cap-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; margin-bottom: 1.75rem; }
-  .cap-card { border: 2px solid var(--c-border); padding: 1.1rem 1.25rem; background: var(--c-bg-alt); }
-  .cap-card.is-viable { border-color: var(--c-primary); background: var(--c-ok-bg); }
-  .cap-card.is-no { opacity: 0.55; }
-  .cap-card-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.65rem; }
-  .cap-card-label { font-family: var(--font-display), sans-serif; font-size: 0.72rem; font-weight: 700; color: var(--c-title); letter-spacing: 0.06em; text-transform: uppercase; }
-  .cap-card-badge { font-family: var(--font-display), sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; padding: 0.15rem 0.55rem; border-radius: 30px; }
-  .cap-card-badge.is-viable { background: var(--c-ok-bg); color: var(--c-ok-text); border: 1px solid var(--c-primary); }
-  .cap-card-badge.is-no     { background: var(--c-bg-alt); color: #bbb; border: 1px solid var(--c-border); }
-  .cap-card-gallinas { font-family: var(--font-mono), monospace; font-size: 2rem; font-weight: 700; color: var(--c-title); line-height: 1; margin-bottom: 0.45rem; }
-  .cap-card-modulos { font-size: 1.4rem; margin-top: 0; margin-bottom: 0.35rem; color: var(--c-primary); }
-  .cap-card-unit { font-size: 0.85rem; font-weight: 400; color: var(--c-body); }
-  .cap-card-details { font-size: 0.78rem; color: var(--c-body); display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
-  .cap-detail-sep { color: var(--c-border); }
+  .cap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(310px, 1fr));
+    gap: 1.25rem;
+    margin-bottom: 2rem;
+    align-items: stretch;
+  }
+  .cap-card {
+    background: #ffffff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  .cap-card.is-no { opacity: 0.5; }
+
+  /* Head — banda verde oscura */
+  .cap-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 1.1rem;
+    background: #1e3d1b;
+  }
+  .cap-card.is-no .cap-card-head { background: #3a4455; }
+  .cap-card-label {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.88rem; font-weight: 600; line-height: 1.2;
+    color: #ffffff; flex: 1;
+  }
+  .cap-card-badge {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    background: none; border: none; padding: 0; flex-shrink: 0;
+  }
+  .cap-card-badge.is-viable { color: #a7d9a2; }
+  .cap-card-badge.is-no     { color: rgba(255,255,255,0.38); }
+
+  /* Hero metric */
+  .cap-card-gallinas {
+    font-family: var(--font-mono), monospace;
+    font-size: clamp(2.2rem, 3.8vw, 3.2rem);
+    font-weight: 700; color: #111827;
+    line-height: 1; padding: 1.25rem 1.1rem 0.1rem;
+    letter-spacing: -0.03em;
+  }
+  .cap-card-gallinas.cap-card-modulos {
+    font-size: 0.85rem; font-weight: 700;
+    color: #6b7280; letter-spacing: 0;
+    padding: 0.2rem 1.1rem 0.85rem;
+  }
+  .cap-card-unit { font-size: 0.72rem; font-weight: 400; color: #6b7280; }
+  .cap-card-details { font-size: 0.78rem; color: #6b7280; padding: 0.9rem 1.1rem 0.75rem; }
+  .cap-detail-sep { color: #e5e7eb; }
 
   .field-computed { font-size: 0.78rem; color: var(--c-primary); font-weight: 600; margin-top: -0.5rem; margin-bottom: 0.5rem; }
 
-  .cap-card-layout { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid rgba(0,0,0,0.07); display: flex; flex-direction: column; gap: 0.2rem; }
-  .cap-layout-row { display: flex; justify-content: space-between; align-items: baseline; font-size: 0.74rem; }
-  .cap-layout-label { color: var(--c-body); }
-  .cap-layout-val { font-family: var(--font-mono), monospace; font-weight: 700; color: var(--c-title); font-size: 0.76rem; }
+  /* Stats — filas clave:valor */
+  .cap-stats-grid {
+    display: flex; flex-direction: column;
+    margin: 0; padding: 0 1.1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  .cap-stat {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .cap-stat:last-child { border-bottom: none; }
+  .cap-stat-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #6b7280; }
+  .cap-stat-val {
+    font-family: var(--font-mono), monospace;
+    font-weight: 700; font-size: 0.82rem; color: #111827;
+  }
+  .cap-stat-val.is-warn { color: #dc2626; }
 
+  /* Barra de densidad */
+  .cap-density-bar-wrap {
+    margin: 0.15rem 1.1rem 0.4rem;
+    height: 5px; background: #e5e7eb; border-radius: 3px;
+    overflow: hidden;
+  }
+  .cap-density-bar-fill {
+    height: 100%; border-radius: 3px;
+    background: #2d5a27;
+    transition: width 0.5s ease;
+  }
+  .cap-density-bar-fill.is-full { background: #dc2626; }
+
+  /* Layout info */
+  .cap-card-layout {
+    display: flex; flex-direction: column; gap: 0;
+    padding: 0 1.1rem;
+    border-top: 1px solid #e5e7eb;
+  }
+  .cap-layout-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: 0.45rem 0; border-bottom: 1px solid #e5e7eb;
+    font-size: 0.78rem;
+  }
+  .cap-layout-row:last-child { border-bottom: none; }
+  .cap-layout-label { display: flex; align-items: center; gap: 0.4rem; color: #6b7280; }
+  .cap-layout-val { font-family: var(--font-mono), monospace; font-weight: 700; color: #111827; font-size: 0.8rem; }
+
+  /* Parque de invierno — selector toggle */
+  .cap-card-parque {
+    border-top: 1px solid #e5e7eb;
+    padding: 1rem 1.1rem;
+    flex: 1;
+    display: flex; flex-direction: column;
+  }
+  .cap-parque-toggle {
+    display: flex;
+    background: #f3f4f6;
+    border-radius: 6px;
+    padding: 3px; gap: 2px;
+    margin-bottom: 0.9rem;
+  }
+  .cap-parque-toggle-btn {
+    flex: 1; padding: 0.38rem 0.5rem;
+    border: none; border-radius: 4px;
+    background: transparent;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.72rem; font-weight: 600;
+    color: #6b7280; cursor: pointer;
+    transition: background 0.15s, color 0.15s, box-shadow 0.15s;
+  }
+  .cap-parque-toggle-btn.is-active {
+    background: #ffffff;
+    color: #1e3d1b;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+  .cap-parque-panel { display: flex; flex-direction: column; }
+  .cap-parque-opcion-gallinas {
+    font-family: var(--font-mono), monospace;
+    font-weight: 700; font-size: clamp(1.9rem, 3vw, 2.4rem);
+    color: #111827; line-height: 1;
+    margin-bottom: 0.6rem; letter-spacing: -0.03em;
+  }
+  .cap-parque-sel-stats {
+    display: flex; flex-direction: column;
+    border-top: 1px solid #e5e7eb;
+  }
+  .cap-parque-sel-stat {
+    display: flex; justify-content: space-between; align-items: center;
+    padding: 0.48rem 0; border-bottom: 1px solid #e5e7eb;
+  }
+  .cap-parque-sel-stat:last-child { border-bottom: none; }
+  .cap-parque-sel-label {
+    display: flex; align-items: center; gap: 0.4rem;
+    font-size: 0.8rem; color: #6b7280;
+  }
+  .cap-parque-sel-val {
+    font-family: var(--font-mono), monospace;
+    font-weight: 700; font-size: 0.85rem; color: #111827;
+  }
+  .cap-parque-opcion-tag {
+    display: inline-block; margin-top: 0.75rem;
+    align-self: flex-start;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.65rem; font-weight: 700;
+    text-transform: uppercase; letter-spacing: 0.06em;
+    padding: 0.22rem 0.65rem; border-radius: 20px;
+  }
+  .cap-parque-opcion-tag--ok     { background: #d4edcf; color: #2d5a27; }
+  .cap-parque-opcion-tag--parque { background: #b8e0b2; color: #1e3d1b; }
+  @media (prefers-reduced-motion: reduce) {
+    .cap-parque-toggle-btn { transition: none; }
+  }
+
+  /* CTA — footer verde oscuro */
   .cap-card-cta {
     display: flex; align-items: center; justify-content: center; gap: 0.5rem;
-    width: 100%; margin-top: 1rem; padding: 0.6rem 1rem;
-    background: var(--c-primary); color: #fff; border: none; border-radius: 4px;
-    font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase; cursor: pointer;
-    transition: background 0.15s;
+    width: 100%; margin-top: auto; padding: 0.82rem 1rem;
+    background: #2d5a27; color: #fff;
+    border: none;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.68rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    cursor: pointer; transition: background 0.15s;
+    flex-shrink: 0;
   }
-  .cap-card-cta:hover { background: var(--c-primary-dk); }
+  .cap-card-cta:hover { background: #1e3d1b; }
 
-  .cap-card-yacija { margin-top: 0.65rem; padding-top: 0.55rem; border-top: 1px solid rgba(0,0,0,0.07); display: flex; align-items: baseline; gap: 0.5rem; font-size: 0.76rem; }
-  .cap-yacija-label { color: var(--c-body); flex-shrink: 0; }
-  .cap-yacija-val { font-family: var(--font-mono), monospace; font-weight: 700; color: var(--c-title); font-size: 0.8rem; }
-  .cap-yacija-pct { font-weight: 400; color: var(--c-body); }
-  .cap-yacija-pct.is-warn { color: var(--c-fail-text); font-weight: 700; }
+  .cap-card-yacija { padding: 0 1.1rem 0.5rem; font-size: 0.76rem; color: #6b7280; }
+  .cap-yacija-label { color: #6b7280; }
+  .cap-yacija-val { font-family: var(--font-mono), monospace; font-weight: 700; color: #111827; }
+  .cap-yacija-pct { color: #6b7280; }
+  .cap-yacija-pct.is-warn { color: #dc2626; font-weight: 700; }
 
-  /* ── STATS GRID ── */
-  .cap-stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.45rem 0.75rem; margin-top: 0.75rem; padding-top: 0.6rem; border-top: 1px solid rgba(0,0,0,0.07); }
-  .cap-stat { display: flex; flex-direction: column; gap: 0.08rem; }
-  .cap-stat-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: var(--c-body); }
-  .cap-stat-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 0.8rem; color: var(--c-title); }
-  .cap-stat-val.is-warn { color: var(--c-fail-text); }
+  @media (prefers-reduced-motion: reduce) {
+    .cap-density-bar-fill { transition: none; }
+  }
 
-  /* ── PARQUE DE INVIERNO ── */
-  .cap-card-parque { margin-top: 0.75rem; padding-top: 0.65rem; border-top: 1px solid rgba(0,0,0,0.07); }
-  .cap-parque-title { font-family: var(--font-display), sans-serif; font-size: 0.64rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--c-body); margin-bottom: 0.5rem; }
-  .cap-parque-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; }
-  .cap-parque-opcion { border-radius: 2px; padding: 0.6rem 0.7rem; border: 1px solid var(--c-border); }
-  .cap-parque-opcion--a { background: var(--c-bg-alt); }
-  .cap-parque-opcion--b { background: var(--c-ok-bg); border-color: rgba(45,125,50,0.35); }
-  .cap-parque-opcion-head { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; margin-bottom: 0.3rem; }
-  .cap-parque-opcion--a .cap-parque-opcion-head { color: var(--c-body); }
-  .cap-parque-opcion--b .cap-parque-opcion-head { color: var(--c-ok-text); }
-  .cap-parque-opcion-gallinas { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 1.05rem; color: var(--c-title); margin-bottom: 0.35rem; }
-  .cap-parque-opcion-row { display: flex; justify-content: space-between; align-items: center; margin-top: 0.2rem; }
-  .cap-parque-opcion-key { font-size: 0.69rem; color: var(--c-body); }
-  .cap-parque-opcion-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 0.72rem; color: var(--c-title); }
-  .cap-parque-opcion-tag { display: inline-block; margin-top: 0.45rem; font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; padding: 0.18rem 0.45rem; border-radius: 20px; }
-  .cap-parque-opcion-tag--ok { background: var(--c-ok-bg); color: var(--c-ok-text); }
-  .cap-parque-opcion-tag--parque { background: rgba(79,118,77,0.12); color: var(--c-primary-dk); }
+  /* ── GUÍA INTERACTIVA DE SELECCIÓN ── */
+  .cap-guide {
+    margin-bottom: 2rem;
+    border: 1px solid var(--c-border);
+    border-top: 3px solid var(--c-primary);
+    background: var(--c-bg);
+    border-radius: 0 0 6px 6px;
+  }
+  .cap-guide-header {
+    padding: 0.85rem 1.5rem;
+    border-bottom: 1px solid var(--c-border);
+    background: var(--c-bg-alt);
+  }
+  .cap-guide-eyebrow {
+    display: block;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--c-primary); margin-bottom: 0.2rem;
+  }
+  .cap-guide-title {
+    font-family: var(--font-display), sans-serif;
+    font-size: 1rem; font-weight: 800;
+    color: var(--c-title); letter-spacing: -0.01em;
+    margin: 0;
+  }
+  .cap-guide-body {
+    padding: 1.25rem 1.5rem;
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+  }
+  .cap-guide-q {
+    display: flex;
+    gap: 1rem;
+    align-items: flex-start;
+    opacity: 0.35;
+    pointer-events: none;
+    transition: opacity 0.2s;
+  }
+  .cap-guide-q.is-active,
+  .cap-guide-q.is-answered {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .cap-guide-q-num {
+    width: 24px; height: 24px;
+    border-radius: 50%;
+    background: var(--c-bg-alt);
+    border: 1.5px solid var(--c-border);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.68rem; font-weight: 700;
+    color: var(--c-body);
+    flex-shrink: 0; margin-top: 0.1rem;
+  }
+  .cap-guide-q.is-answered .cap-guide-q-num {
+    background: var(--c-primary);
+    border-color: var(--c-primary);
+    color: #fff;
+  }
+  .cap-guide-q-content { flex: 1; }
+  .cap-guide-q-texto {
+    font-size: 0.9rem; font-weight: 600;
+    color: var(--c-title); margin: 0 0 0.6rem;
+    line-height: 1.4;
+  }
+  .cap-guide-opts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .cap-guide-opt {
+    display: inline-flex; align-items: center; gap: 0.35rem;
+    padding: 0.4rem 0.9rem;
+    border: 1.5px solid var(--c-border);
+    border-radius: 4px;
+    background: var(--c-bg);
+    font-size: 0.82rem; font-weight: 600;
+    color: var(--c-body);
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s, color 0.15s;
+  }
+  .cap-guide-opt:hover {
+    border-color: var(--c-primary);
+    color: var(--c-primary);
+  }
+  .cap-guide-opt.is-selected {
+    border-color: var(--c-primary);
+    background: var(--c-primary);
+    color: #fff;
+  }
+  .cap-guide-rec {
+    margin-top: 0.5rem;
+    padding: 1.1rem 1.25rem;
+    border: 1.5px solid var(--c-primary);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--c-primary) 6%, var(--c-bg));
+  }
+  .cap-guide-rec-tag {
+    font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    color: var(--c-primary); margin-bottom: 0.3rem;
+  }
+  .cap-guide-rec-titulo {
+    font-family: var(--font-display), sans-serif;
+    font-size: 1.1rem; font-weight: 800;
+    color: var(--c-title); letter-spacing: -0.01em;
+    margin-bottom: 0.5rem;
+  }
+  .cap-guide-rec-arg {
+    font-size: 0.88rem; color: var(--c-body);
+    line-height: 1.7; margin: 0 0 0.85rem;
+  }
+  .cap-guide-reset {
+    background: none; border: 1.5px solid var(--c-border);
+    border-radius: 4px; padding: 0.3rem 0.75rem;
+    font-size: 0.78rem; font-weight: 600; color: var(--c-body);
+    cursor: pointer; transition: border-color 0.15s, color 0.15s;
+  }
+  .cap-guide-reset:hover { border-color: var(--c-primary); color: var(--c-primary); }
+  @media (prefers-reduced-motion: reduce) {
+    .cap-guide-q, .cap-guide-opt, .cap-guide-reset { transition: none; }
+  }
 
   /* ── PARETO ── */
   .cap-card-pareto {
@@ -1785,19 +2240,17 @@ const CHAT_CSS = `
   .layout-exterior-msg { font-size: 0.76rem; color: #92400e; margin: 0 0 0.55rem; line-height: 1.4; }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 520px) {
-    .chat-intro-inner { padding-left: 1.25rem; padding-right: 1.25rem; }
-    .chat-main { padding-left: 1.25rem; padding-right: 1.25rem; }
-    .chat-title { font-size: 2.1rem; }
+  @media (max-width: 640px) {
+    .chat-title { font-size: 2.2rem; }
+    .mode-grid { grid-template-columns: 1fr; }
     .field-row { grid-template-columns: 1fr; }
-    .rec-compare { grid-template-columns: 1fr; }
+    .adjust-grid--single { max-width: 100%; grid-template-columns: 1fr 1fr; }
+  }
+  @media (max-width: 420px) {
+    .chat-title { font-size: 1.9rem; }
     .density-grid { grid-template-columns: 1fr 1fr; }
     .check-row { flex-wrap: wrap; }
     .check-vals, .check-diff { font-size: 0.75rem; }
-    /* Cap cards stack at narrow widths — pareto table overflows in 2-col layout */
-    .cap-grid { grid-template-columns: 1fr; }
-    /* Adjust single-option grid fills full width on mobile */
-    .adjust-grid--single { max-width: 100%; grid-template-columns: 1fr 1fr; }
   }
 
   /* ── TOUCH TARGETS ── */

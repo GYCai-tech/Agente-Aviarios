@@ -78,8 +78,8 @@ function PlanoEmbed({
   ancho_nave_m: number; largo_nave_m: number; gallinas: number;
   sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; niveles?: number;
 }) {
-  const [svg, setSvg]         = useState<string | null>(null);
-  const [error, setError]     = useState<string | null>(null);
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -207,12 +207,14 @@ const FEATURES_NIDAL = [
 ];
 
 const FEATURES_AVIARIO = [
-  { icon: "/icons/recurso-10.svg", titulo: "Hasta 3 niveles", desc: "Multiplica la densidad útil sin ampliar la nave. Cada nivel suma 13,18 m² disponibles para las aves por módulo instalado." },
-  { icon: "/icons/galvanizado.svg", titulo: "Acero + polímeros", desc: "Estructura de 532 kg por módulo con polímeros de alta resistencia. Diseñada para más de 20 años de operación continua." },
-  { icon: "/icons/recurso-19.svg", titulo: "Densidad certificada", desc: "Superficie disponible validada por el diseñador. Cumple Directiva 1999/74/CE Art. 4.3.a en todos los niveles operativos." },
-  { icon: "/icons/gallinas.svg", titulo: "Código 0 y código 1", desc: "Sistema homologado para producción campero y ecológico. Permite el etiquetado de huevo en las categorías de mayor valor." },
-  { icon: "/icons/manejo.svg", titulo: "Gestión de estiércol", desc: "Bandejas extractables por nivel con recogida cada 2-3 días. Sin contaminación cruzada entre plantas ni acumulación de amoníaco." },
-  { icon: "/icons/suministros.svg", titulo: "ROI en < 3 años", desc: "La superficie extra por metro cuadrado de nave amortiza la inversión en el primer ciclo productivo ampliado." },
+  { icon: "/icons/gallinas.svg", titulo: "Escalable", desc: "Sistema modular que permite buscar una solución a cada proyecto individual." },
+  { icon: "/icons/Recurso 20.svg", titulo: "Huevo de calidad", desc: "Su diseño garantiza la obtención huevo de calidad,limpio y minimizando roturas." },
+  { icon: "/icons/gallinas felices.svg", titulo: "Gallinas felices", desc: "Máxima producción respetando los estándares de bienestar para mejorar la calidad de vida de las ponedoras." },
+  { icon: "/icons/Recurso 17.svg", titulo: " Suministros Adaptados", desc: "El sistema de alimentación y bebida se regula y adapta en función de la raza ponedora." },
+  { icon: "/icons/Sin plagas.svg", titulo: "Sin plagas", desc: "Especialmente desarrollo para evitar proliferación de plagas e insectos" },
+  { icon: "/icons/manejo_sencillop.svg", titulo: "Manejo sencillo", desc: "Pensando para el manejo diario,facilita la revisión del nidal y la revisión de suministros" },
+  { icon: "/icons/Recurso 14.svg", titulo: "Nidos confort", desc: "Gran suavidad para las patas de las aves, privacidad y temperaturas óptimas" },
+
 ];
 
 // ── Página ────────────────────────────────────────────────────────────────────
@@ -234,7 +236,7 @@ export default function PropuestaPage() {
   if (!data) {
     return (
       <div className="empty-state">
-<style>{BASE_CSS}</style>
+        <style>{BASE_CSS}</style>
         <GycLogoImg size="lg" />
         <p className="empty-title">Sin datos de propuesta</p>
         <p className="empty-sub">Genera un informe desde la calculadora primero.</p>
@@ -244,8 +246,8 @@ export default function PropuestaPage() {
   }
 
   const { informe, argumentario_ventas, gallinas, sistema, superficie, tipo_zona, niveles, ancho_nave, largo_nave } = data;
-  const anchoM  = ancho_nave  ? parseFloat(ancho_nave)  : 0;
-  const largoM  = largo_nave  ? parseFloat(largo_nave)  : 0;
+  const anchoM = ancho_nave ? parseFloat(ancho_nave) : 0;
+  const largoM = largo_nave ? parseFloat(largo_nave) : 0;
   const tieneNaveDims = anchoM > 0 && largoM > 0;
   const sistemaLabel = SISTEMA_LABEL[sistema] ?? sistema;
   const nivelesEfectivos = tipo_zona === "aviario" ? (niveles ?? 2) : 1;
@@ -593,7 +595,7 @@ const BASE_CSS = `
 
   .mono { font-family: var(--font-mono), monospace; }
 
-  .wrap { max-width: 1200px; margin: 0 auto; padding: 0 2rem; }
+  .wrap { width: 100%; padding: 0 clamp(1rem, 4vw, 3rem); }
 
   .nave-schematic { display: block; }
 
@@ -926,6 +928,10 @@ const BASE_CSS = `
   .empty-sub   { font-size: 1rem; color: var(--c-body); }
 
   /* ── RESPONSIVE ── */
+  @media (max-width: 1024px) {
+    .hero-stats { grid-template-columns: repeat(2, auto); gap: 1.5rem 3rem; }
+    .hero-stat { border-right: none !important; margin-right: 0 !important; padding-right: 0 !important; }
+  }
   @media (max-width: 900px) {
     .features-grid { grid-template-columns: repeat(2, 1fr); }
     .kpi-row { grid-template-columns: repeat(2, 1fr); }
@@ -934,13 +940,16 @@ const BASE_CSS = `
     .dim-panel + .dim-panel { border-left: none; border-top: 1px solid var(--c-border); }
   }
   @media (max-width: 640px) {
-    .wrap { padding: 0 1.25rem; }
-    .hero { padding: 3rem 0 2.5rem; }
-    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 0; }
-    .hero-stat { padding: 0; border-right: none !important; margin-right: 0 !important; }
+    .hero { padding: 2.5rem 0 2rem; }
+    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 1rem; }
+    .hero-stat { padding: 0; }
     .features-grid { grid-template-columns: 1fr; }
-
+    .kpi-row { grid-template-columns: 1fr 1fr; }
     .cta-layout { flex-direction: column; align-items: flex-start; }
+  }
+  @media (max-width: 420px) {
+    .kpi-row { grid-template-columns: 1fr; }
+    .hero-stat-val { font-size: 1.6rem; }
   }
 
   @media print {

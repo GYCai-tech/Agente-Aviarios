@@ -16,10 +16,8 @@ const CSS = `
   display: flex;
   align-items: center;
   gap: 1.5rem;
-  padding: 0 2rem;
+  padding: 0 clamp(1rem, 4vw, 3rem);
   height: 52px;
-  max-width: 1200px;
-  margin: 0 auto;
 }
 .jrn-back {
   display: inline-flex;
