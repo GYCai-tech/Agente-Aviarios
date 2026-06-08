@@ -1847,7 +1847,7 @@ const CHAT_CSS = `
   .cap-card.is-no .cap-card-head { background: #3a4455; }
   .cap-card-label {
     font-family: var(--font-display), sans-serif;
-    font-size: 0.88rem; font-weight: 600; line-height: 1.2;
+    font-size: clamp(1.2rem, 1.8vw, 1.5rem); font-weight: 700; line-height: 1.2;
     color: #ffffff; flex: 1;
   }
   .cap-card-badge {
@@ -1890,10 +1890,10 @@ const CHAT_CSS = `
     border-bottom: 1px solid #e5e7eb;
   }
   .cap-stat:last-child { border-bottom: none; }
-  .cap-stat-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.78rem; color: #6b7280; }
+  .cap-stat-label { display: flex; align-items: center; gap: 0.4rem; font-size: 0.9rem; color: #6b7280; }
   .cap-stat-val {
     font-family: var(--font-mono), monospace;
-    font-weight: 700; font-size: 0.82rem; color: #111827;
+    font-weight: 700; font-size: 0.95rem; color: #111827;
   }
   .cap-stat-val.is-warn { color: #dc2626; }
 
