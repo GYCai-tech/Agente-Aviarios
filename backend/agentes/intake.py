@@ -577,22 +577,58 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
     if n_opt > 0:
         sup_disp   = round(S - m_opt * _NIDAL_CUERPO + sup_ext, 2)
         sup_yacija = round(S - m_opt * _NIDAL_HUELLA_TOTAL, 2)
+
+        # ── Parque de invierno nidal ──────────────────────────────────────────
+        # N_max: módulos que caben físicamente sin restricción de densidad
+        if datos.largo_nave_m is not None:
+            largo_ref = max(datos.largo_nave_m, datos.ancho_nave_m or 0.0)
+            N_max_fis = math.floor(largo_ref / _NIDAL_LARGO)
+        else:
+            N_max_fis = math.floor(S / _NIDAL_HUELLA_TOTAL)
+
+        parque_m2_nidal = 0.0
+        modulos_a_nidal: Optional[int] = None
+        gallinas_a_nidal: Optional[int] = None
+        max_gal_nidal = n_opt
+        num_mod_nidal = m_opt
+        sup_disp_nidal = sup_disp
+        dens_nidal = round(n_opt / sup_disp, 2) if sup_disp > 0 else 0.0
+
+        if N_max_fis > m_opt:
+            gal_max_parque = N_max_fis * _NIDAL_CAP
+            sup_interior_max = S - N_max_fis * _NIDAL_CUERPO
+            sup_yacija_max = S - N_max_fis * _NIDAL_HUELLA_TOTAL
+            # Parque necesario para que densidad sea legal con N_max módulos
+            parque_needed = round(gal_max_parque / densidad_max - sup_interior_max, 1)
+            # Solo exponer si yacija sigue siendo válida y parque es positivo
+            if parque_needed > 0 and sup_yacija_max >= S / 3:
+                parque_m2_nidal = parque_needed
+                modulos_a_nidal = m_opt    # sin parque: los módulos ya optimizados
+                gallinas_a_nidal = n_opt   # sin parque: gallinas ya optimizadas
+                max_gal_nidal = gal_max_parque
+                num_mod_nidal = N_max_fis
+                sup_disp_nidal = round(sup_interior_max + parque_needed, 2)
+                dens_nidal = round(gal_max_parque / sup_disp_nidal, 2)
+
         opciones.append(OpcionCapacidad(
             sistema="nidal_colectivo",
             label="Nidal colectivo A-Nida",
-            max_gallinas=n_opt,
-            num_modulos=m_opt,
-            densidad_real=round(n_opt / sup_disp, 2),
+            max_gallinas=max_gal_nidal,
+            num_modulos=num_mod_nidal,
+            densidad_real=dens_nidal,
             densidad_max=densidad_max,
             viable=True,
-            sup_disponible_m2=sup_disp,
+            sup_disponible_m2=sup_disp_nidal,
             sup_yacija_m2=sup_yacija,
             yacija_pct=round(sup_yacija / S * 100, 1),
             yacija_min_m2=round(S / 3, 1),
             pareto=[],
-            requisitos=_requisitos_equipamiento(n_opt, datos.sistema),
+            requisitos=_requisitos_equipamiento(max_gal_nidal, datos.sistema),
             slot_izq=3,
             slot_der=3,
+            parque_invierno_m2=parque_m2_nidal,
+            modulos_opcion_a=modulos_a_nidal,
+            gallinas_opcion_a=gallinas_a_nidal,
         ))
 
     # ── Aviario (por niveles disponibles) ──
