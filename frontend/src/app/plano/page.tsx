@@ -31,6 +31,7 @@ interface Metricas {
   clearance_pared_m: number;
   pasillo_m: number;
   clearance_lateral_m: number;
+  densidad_max: number;
 }
 
 // Dimensiones internas del SVG generado por el backend
@@ -111,6 +112,8 @@ export default function PlanoPage() {
   const debounce   = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dragging   = useRef(false);
   const dragStart  = useRef({ mx: 0, my: 0, px: 0, py: 0 });
+  // ¿el usuario fijó las gallinas a mano? Si no, siguen el límite al editar la geometría.
+  const gallinasManual = useRef(false);
 
   // Escala inicial calculada según el tamaño real del canvas
   function fitScale() {
@@ -158,6 +161,8 @@ export default function PlanoPage() {
         gallinas:      parseInt(data.gallinas) || prev.gallinas,
         niveles:       parseInt(data.niveles) || 2,
       }));
+      // Un valor de gallinas heredado de la propuesta se respeta (no se sobrescribe con el máximo)
+      if (parseInt(data.gallinas)) gallinasManual.current = true;
     } catch { /* noop */ }
   }, []);
 
@@ -203,7 +208,14 @@ export default function PlanoPage() {
       const data = await res.json();
       if (data.error) throw new Error(data.error);
       setSvg(data.svg ?? "");
-      if (data.metricas) setMetricas(data.metricas);
+      if (data.metricas) {
+        setMetricas(data.metricas);
+        // Si las gallinas no están fijadas a mano, llevarlas al límite calculado
+        if (!gallinasManual.current) {
+          const max = data.metricas.gallinas_max as number;
+          setCfg(prev => (prev.gallinas === max ? prev : { ...prev, gallinas: max }));
+        }
+      }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Error al generar plano");
     } finally {
@@ -219,6 +231,19 @@ export default function PlanoPage() {
 
   function set<K extends keyof LayoutConfig>(key: K, val: LayoutConfig[K]) {
     setCfg(prev => ({ ...prev, [key]: val }));
+  }
+
+  // Editar geometría (ancho/largo/filas/módulos/clearances…) recalcula las gallinas
+  // hacia el límite: resetea a 0 (auto) y desmarca el modo manual.
+  function setGeom<K extends keyof LayoutConfig>(key: K, val: LayoutConfig[K]) {
+    gallinasManual.current = false;
+    setCfg(prev => ({ ...prev, [key]: val, gallinas: 0 }));
+  }
+
+  // El usuario fija las gallinas a mano → ya no siguen el límite automáticamente.
+  function setGallinas(val: number) {
+    gallinasManual.current = true;
+    setCfg(prev => ({ ...prev, gallinas: val }));
   }
 
   function exportSvg() {
@@ -333,13 +358,13 @@ export default function PlanoPage() {
                   <label>Ancho (m)</label>
                   <input type="number" min={6} max={30} step={0.5}
                     value={cfg.ancho_nave_m}
-                    onChange={e => set("ancho_nave_m", parseFloat(e.target.value) || cfg.ancho_nave_m)} />
+                    onChange={e => setGeom("ancho_nave_m", parseFloat(e.target.value) || cfg.ancho_nave_m)} />
                 </div>
                 <div className="field">
                   <label>Largo (m)</label>
                   <input type="number" min={10} max={200} step={1}
                     value={cfg.largo_nave_m}
-                    onChange={e => set("largo_nave_m", parseFloat(e.target.value) || cfg.largo_nave_m)} />
+                    onChange={e => setGeom("largo_nave_m", parseFloat(e.target.value) || cfg.largo_nave_m)} />
                 </div>
               </div>
             </div>
@@ -349,7 +374,7 @@ export default function PlanoPage() {
               <div className="field-row">
                 {(["aviario", "nidal_colectivo"] as const).map(t => (
                   <button key={t}
-                    onClick={() => set("tipo_zona", t)}
+                    onClick={() => setGeom("tipo_zona", t)}
                     style={{
                       padding: "6px 0", fontSize: 11, cursor: "pointer", borderRadius: 4,
                       fontWeight: 600, letterSpacing: ".3px",
@@ -371,7 +396,7 @@ export default function PlanoPage() {
                     <label>Número de módulos (0 = Auto)</label>
                     <input type="number" min={0} max={80} step={1}
                       value={nMod || ""} placeholder="Auto (máx. físico)"
-                      onChange={e => set("mods_por_fila", parseInt(e.target.value) || 0)} />
+                      onChange={e => setGeom("mods_por_fila", parseInt(e.target.value) || 0)} />
                   </div>
                 </>
               ) : (
@@ -380,13 +405,13 @@ export default function PlanoPage() {
                     <label>Nº filas</label>
                     <input type="number" min={1} max={8} step={1}
                       value={nFil || ""} placeholder="Auto"
-                      onChange={e => set("num_filas", parseInt(e.target.value) || 0)} />
+                      onChange={e => setGeom("num_filas", parseInt(e.target.value) || 0)} />
                   </div>
                   <div className="field">
                     <label>Mód./fila</label>
                     <input type="number" min={1} max={80} step={1}
                       value={nMod || ""} placeholder="Auto"
-                      onChange={e => set("mods_por_fila", parseInt(e.target.value) || 0)} />
+                      onChange={e => setGeom("mods_por_fila", parseInt(e.target.value) || 0)} />
                   </div>
                 </div>
               )}
@@ -394,13 +419,13 @@ export default function PlanoPage() {
                 <label>Gallinas</label>
                 <input type="number" min={0} max={999999} step={100}
                   value={cfg.gallinas || ""} placeholder="0"
-                  onChange={e => set("gallinas", parseInt(e.target.value) || 0)} />
+                  onChange={e => setGallinas(parseInt(e.target.value) || 0)} />
               </div>
               <div className="field">
                 <label>Zona exterior — ancho (m)</label>
                 <input type="number" min={0} max={50} step={0.5}
                   value={cfg.ancho_alero_m || ""} placeholder="0 = sin exterior"
-                  onChange={e => set("ancho_alero_m", parseFloat(e.target.value) || 0)} />
+                  onChange={e => setGeom("ancho_alero_m", parseFloat(e.target.value) || 0)} />
               </div>
             </div>
 
@@ -412,7 +437,7 @@ export default function PlanoPage() {
                 <div className="slider-wrap">
                   <input type="range" min={4.0} max={8.0} step={0.25}
                     value={cfg.clearance_lateral_m}
-                    onChange={e => set("clearance_lateral_m", parseFloat(e.target.value))} />
+                    onChange={e => setGeom("clearance_lateral_m", parseFloat(e.target.value))} />
                   <span className="slider-val">{cfg.clearance_lateral_m.toFixed(2)}</span>
                 </div>
               </div>
@@ -421,7 +446,7 @@ export default function PlanoPage() {
                 <div className="slider-wrap">
                   <input type="range" min={0.3} max={2.5} step={0.05}
                     value={cfg.clearance_pared_m}
-                    onChange={e => set("clearance_pared_m", parseFloat(e.target.value))} />
+                    onChange={e => setGeom("clearance_pared_m", parseFloat(e.target.value))} />
                   <span className="slider-val">{cfg.clearance_pared_m.toFixed(2)}</span>
                 </div>
               </div>
@@ -430,7 +455,7 @@ export default function PlanoPage() {
                 <div className="slider-wrap">
                   <input type="range" min={0.5} max={3.0} step={0.05}
                     value={cfg.pasillo_m}
-                    onChange={e => set("pasillo_m", parseFloat(e.target.value))} />
+                    onChange={e => setGeom("pasillo_m", parseFloat(e.target.value))} />
                   <span className="slider-val">{cfg.pasillo_m.toFixed(2)}</span>
                 </div>
               </div>
@@ -446,10 +471,10 @@ export default function PlanoPage() {
                     <div className="metric-lbl">Módulos</div>
                   </div>
                   <div className="metric-card">
-                    <div className={`metric-val ${metricas.densidad <= 9 ? "ok" : "warn"}`}>
+                    <div className={`metric-val ${metricas.densidad <= metricas.densidad_max ? "ok" : "warn"}`}>
                       {metricas.densidad.toFixed(1)}
                     </div>
-                    <div className="metric-lbl">gal/m² (lím. 9)</div>
+                    <div className="metric-lbl">gal/m² (lím. {metricas.densidad_max})</div>
                   </div>
                   <div className="metric-card">
                     <div className="metric-val">{metricas.gallinas_max.toLocaleString("es-ES")}</div>
@@ -473,7 +498,7 @@ export default function PlanoPage() {
 
             <div className="panel-section">
               <button className="btn-primary"
-                onClick={() => { set("num_filas", 0); set("mods_por_fila", 0); }}>
+                onClick={() => { gallinasManual.current = false; setCfg(prev => ({ ...prev, num_filas: 0, mods_por_fila: 0, gallinas: 0 })); }}>
                 ⟳ Optimizar layout
               </button>
               <button className="btn-secondary"

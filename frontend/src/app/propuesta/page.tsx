@@ -297,7 +297,7 @@ export default function PropuestaPage() {
       <div className="doc">
 
         {/* ── HERO ── */}
-        <section className="hero">
+        <section className={`hero ${isAviario ? "hero-aviario" : "hero-nidal"}`}>
           <div className="hero-dot-grid" />
           <div className="hero-accent" />
           <div className="hero-inner">
@@ -642,6 +642,16 @@ const BASE_CSS = `
     background: var(--navy);
     padding: 3.5rem max(2.5rem, calc((100% - 860px) / 2)) 3rem;
     position: relative; overflow: hidden;
+  }
+  .hero.hero-nidal {
+    background-image: linear-gradient(rgba(0, 8, 35, 0.45), rgba(0, 8, 35, 0.45)), url('/hero-nidal.jpg');
+    background-size: cover;
+    background-position: center;
+  }
+  .hero.hero-aviario {
+    background-image: linear-gradient(rgba(0, 8, 35, 0.45), rgba(0, 8, 35, 0.45)), url('/IMG_9878.JPG');
+    background-size: cover;
+    background-position: center;
   }
   .hero-dot-grid {
     position: absolute; inset: 0; pointer-events: none;
