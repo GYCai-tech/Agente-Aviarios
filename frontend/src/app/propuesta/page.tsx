@@ -60,16 +60,6 @@ function renderMd(text: string): string {
     .replace(/\n/g, "<br/>");
 }
 
-function GycLogoImg({ size = "md", white = false }: { size?: "sm" | "md" | "lg"; white?: boolean }) {
-  return (
-    <img
-      src="/gyc-logo.png"
-      alt="Gomez y Crespo"
-      className={["logo-img", `logo-img--${size}`, white ? "logo-img--white" : ""].filter(Boolean).join(" ")}
-    />
-  );
-}
-
 // ── Plano de distribución (determinista) ──────────────────────────────────────
 
 function PlanoEmbed({
@@ -118,103 +108,89 @@ function PlanoEmbed({
   );
 
   if (error || !svg) return (
-    <div className="plano-embed-fallback">
+    <div className="plano-fallback">
       <p>No se pudo generar el plano. <a href="/plano">Abrir editor →</a></p>
     </div>
   );
 
-  return <div className="plano-embed-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
+  return <div className="plano-svg" dangerouslySetInnerHTML={{ __html: svg }} />;
 }
 
-// ── Plano esquemático (fallback) ──────────────────────────────────────────────
+// ── Plano esquemático ─────────────────────────────────────────────────────────
 
 function NaveSchematic({
-  superficie, gallinas, tipoZona, requisitos,
+  superficie, gallinas, tipoZona,
 }: {
   superficie: number; gallinas: number;
-  tipoZona: "nidal_colectivo" | "aviario"; requisitos: RequisitoCalculado[];
+  tipoZona: "nidal_colectivo" | "aviario";
 }) {
-  const isAviario = tipoZona === "aviario";
-  const numModulos = Math.ceil(gallinas / (isAviario ? 60 : 144));
-  const modAncho = isAviario ? 3.735 : 1.20;
-  const modFondo = isAviario ? 1.20 : 1.40;
-  const slotFondo = isAviario ? 1.20 : 3.00;
-  const naveAnchoM = numModulos * modAncho;
-  const naveFondoM = superficie / naveAnchoM;
-  const bloqueM = modFondo + 2 * slotFondo;
-  const yacijaM = Math.max(0.3, (naveFondoM - bloqueM) / 2);
-
-  const SVG_W = 300, SVG_H = 190, PAD = 14;
-  const drawW = SVG_W - PAD * 2;
-  const drawH = SVG_H - PAD * 2 - 18;
-  const sx = drawW / naveAnchoM;
-  const sy = drawH / naveFondoM;
-
-  const yYac1 = PAD; const hYac1 = yacijaM * sy;
-  const ySlot1 = yYac1 + hYac1; const hSlot = slotFondo * sy;
-  const yMod = ySlot1 + hSlot; const hMod = modFondo * sy;
-  const ySlot2 = yMod + hMod; const yYac2 = ySlot2 + hSlot;
-  const hYac2 = yacijaM * sy; const modPx = modAncho * sx;
-
-  const LS = { fontSize: "7", fontFamily: "var(--font-body), sans-serif", fontWeight: "700", letterSpacing: "0.1em" } as const;
+  const isAv = tipoZona === "aviario";
+  const numMods = isAv
+    ? Math.ceil(gallinas / Math.floor(9 * 13.18))
+    : Math.ceil(gallinas / 144);
+  const W = 460, H = 210;
+  const modW = Math.min(47, Math.floor((W - 20) / numMods) - 2);
+  const modH = 74;
+  const yYac = 10, hYac = 36;
+  const yPas1 = yYac + hYac, hPas = 22;
+  const yMod = yPas1 + hPas;
+  const yPas2 = yMod + modH;
+  const yYac2 = yPas2 + hPas;
 
   return (
-    <svg width={SVG_W} height={SVG_H} viewBox={`0 0 ${SVG_W} ${SVG_H}`} className="nave-schematic">
-      <rect x={PAD} y={PAD} width={drawW} height={drawH} fill="none" stroke="#dddddd" strokeWidth="1" strokeDasharray="3 2" />
-      <rect x={PAD} y={yYac1} width={drawW} height={hYac1} fill="#e8ede8" opacity="0.8" />
-      {hYac1 > 11 && <text x={PAD + 5} y={yYac1 + hYac1 / 2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
-      <rect x={PAD} y={ySlot1} width={drawW} height={hSlot} fill="#4f764d" opacity="0.15" />
-      {hSlot > 9 && <text x={PAD + 5} y={ySlot1 + hSlot / 2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
-      {Array.from({ length: numModulos }, (_, i) => (
-        <rect key={i} x={PAD + i * modPx + 0.5} y={yMod} width={Math.max(1, modPx - 1)} height={hMod} fill="#000823" rx="1" />
-      ))}
-      {hMod > 9 && <text x={PAD + drawW / 2} y={yMod + hMod / 2} textAnchor="middle" dominantBaseline="middle" fill="rgba(255,255,255,0.85)" {...LS}>{numModulos} {isAviario ? "aviarios" : "módulos"}</text>}
-      <rect x={PAD} y={ySlot2} width={drawW} height={hSlot} fill="#4f764d" opacity="0.15" />
-      {hSlot > 9 && <text x={PAD + 5} y={ySlot2 + hSlot / 2} dominantBaseline="middle" fill="#234926" {...LS}>{isAviario ? "PASILLO" : `SLOT ${slotFondo}m`}</text>}
-      <rect x={PAD} y={yYac2} width={drawW} height={hYac2} fill="#e8ede8" opacity="0.8" />
-      {hYac2 > 11 && <text x={PAD + 5} y={yYac2 + hYac2 / 2} dominantBaseline="middle" fill="#484e62" {...LS}>YACIJA</text>}
-      <g transform={`translate(${PAD}, ${PAD + drawH + 6})`}>
-        <rect x={0} y={0} width={8} height={8} fill="#000823" rx="1" />
-        <text x={11} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">{isAviario ? "Aviarios" : "Nidales"} ({numModulos})</text>
-        <rect x={80} y={0} width={8} height={8} fill="#e8ede8" />
-        <text x={91} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">Yacija</text>
-        <rect x={130} y={1} width={8} height={6} fill="#4f764d" opacity="0.4" />
-        <text x={141} y={6.5} fill="#484e62" fontSize="6.5" fontFamily="var(--font-body), sans-serif">{isAviario ? "Pasillo" : "Slot"}</text>
+    <svg viewBox={`0 0 ${W} ${H}`} style={{ width: "100%", maxWidth: `${W}px`, display: "block" }}>
+      <rect x="10" y="10" width={W - 20} height={H - 20} rx="3" fill="none" stroke="#d0d3dc" strokeWidth="1" strokeDasharray="4 2.5" />
+      <rect x="10" y={yYac} width={W - 20} height={hYac} fill="#eef6ed" />
+      <text x="22" y={yYac + hYac / 2 + 3} fill="#3d6b3a" fontSize="8" fontFamily="Montserrat,sans-serif" fontWeight="700" letterSpacing=".08em">YACIJA NORTE</text>
+      <rect x="10" y={yPas1} width={W - 20} height={hPas} fill="#f3f4f7" />
+      <text x="22" y={yPas1 + hPas / 2 + 3} fill="#a0a5b8" fontSize="7" fontFamily="Montserrat,sans-serif" fontWeight="700" letterSpacing=".1em">PASILLO</text>
+      {Array.from({ length: numMods }, (_, i) => {
+        const x = 10 + i * (modW + 3);
+        return (
+          <g key={i}>
+            <rect x={x} y={yMod} width={modW} height={modH} rx="2" fill="#000823" />
+            <text x={x + modW / 2} y={yMod + modH / 2 + 3} textAnchor="middle" fill="rgba(255,255,255,.6)" fontSize="7" fontFamily="JetBrains Mono,monospace">M{i + 1}</text>
+          </g>
+        );
+      })}
+      <rect x="10" y={yPas2} width={W - 20} height={hPas} fill="#f3f4f7" />
+      <text x="22" y={yPas2 + hPas / 2 + 3} fill="#a0a5b8" fontSize="7" fontFamily="Montserrat,sans-serif" fontWeight="700" letterSpacing=".1em">PASILLO</text>
+      <rect x="10" y={yYac2} width={W - 20} height={hYac} fill="#eef6ed" />
+      <text x="22" y={yYac2 + hYac / 2 + 3} fill="#3d6b3a" fontSize="8" fontFamily="Montserrat,sans-serif" fontWeight="700" letterSpacing=".08em">YACIJA SUR</text>
+      <g transform={`translate(${W - 180}, ${H - 17})`}>
+        <rect x="0" y="2" width="9" height="9" rx="1" fill="#000823" />
+        <text x="13" y="10" fill="#8b91a3" fontSize="7.5" fontFamily="Source Sans 3,sans-serif">Módulos ({numMods})</text>
+        <rect x="85" y="2" width="9" height="9" fill="#eef6ed" stroke="#9fc89d" strokeWidth=".8" />
+        <text x="98" y="10" fill="#8b91a3" fontSize="7.5" fontFamily="Source Sans 3,sans-serif">Yacija</text>
+        <rect x="135" y="3" width="9" height="7" fill="#f3f4f7" stroke="#d0d3dc" strokeWidth=".8" />
+        <text x="148" y="10" fill="#8b91a3" fontSize="7.5" fontFamily="Source Sans 3,sans-serif">Pasillo</text>
       </g>
     </svg>
   );
 }
 
-// ── Características por producto ──────────────────────────────────────────────
+// ── Feature data ──────────────────────────────────────────────────────────────
 
-
-const FEATURES_GENERIC = [
-  { icon: "/icons/galvanizado.svg", titulo: "Rejillas triple galvanizado", desc: "Alambre de ⌀2,8mm con una resistencia a la corrosión tres veces superiro al alambre convencional" },
-  { icon: "/icons/Recurso 23.svg", titulo: "Tubos PosMAC®", desc: "Revestimiento de film químico sobre galvanizado Mg-AL que lo hace cinco veces más resistente y duradero al convencional" },
-  { icon: "/icons/Recurso 22.svg", titulo: "Chapa DX51D+Z275", desc: "Galvanizado de alta calidad con 20 micras de Zinc según ISO9223 y EN10346:2015" },
-
-]
-
-const FEATURES_NIDAL = [
-  { icon: "/icons/recurso-9.svg", titulo: "Slats a medida", desc: " Estructura modilar que permote 1,2 o 3 metros por lado de nidal " },
-  { icon: "/icons/Antipiojos.svg", titulo: "Antipiojos", desc: "Diseñado en chapa minimizando zonas ocultas para evitar la proliferación de ácaro rojo" },
-  { icon: "/icons/LimpiezaSimple.svg", titulo: "Limpieza simple", desc: "Diseñado para poder desinfectar y limpiar sin desmontar todo el nidal." },
-  { icon: "/icons/recurso 21.svg", titulo: "Gallinas Felices", desc: "Diseñado y certificado para sistemas en suelo, campero y ecológico. Cumplimiento garantizado de Directiva 1999/74/CE." },
-  { icon: "/icons/Recurso 20.svg", titulo: "Huevo de calidad", desc: "El slot guía a las gallinas al nidal en el momento de la puesta. Drástica reducción de huevos sucios y rotos en suelo." },
-  { icon: "/icons/Recurso 15.svg", titulo: "Alfombras higiénicas", desc: "Nido AstroTurf perforado,evita acumulación de residuos" },
-  { icon: "/icons/Recurso 17.svg", titulo: "Adaptable ", desc: "Sistema modular que permite buscar solución a cada proyecto individual." },
-
+const FEATS_AVIARIO = [
+  { icon: "/icons/gallinas.svg", name: "Modular y escalable", desc: "Configuración adaptable a cada proyecto. Número de módulos ajustable a la superficie y censo disponibles." },
+  { icon: "/icons/Recurso 20.svg", name: "Huevo de calidad", desc: "Su diseño garantiza la obtención de huevo limpio y sin roturas. Tasa de huevo sucio inferior al 1%." },
+  { icon: "/icons/gallinas felices.svg", name: "Gallinas con bienestar", desc: "Diseño que respeta los estándares de bienestar animal, mejorando la calidad de vida de las ponedoras y la producción." },
+  { icon: "/icons/Recurso 17.svg", name: "Suministros adaptados", desc: "Alimentación y bebida regulada en función de la raza ponedora. Drinkers nipple y comedero en cadena configurables." },
+  { icon: "/icons/Sin plagas.svg", name: "Sin plagas", desc: "Diseñado para dificultar la proliferación de insectos y parásitos, reduciendo costes de tratamientos sanitarios." },
+  { icon: "/icons/manejo_sencillop.svg", name: "Manejo sencillo", desc: "Pensado para el trabajo diario del operario: revisión del nidal y control de suministros simplificados y accesibles." },
+  { icon: "/icons/Recurso 14.svg", name: "Nidos confort AstroTurf", desc: "Alta suavidad para las patas, privacidad y temperatura óptima. Estructura de acero galvanizado con PosMAC®." },
+  { icon: "/icons/Recurso 23.svg", name: "Llave en mano", desc: "Gómez y Crespo coordina fabricación, transporte e instalación. Un único interlocutor para toda la obra." },
 ];
 
-const FEATURES_AVIARIO = [
-  { icon: "/icons/gallinas.svg", titulo: "Escalable", desc: "Sistema modular que permite buscar una solución a cada proyecto individual." },
-  { icon: "/icons/Recurso 20.svg", titulo: "Huevo de calidad", desc: "Su diseño garantiza la obtención huevo de calidad,limpio y minimizando roturas." },
-  { icon: "/icons/gallinas felices.svg", titulo: "Gallinas felices", desc: "Máxima producción respetando los estándares de bienestar para mejorar la calidad de vida de las ponedoras." },
-  { icon: "/icons/Recurso 17.svg", titulo: " Suministros Adaptados", desc: "El sistema de alimentación y bebida se regula y adapta en función de la raza ponedora." },
-  { icon: "/icons/Sin plagas.svg", titulo: "Sin plagas", desc: "Especialmente desarrollo para evitar proliferación de plagas e insectos" },
-  { icon: "/icons/manejo_sencillop.svg", titulo: "Manejo sencillo", desc: "Pensando para el manejo diario,facilita la revisión del nidal y la revisión de suministros" },
-  { icon: "/icons/Recurso 14.svg", titulo: "Nidos confort", desc: "Gran suavidad para las patas de las aves, privacidad y temperaturas óptimas" },
-
+const FEATS_NIDAL = [
+  { icon: "/icons/recurso-9.svg", name: "Slats a medida", desc: "Estructura modular que permite 1, 2 o 3 metros por lado de nidal, adaptable a cualquier proyecto." },
+  { icon: "/icons/Antipiojos.svg", name: "Antipiojos", desc: "Diseñado en chapa minimizando zonas ocultas para evitar la proliferación de ácaro rojo." },
+  { icon: "/icons/LimpiezaSimple.svg", name: "Limpieza simple", desc: "Diseñado para poder desinfectar y limpiar sin desmontar todo el nidal." },
+  { icon: "/icons/recurso 21.svg", name: "Gallinas felices", desc: "Diseñado y certificado para sistemas en suelo, campero y ecológico. Directiva 1999/74/CE garantizada." },
+  { icon: "/icons/Recurso 20.svg", name: "Huevo de calidad", desc: "El slot guía a las gallinas al nidal en el momento de la puesta. Drástica reducción de huevos sucios y rotos." },
+  { icon: "/icons/Recurso 15.svg", name: "Alfombras higiénicas", desc: "Nido AstroTurf perforado, evita acumulación de residuos y facilita la recogida de huevos." },
+  { icon: "/icons/Recurso 17.svg", name: "Adaptable", desc: "Sistema modular que permite buscar solución a cada proyecto individual, sin obras ni grúas." },
+  { icon: "/icons/Recurso 22.svg", name: "Materiales premium", desc: "Chapa DX51D+Z275. Galvanizado de alta calidad con 20 micras de Zinc según ISO 9223 y EN 10346:2015." },
 ];
 
 // ── Página ────────────────────────────────────────────────────────────────────
@@ -237,15 +213,18 @@ export default function PropuestaPage() {
     return (
       <div className="empty-state">
         <style>{BASE_CSS}</style>
-        <GycLogoImg size="lg" />
         <p className="empty-title">Sin datos de propuesta</p>
         <p className="empty-sub">Genera un informe desde la calculadora primero.</p>
-        <a href="/" className="btn-pill">← Volver a la calculadora</a>
+        <a href="/" className="btn btn-primary">← Volver a la calculadora</a>
       </div>
     );
   }
 
-  const { informe, argumentario_ventas, gallinas, sistema, superficie, tipo_zona, niveles, ancho_nave, largo_nave } = data;
+  const {
+    informe, argumentario_ventas, gallinas, sistema, superficie,
+    tipo_zona, niveles, ancho_nave, largo_nave,
+  } = data;
+
   const anchoM = ancho_nave ? parseFloat(ancho_nave) : 0;
   const largoM = largo_nave ? parseFloat(largo_nave) : 0;
   const tieneNaveDims = anchoM > 0 && largoM > 0;
@@ -260,25 +239,54 @@ export default function PropuestaPage() {
     ? Math.ceil(parseInt(gallinas) / Math.floor(densMax * supDispPorMod))
     : Math.ceil(parseInt(gallinas) / 144);
   const densidadVerif = informe.verificaciones_nave.find(v => v.parametro.toLowerCase().includes("densidad"));
-  const densidadReal = densidadVerif ? densidadVerif.valor_real.toFixed(1) : "—";
-  const densidadLimite = densidadVerif ? densidadVerif.valor_limite : 9;
+  const densidadReal = densidadVerif ? densidadVerif.valor_real : 0;
+  const densidadLimite = densidadVerif ? densidadVerif.valor_limite : densMax;
   const productoNombre = isAviario ? "Aviario Industrial" : "A-Nida";
   const productoCodigo = isAviario ? "COD. 10007 · MULTINIVEL" : "NIDAL COLECTIVO";
   const productoSubtitulo = isAviario
     ? `Sistema aviario de ${nivelesEfectivos} plantas para producción intensiva en altura`
     : "Sistema de nidales colectivos para producción en suelo, campero y ecológico";
-  const features = isAviario ? FEATURES_AVIARIO : FEATURES_NIDAL;
+  const feats = isAviario ? FEATS_AVIARIO : FEATS_NIDAL;
+
+  // Beneficios dinámicos
+  const gallinasInt = parseInt(gallinas);
+  const supFloat = parseFloat(superficie);
+  const supeloConvencional = Math.round(supFloat * 4);
+  const incrementoPct = Math.round(((gallinasInt - supeloConvencional) / supeloConvencional) * 100);
+  const benes = isAviario
+    ? [
+        { num: `+${incrementoPct}%`, title: "Más aves, misma nave", desc: `Frente a una instalación en suelo convencional (≈${supeloConvencional.toLocaleString("es-ES")} aves a 4 gal/m²), el aviario aloja ${gallinasInt.toLocaleString("es-ES")} aves en los mismos ${Math.round(supFloat).toLocaleString("es-ES")} m² sin obras ni ampliación de parcela.` },
+        { num: "<1%", title: "Huevo sucio", desc: "Los nidos AstroTurf con recolección automática reducen el porcentaje de huevo sucio y roto por debajo del 1%, mejorando la categoría del producto desde el primer ciclo." },
+        { num: "20+", title: "Años de vida útil", desc: "Estructura de acero galvanizado con recubrimiento PosMAC® diseñada para ambientes de corral intensivo. Mantenimiento mínimo y retorno de inversión acelerado." },
+      ]
+    : [
+        { num: "144", title: "Gallinas por módulo", desc: `Con ${numModulos} módulos A-Nida cubres perfectamente las ${gallinasInt.toLocaleString("es-ES")} aves. Instalación modular sin obra civil, sin grúa, sin días de parada productiva.` },
+        { num: "<2%", title: "Huevo sucio", desc: "El slot de acceso guía a las gallinas al nidal en el momento de la puesta, reduciendo drásticamente los huevos sucios y rotos en suelo." },
+        { num: "CE", title: "Bienestar certificado", desc: "Diseñado y certificado para sistemas en suelo, campero y ecológico. Cumplimiento garantizado de la Directiva 1999/74/CE y RD 3/2002." },
+      ];
+
+  // Argumentario en párrafos para gyc-points
+  const argParrafos = argumentario_ventas
+    ? argumentario_ventas.split(/\n\n+/).filter(p => p.trim())
+    : [];
+
+  // Barra densidad hero (%)
+  const densBarPct = Math.min(100, (densidadReal / densidadLimite) * 100);
+  // Barra módulos (relativo a un máximo razonable)
+  const modMaxRef = isAviario ? 20 : 30;
+  const modBarPct = Math.min(100, (numModulos / modMaxRef) * 100);
+  // Barra gallinas (relativo a 10.000 referencia)
+  const galBarPct = Math.min(100, (gallinasInt / 10000) * 100);
 
   return (
     <>
       <style>{BASE_CSS}</style>
 
-      {/* ── HEADER ─────────────────────────────────────────────────── */}
       <JourneyHeader
         activeStep={4}
         actions={
-          <button className="hdr-action" onClick={() => window.print()}>
-            <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+          <button className="topbar-btn" onClick={() => window.print()}>
+            <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Exportar PDF
@@ -286,215 +294,245 @@ export default function PropuestaPage() {
         }
       />
 
-      {/* ── HERO ───────────────────────────────────────────────────── */}
-      <section className={`hero ${isAviario ? "hero--aviario" : ""}`}>
-        <div className="hero-inner wrap">
-          <div className="hero-top">
-            <div className="hero-eyebrow-group">
-              <span className="hero-tag">{productoCodigo}</span>
-              <span className="hero-sep">·</span>
-              <span className="hero-date">{fechaHoy}</span>
+      <div className="doc">
+
+        {/* ── HERO ── */}
+        <section className="hero">
+          <div className="hero-dot-grid" />
+          <div className="hero-accent" />
+          <div className="hero-inner">
+            <div className="hero-left">
+              <div className="hero-eyebrow">
+                <span className="hero-cod">{productoCodigo}</span>
+                <span className="hero-date">{fechaHoy}</span>
+                <span className={`hero-badge ${cumple ? "is-ok" : "is-fail"}`}>
+                  {cumple ? (
+                    <><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><path d="M1 3.5l2 2 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable</>
+                  ) : (
+                    <><svg width="8" height="7" viewBox="0 0 8 7" fill="none"><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg> Revisar parámetros</>
+                  )}
+                </span>
+              </div>
+              <h1 className="hero-title">
+                {isAviario ? <>Aviario<br /><span className="accent">Industrial</span></> : <>A-Nida<br /><span className="accent">Colectivo</span></>}
+              </h1>
+              <p className="hero-sub">{productoSubtitulo} — nave de {Math.round(supFloat).toLocaleString("es-ES")} m²</p>
             </div>
-            <span className={`hero-status ${cumple ? "is-ok" : "is-fail"}`}>
-              {cumple ? (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><path d="M1.5 4.5L3.5 6.5L7.5 2.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable</>
-              ) : (
-                <><svg width="9" height="9" viewBox="0 0 9 9" fill="none" aria-hidden="true"><path d="M2 2l5 5M7 2L2 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg> Revisar parámetros</>
-              )}
-            </span>
+            <div className="hero-right">
+              <div className="hero-stats-box">
+                <div className="hero-stat">
+                  <span className="hs-val">{gallinasInt.toLocaleString("es-ES")}</span>
+                  <span className="hs-lbl">Gallinas ponedoras</span>
+                  <div className="hs-bar"><div className="hs-fill" style={{ width: `${galBarPct}%` }} /></div>
+                </div>
+                <div className="hero-stat">
+                  <span className="hs-val">{numModulos}</span>
+                  <span className="hs-lbl">{isAviario ? `Módulos · ${nivelesEfectivos} niveles` : "Módulos A-Nida"}</span>
+                  <div className="hs-bar"><div className="hs-fill" style={{ width: `${modBarPct}%` }} /></div>
+                </div>
+                <div className="hero-stat">
+                  <span className="hs-val">{densidadReal.toFixed(1)}<span className="hs-den">/{densidadLimite}</span></span>
+                  <span className="hs-lbl">gal/m² · normativa</span>
+                  <div className="hs-bar"><div className={`hs-fill${densBarPct >= 95 ? " is-warn" : ""}`} style={{ width: `${densBarPct}%` }} /></div>
+                </div>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <h1 className="hero-title">{productoNombre}</h1>
-          <p className="hero-subtitle">{productoSubtitulo}</p>
-
-          <div className="hero-stats">
-            {[
-              { val: parseInt(gallinas).toLocaleString("es-ES"), lbl: "Gallinas ponedoras" },
-              { val: numModulos.toString(), lbl: isAviario ? `Módulos · ${nivelesEfectivos} niveles` : "Módulos A-Nida" },
-              { val: densidadReal, lbl: `Gal/m² · límite ${densidadLimite}` },
-              { val: parseFloat(superficie).toLocaleString("es-ES"), lbl: "m² de nave" },
-            ].map((s, i) => (
-              <div key={i} className="hero-stat">
-                <span className="hero-stat-val mono">{s.val}</span>
-                <span className="hero-stat-lbl">{s.lbl}</span>
+        {/* ── BENEFICIOS ── */}
+        <section className="section section-tint">
+          <div className="s-hdr">
+            <span className="s-tag">Por qué este sistema</span>
+            <span className="s-rule" />
+          </div>
+          <div className="bene-grid">
+            {benes.map((b) => (
+              <div key={b.title} className="bene-card">
+                <div className="bene-num"><span>{b.num}</span></div>
+                <div className="bene-title">{b.title}</div>
+                <div className="bene-desc">{b.desc}</div>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── CARACTERÍSTICAS ────────────────────────────────────────── */}
-      <section className="section-features">
-        <div className="wrap">
-          <div className="sec-header">
-            <h2 className="sec-title">Características del sistema</h2>
-            <span className="sec-rule" />
+        {/* ── CARACTERÍSTICAS ── */}
+        <section className="section">
+          <div className="s-hdr">
+            <span className="s-tag">Características</span>
+            <span className="s-title">El sistema · {productoNombre}{isAviario ? ` ${nivelesEfectivos} niveles` : ""}</span>
+            <span className="s-rule" />
           </div>
-          <div className="features-grid">
-            {features.map((f) => (
-              <div key={f.titulo} className="feat-card">
-                <div className="feat-icon-wrap">
-                  <img src={f.icon} alt={f.titulo} className="feat-icon-img" width={36} height={36} />
+          <div className="feat-grid">
+            {feats.map((f) => (
+              <div key={f.name} className="feat-item">
+                <div className="feat-icon">
+                  <img src={f.icon} alt={f.name} width={18} height={18} className="feat-icon-img" />
                 </div>
-                <div className="feat-content">
-                  <h3 className="feat-titulo">{f.titulo}</h3>
-                  <p className="feat-desc">{f.desc}</p>
+                <div>
+                  <div className="feat-name">{f.name}</div>
+                  <div className="feat-desc">{f.desc}</div>
                 </div>
               </div>
             ))}
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── VERIFICACIÓN ───────────────────────────────────────────── */}
-      <section className="section-alt">
-        <div className="wrap section-inner">
-          <div className="sec-header">
-            <h2 className="sec-title">Verificación normativa</h2>
-            <span className="sec-rule" />
+        {/* ── VERIFICACIÓN NORMATIVA ── */}
+        <section className="section section-tint">
+          <div className="s-hdr">
+            <span className="s-tag">Normativa</span>
+            <span className="s-title">Verificación · RD 3/2002</span>
+            <span className="s-rule" />
           </div>
-
-          <div className="kpi-row">
-            <div className="kpi-card">
-              <span className="kpi-label">Normativa</span>
-              <span className="kpi-val mono kpi-val--md">RD 3/2002</span>
-              <span className={`status-badge ${cumple ? "is-ok" : "is-fail"}`}>{cumple ? "Conforme" : "No conforme"}</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Densidad real</span>
-              <span className="kpi-val mono">{densidadReal}<span className="kpi-denom">/{densidadLimite}</span></span>
-              <span className="kpi-unit">gallinas/m²</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Verificaciones</span>
-              <span className="kpi-val mono">{informe.verificaciones_nave.filter(v => v.cumple).length}<span className="kpi-denom">/{informe.verificaciones_nave.length}</span></span>
-              <span className="kpi-unit">parámetros OK</span>
-            </div>
-            <div className="kpi-card">
-              <span className="kpi-label">Sistema</span>
-              <span className="kpi-val mono kpi-val--sm">{sistemaLabel}</span>
-              <span className="kpi-unit">{parseInt(gallinas).toLocaleString("es-ES")} aves</span>
-            </div>
-          </div>
-
-          <div className="verif-list">
-            {informe.verificaciones_nave.map((v) => (
-              <div key={v.parametro} className="verif-item">
-                <span className={`verif-dot ${v.cumple ? "is-ok" : "is-fail"}`} />
-                <div className="verif-content">
-                  <span className="verif-name">{v.parametro}</span>
-                  <span className="verif-detail">
-                    Real: <strong className="mono">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })} {v.unidad}</strong>
-                    {" · "}Límite {v.tipo_limite === "maximo" ? "máx." : "mín."}: <strong className="mono">{v.valor_limite.toLocaleString("es-ES")} {v.unidad}</strong>
-                    {" · "}<em>{v.articulo}</em>
-                  </span>
+          <div className="norm-layout">
+            <div className="norm-kpis">
+              <div className="nkpi">
+                <div className="nkpi-lbl">Densidad real</div>
+                <div className="nkpi-val">{densidadReal.toFixed(1)}<span className="nkpi-den">/{densidadLimite}</span></div>
+                <div className="nkpi-sub">gal/m² · {densidadReal <= densidadLimite ? "cumple" : "excede"}</div>
+              </div>
+              <div className="nkpi">
+                <div className="nkpi-lbl">Verificaciones</div>
+                <div className="nkpi-val">
+                  {informe.verificaciones_nave.filter(v => v.cumple).length}
+                  <span className="nkpi-den">/{informe.verificaciones_nave.length}</span>
                 </div>
-                <span className={`status-badge ${v.cumple ? "is-ok" : "is-fail"}`}>{v.cumple ? "Cumple" : "Revisar"}</span>
+                <div className="nkpi-sub">parámetros OK</div>
               </div>
-            ))}
+              <div className={`nkpi nkpi-estado ${cumple ? "is-ok" : "is-fail"}`}>
+                <div className="nkpi-lbl">{cumple ? "Estado" : "Atención"}</div>
+                <div className="nkpi-val-sm">{cumple ? <>Instalación<br />viable</> : <>Revisar<br />parámetros</>}</div>
+              </div>
+            </div>
+            <div className="norm-list">
+              {informe.verificaciones_nave.map((v) => (
+                <div key={v.parametro} className="norm-row">
+                  <div className={`norm-dot ${v.cumple ? "is-ok" : "is-fail"}`} />
+                  <div>
+                    <div className="norm-name">{v.parametro}</div>
+                    <div className="norm-detail">
+                      Real <b>{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })} {v.unidad}</b>
+                      {" · "}Límite {v.tipo_limite === "maximo" ? "máx." : "mín."} <b>{v.valor_limite.toLocaleString("es-ES")} {v.unidad}</b>
+                      {" · "}<i>{v.articulo}</i>
+                    </div>
+                  </div>
+                  <span className={`ok-pill ${v.cumple ? "is-ok" : "is-fail"}`}>{v.cumple ? "Cumple" : "Revisar"}</span>
+                </div>
+              ))}
+            </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── DIMENSIONAMIENTO ───────────────────────────────────────── */}
-      <section className="section-white">
-        <div className="wrap section-inner">
-          <div className="sec-header">
-            <h2 className="sec-title">Dimensionamiento de la instalación</h2>
-            <span className="sec-rule" />
+        {/* ── INSTALACIÓN / DIMENSIONAMIENTO ── */}
+        <section className="section">
+          <div className="s-hdr">
+            <span className="s-tag">Instalación</span>
+            <span className="s-title">Dimensionamiento · vista de planta</span>
+            <span className="s-rule" />
           </div>
-          <div className="dim-grid">
-            <div className="dim-panel">
-              <div className="dim-panel-head">
-                <span className="dim-panel-badge">A</span>
-                <span className="dim-panel-title">Datos de la instalación</span>
+          <div className="inst-grid">
+            <div className="inst-panel">
+              <div className="inst-head">
+                <span className="inst-badge">A</span>
+                <span className="inst-panel-title">Datos de la instalación</span>
               </div>
-              <div className="dim-panel-body">
+              <div className="inst-body">
                 {[
-                  { l: "Gallinas", v: parseInt(gallinas).toLocaleString("es-ES") + " aves" },
+                  { l: "Gallinas", v: gallinasInt.toLocaleString("es-ES") + " aves" },
                   { l: "Sistema", v: sistemaLabel },
-                  { l: "Superficie nave", v: parseFloat(superficie).toLocaleString("es-ES") + " m²" },
-                  { l: "Alojamiento", v: productoNombre },
+                  { l: "Superficie nave", v: Math.round(supFloat).toLocaleString("es-ES") + " m²" },
+                  { l: "Alojamiento", v: isAviario ? `Aviario · ${nivelesEfectivos} niveles` : "A-Nida" },
                   ...(data.altura ? [{ l: "Altura libre", v: data.altura + " cm" }] : []),
-                  { l: "Módulos necesarios", v: numModulos + " uds." },
+                  { l: "Módulos", v: numModulos + " uds." },
+                  { l: "Densidad", v: densidadReal.toFixed(1) + " gal/m²" },
                 ].map(d => (
-                  <div key={d.l} className="dim-row">
-                    <span className="dim-label">{d.l}</span>
-                    <span className="dim-value mono">{d.v}</span>
+                  <div key={d.l} className="inst-row">
+                    <span className="inst-lbl">{d.l}</span>
+                    <span className="inst-val">{d.v}</span>
                   </div>
                 ))}
               </div>
             </div>
-            <div className="dim-panel">
-              <div className="dim-panel-head">
-                <span className="dim-panel-badge">B</span>
-                <span className="dim-panel-title">Plano de distribución · vista de planta</span>
+            <div className="inst-panel">
+              <div className="inst-head">
+                <span className="inst-badge">B</span>
+                <span className="inst-panel-title">Vista de planta</span>
               </div>
-              <div className="dim-plano">
+              <div className="inst-plano">
                 <NaveSchematic
-                  superficie={parseFloat(superficie)}
-                  gallinas={parseInt(gallinas)}
+                  superficie={supFloat}
+                  gallinas={gallinasInt}
                   tipoZona={tipo_zona}
-                  requisitos={informe.requisitos}
                 />
               </div>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── EQUIPAMIENTO ───────────────────────────────────────────── */}
-      <section className="section-alt">
-        <div className="wrap section-inner">
-          <div className="sec-header">
-            <h2 className="sec-title">Equipamiento mínimo requerido por normativa</h2>
-            <span className="sec-rule" />
+        {/* ── EQUIPAMIENTO ── */}
+        <section className="section section-tint">
+          <div className="s-hdr">
+            <span className="s-tag">Equipamiento</span>
+            <span className="s-title">Mínimos normativos requeridos</span>
+            <span className="s-rule" />
           </div>
           <div className="eq-grid">
             {informe.requisitos.map((r) => (
               <div key={r.nombre} className="eq-card">
-                <span className="eq-name">{r.nombre}</span>
-                <span className="eq-val mono">
+                <div className="eq-name">{r.nombre}</div>
+                <div className="eq-val">
                   {r.valor_minimo.toLocaleString("es-ES", { maximumFractionDigits: 2 })}
-                  <span className="eq-unit">{r.unidad}</span>
-                </span>
-                <span className="eq-formula">{r.formula}</span>
-                <span className="eq-ref">{r.articulo}</span>
+                  <span className="eq-unit"> {r.unidad}</span>
+                </div>
+                <div className="eq-formula">{r.formula}</div>
+                <span className="eq-norm">{r.articulo}</span>
               </div>
             ))}
           </div>
-        </div>
-      </section>
-
-      {/* ── ARGUMENTARIO ───────────────────────────────────────────── */}
-      {argumentario_ventas && (
-        <section className="section-dark">
-          <div className="wrap">
-            <div className="arg-layout">
-              <div className="arg-aside">
-                <span className="arg-aside-label">Propuesta comercial</span>
-                <h2 className="arg-aside-title">Por qué<br />Gómez y<br />Crespo</h2>
-                <p className="arg-aside-desc">Fabricantes de equipamiento avícola con más de 50 años de experiencia.<br />ISO 9001 · ISO 14001.</p>
-              </div>
-              <div className="arg-body" dangerouslySetInnerHTML={{ __html: `<p>${renderMd(argumentario_ventas)}</p>` }} />
-            </div>
-          </div>
         </section>
-      )}
 
-      {/* ── PLANO EMBEBIDO ─────────────────────────────────────────── */}
-      <section className="section-plano-embed">
-        <div className="wrap">
-          <div className="sec-header">
-            <h2 className="sec-title">Plano de distribución</h2>
-            <span className="sec-rule" />
+        {/* ── POR QUÉ GYC ── */}
+        {argumentario_ventas && (
+          <section className="section section-dark">
+            <div className="gyc-layout">
+              <div>
+                <div className="gyc-overline">Sobre Gómez y Crespo</div>
+                <h2 className="gyc-title">50 años<br />fabricando<br />resultados</h2>
+                <p className="gyc-sub">Fabricantes de equipamiento avícola con presencia internacional. ISO 9001 · ISO 14001.</p>
+              </div>
+              <div className="gyc-points">
+                {argParrafos.length > 0
+                  ? argParrafos.map((p, i) => (
+                    <div key={i} className="gyc-point">
+                      <p dangerouslySetInnerHTML={{ __html: renderMd(p) }} />
+                    </div>
+                  ))
+                  : (
+                    <div className="gyc-point">
+                      <p dangerouslySetInnerHTML={{ __html: `<p>${renderMd(argumentario_ventas)}</p>` }} />
+                    </div>
+                  )
+                }
+              </div>
+            </div>
+          </section>
+        )}
+
+        {/* ── PLANO EMBEBIDO ── */}
+        <section className="section section-plano">
+          <div className="s-hdr">
+            <span className="s-tag">Plano</span>
+            <span className="s-title">Distribución de módulos en planta</span>
+            <span className="s-rule" />
           </div>
           {tieneNaveDims ? (
             <>
               <PlanoEmbed
                 ancho_nave_m={anchoM}
                 largo_nave_m={largoM}
-                gallinas={parseInt(gallinas)}
+                gallinas={gallinasInt}
                 sistema={sistema}
                 tipo_zona={tipo_zona}
                 niveles={nivelesEfectivos}
@@ -502,9 +540,7 @@ export default function PropuestaPage() {
               <div className="plano-edit-row">
                 <a href="/plano" className="plano-edit-link">
                   Abrir editor interactivo
-                  <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
-                    <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
                 </a>
               </div>
             </>
@@ -513,49 +549,40 @@ export default function PropuestaPage() {
               <p>Introduce el ancho y largo de la nave en la calculadora para ver el plano de distribución.</p>
               <a href="/plano" className="plano-edit-link">
                 Abrir editor de plano
-                <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
-                  <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
             </div>
           )}
-        </div>
-      </section>
+        </section>
 
-      {/* ── CTA ────────────────────────────────────────────────────── */}
-      <section className="section-cta">
-        <div className="wrap">
-          <div className="cta-layout">
-            <div className="cta-text">
-              <h2 className="cta-title">¿Solicitar presupuesto?</h2>
-              <p className="cta-desc">Nuestro equipo comercial responde en menos de 48 horas.</p>
+        {/* ── CTA ── */}
+        <section className="section section-green">
+          <div className="cta-inner">
+            <div>
+              <h2 className="cta-h">¿Solicitar presupuesto?</h2>
+              <p className="cta-p">Nuestro equipo comercial responde en menos de 48 horas.</p>
             </div>
-            <div className="cta-actions">
-              <a href="mailto:info@gomezycrespo.com" className="btn-pill btn-pill--light">
+            <div className="cta-btns">
+              <a href="mailto:info@gomezycrespo.com" className="btn btn-white">
                 Solicitar presupuesto
-                <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true">
-                  <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <svg width="12" height="9" viewBox="0 0 14 10" fill="none"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg>
               </a>
-              <a href="tel:+34988217754" className="btn-outline btn-outline--light">+34 988 217 754</a>
+              <a href="tel:+34988217754" className="btn btn-ghost">+34 988 217 754</a>
             </div>
           </div>
-        </div>
-      </section>
+        </section>
 
-      {/* ── FOOTER ─────────────────────────────────────────────────── */}
-      <footer className="ftr">
-        <div className="wrap ftr-inner">
+        {/* ── FOOTER ── */}
+        <footer className="ftr">
           <span className="ftr-brand">Gómez y Crespo · Agente Aviario v0.5</span>
-          <span className="ftr-norm">RD 3/2002 · Directiva 1999/74/CE · RD 637/2021</span>
-          <a href="/" className="ftr-back">
-            <svg width="9" height="8" viewBox="0 0 9 8" fill="none">
-              <path d="M4 1L1 4m0 0l3 3M1 4h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-            </svg>
+          <span className="ftr-norms">RD 3/2002 · Directiva 1999/74/CE · RD 637/2021</span>
+          <a href="/" className="ftr-link">
+            <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M3.5 1L1 4m0 0l2.5 3M1 4h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
             Calculadora
           </a>
-        </div>
-      </footer>
+        </footer>
+
+      </div>{/* .doc */}
     </>
   );
 }
@@ -566,512 +593,366 @@ const BASE_CSS = `
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
   :root {
-    --c-primary:     #4f764d;
-    --c-primary-dk:  #234926;
-    --c-title:       #000823;
-    --c-body:        #484e62;
-    --c-bg-alt:      #F6F7F8;
-    --c-bg:          #ffffff;
-    --c-border:      #dddddd;
-    --c-ok-bg:       #eaf5ea;
-    --c-ok-text:     #1d6b22;
-    --c-fail-bg:     #fdecea;
-    --c-fail-text:   #b5261e;
-    --font-display:  var(--font-montserrat, 'Montserrat');
-    --font-body:     var(--font-source-sans, 'Source Sans Pro');
-    --font-mono:     var(--font-jetbrains, 'JetBrains Mono');
+    --navy:     #000823;
+    --green:    #3d6b3a;
+    --green-dk: #1e3d1b;
+    --green-lt: #eef6ed;
+    --green-mid:#4f764d;
+    --body:     #3d4354;
+    --muted:    #7b8197;
+    --faint:    #b0b5c5;
+    --border:   #e2e4ec;
+    --bg:       #ffffff;
+    --bg-alt:   #f7f8fb;
+    --ok:       #1d6b22;
+    --ok-bg:    #e8f5e8;
+    --fail:     #b5261e;
+    --fail-bg:  #fdecea;
+    --fd: 'Montserrat', sans-serif;
+    --fb: 'Source Sans 3', 'Source Sans Pro', sans-serif;
+    --fm: 'JetBrains Mono', monospace;
   }
 
   html { scroll-behavior: smooth; }
-
   body {
-    font-family: var(--font-body), sans-serif;
-    font-size: 1rem;
-    line-height: 1.65;
-    background: var(--c-bg);
-    color: var(--c-body);
+    font-family: var(--fb);
+    background: var(--bg);
+    color: var(--body);
     -webkit-font-smoothing: antialiased;
   }
 
-  .mono { font-family: var(--font-mono), monospace; }
-
-  .wrap { width: 100%; padding: 0 clamp(1rem, 4vw, 3rem); }
-
-  .nave-schematic { display: block; }
-
-  /* ── Logo ── */
-  .logo-img          { display: block; width: auto; height: auto; }
-  .logo-img--sm      { height: 32px; }
-  .logo-img--md      { height: 40px; }
-  .logo-img--lg      { height: 72px; }
-  .logo-img--white   { filter: brightness(0) invert(1); }
-
-  /* ── HEADER action (passed into JourneyHeader) ── */
-  .hdr-action {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 0.45rem;
-    background: var(--c-primary); color: #ffffff;
-    border: none; border-radius: 30px;
-    padding: 0.4rem 1rem; font-family: var(--font-body), sans-serif;
-    font-size: 0.72rem; font-weight: 600; cursor: pointer;
-    letter-spacing: 0.06em; text-transform: uppercase;
-    transition: background 0.15s;
+  /* ── DOC WRAPPER ── */
+  .doc {
+    width: 100%;
+    background: var(--bg);
   }
-  .hdr-action:hover { background: var(--c-primary-dk); }
+
+  /* ── TOPBAR BTN (passed to JourneyHeader) ── */
+  .topbar-btn {
+    display: inline-flex; align-items: center; gap: .4rem;
+    background: rgba(255,255,255,.1); color: rgba(255,255,255,.85);
+    border: 1px solid rgba(255,255,255,.15); border-radius: 4px;
+    padding: .32rem .8rem;
+    font-family: var(--fb); font-size: .68rem; font-weight: 600; cursor: pointer;
+  }
+  .topbar-btn:hover { background: rgba(255,255,255,.18); }
 
   /* ── HERO ── */
   .hero {
-    background-color: var(--c-title);
-    background-size: cover;
-    background-position: center 40%;
-    padding: 4rem 0 3.5rem;
+    background: var(--navy);
+    padding: 3.5rem max(2.5rem, calc((100% - 860px) / 2)) 3rem;
     position: relative; overflow: hidden;
   }
-  .hero:not(.hero--aviario) {
-    background-image: url('/hero-nidal.jpg');
+  .hero-dot-grid {
+    position: absolute; inset: 0; pointer-events: none;
+    background-image: radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px);
+    background-size: 28px 28px;
   }
-  .hero::before {
-    content: "";
-    position: absolute; inset: 0;
-    background: linear-gradient(
-      to right,
-      rgba(0,8,35,0.93) 0%,
-      rgba(0,8,35,0.78) 50%,
-      rgba(0,8,35,0.50) 100%
-    );
-    pointer-events: none; z-index: 0;
-  }
-  .hero::after {
-    content: "";
-    position: absolute; top: 0; right: 0;
-    width: 400px; height: 400px;
-    background: radial-gradient(ellipse at 100% 0%, rgba(79,118,77,0.18) 0%, transparent 65%);
+  .hero-accent {
+    position: absolute; bottom: -60px; right: -80px;
+    width: 380px; height: 380px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(61,107,58,.35) 0%, transparent 65%);
     pointer-events: none;
   }
-  .hero-inner { position: relative; z-index: 1; }
-  .hero-top {
-    display: flex; align-items: center; gap: 1rem;
-    margin-bottom: 2rem;
+  .hero-inner {
+    position: relative; z-index: 1;
+    display: grid; grid-template-columns: 1fr auto; gap: 2rem; align-items: start;
   }
-  .hero-tag {
-    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
-    letter-spacing: 0.22em; text-transform: uppercase; color: var(--c-primary);
+  .hero-eyebrow {
+    display: flex; align-items: center; gap: .6rem;
+    margin-bottom: 1.4rem; flex-wrap: wrap;
   }
-  .hero-sep { color: rgba(255,255,255,0.2); font-size: 0.7rem; }
-  .hero-date { font-size: 0.62rem; color: rgba(255,255,255,0.52); letter-spacing: 0.08em; text-transform: uppercase; }
-  .hero-status {
-    margin-left: auto; display: inline-flex; align-items: center; gap: 0.4rem;
-    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
-    letter-spacing: 0.1em; text-transform: uppercase;
-    padding: 0.25rem 0.75rem; border-radius: 30px; border: 1px solid transparent;
+  .hero-cod {
+    font-family: var(--fd); font-size: .55rem; font-weight: 700;
+    letter-spacing: .2em; text-transform: uppercase;
+    color: var(--green-mid); border: 1px solid rgba(79,118,77,.35);
+    padding: .2rem .65rem; border-radius: 3px;
   }
-  .hero-status.is-ok   { background: rgba(79,118,77,0.2); color: #8fd68f; border-color: rgba(79,118,77,0.3); }
-  .hero-status.is-fail { background: rgba(181,38,30,0.2); color: #f09090; border-color: rgba(181,38,30,0.3); }
+  .hero-date { font-size: .6rem; color: rgba(255,255,255,.38); letter-spacing: .06em; }
+  .hero-badge {
+    display: inline-flex; align-items: center; gap: .35rem;
+    font-family: var(--fd); font-size: .55rem; font-weight: 700;
+    letter-spacing: .1em; text-transform: uppercase;
+    padding: .18rem .65rem; border-radius: 3px;
+  }
+  .hero-badge.is-ok  { background: rgba(61,107,58,.25); color: #8fd68f; border: 1px solid rgba(61,107,58,.35); }
+  .hero-badge.is-fail { background: rgba(181,38,30,.2); color: #f09090; border: 1px solid rgba(181,38,30,.3); }
   .hero-title {
-    font-family: var(--font-display), sans-serif; font-weight: 800;
-    font-size: clamp(2.8rem, 7vw, 5.5rem);
-    color: #ffffff; line-height: 0.95; letter-spacing: -0.02em;
-    margin-bottom: 1rem;
+    font-family: var(--fd); font-weight: 800;
+    font-size: clamp(2.4rem, 6vw, 4rem);
+    color: #fff; line-height: .92; letter-spacing: -.03em; margin-bottom: .6rem;
+    text-wrap: balance;
   }
-  .hero-subtitle {
-    font-size: 1rem; color: rgba(255,255,255,0.78); font-weight: 400;
-    line-height: 1.6; max-width: 500px; margin-bottom: 2.5rem;
-  }
-  .hero-stats {
-    display: grid; grid-template-columns: repeat(4, auto);
-    justify-content: start; gap: 0;
-    border-top: 1px solid rgba(255,255,255,0.07);
-    padding-top: 2rem;
+  .hero-title .accent { color: var(--green-mid); }
+  .hero-sub { font-size: .9rem; color: rgba(255,255,255,.58); line-height: 1.6; max-width: 400px; }
+
+  /* Hero stats box (right) */
+  .hero-stats-box {
+    background: rgba(255,255,255,.05); border: 1px solid rgba(255,255,255,.1);
+    border-radius: 6px; padding: 1.25rem 1.5rem;
+    display: flex; flex-direction: column; gap: .9rem; min-width: 190px;
   }
   .hero-stat {
-    display: flex; flex-direction: column; gap: 0.3rem;
-    padding: 0 2.5rem 0 0; border-right: 1px solid rgba(255,255,255,0.07);
-    margin-right: 2.5rem;
+    display: flex; flex-direction: column; gap: .2rem;
+    padding-bottom: .9rem; border-bottom: 1px solid rgba(255,255,255,.08);
   }
-  .hero-stat:last-child { border-right: none; margin-right: 0; padding-right: 0; }
-  .hero-stat-val { font-size: 2rem; font-weight: 700; color: #ffffff; letter-spacing: -0.04em; line-height: 1; }
-  .hero-stat-lbl { font-size: 0.62rem; color: rgba(255,255,255,0.62); letter-spacing: 0.1em; text-transform: uppercase; font-family: var(--font-display), sans-serif; font-weight: 600; }
+  .hero-stat:last-child { border-bottom: none; padding-bottom: 0; }
+  .hs-val {
+    font-family: var(--fm); font-size: 1.6rem; font-weight: 700;
+    color: #fff; letter-spacing: -.04em; line-height: 1;
+  }
+  .hs-den { font-size: .9rem; color: rgba(255,255,255,.35); font-weight: 400; }
+  .hs-lbl {
+    font-family: var(--fd); font-size: .52rem; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .1em; color: rgba(255,255,255,.42);
+  }
+  .hs-bar { margin-top: .35rem; height: 3px; background: rgba(255,255,255,.08); border-radius: 2px; overflow: hidden; }
+  .hs-fill { height: 100%; border-radius: 2px; background: var(--green-mid); transition: width .4s ease; }
+  .hs-fill.is-warn { background: #e07b2a; }
 
   /* ── SECTION COMMON ── */
-  .sec-header {
-    display: flex; align-items: center; gap: 1.25rem;
-    margin-bottom: 2rem;
+  .section { padding: 2.75rem max(2.5rem, calc((100% - 860px) / 2)); border-top: 1px solid var(--border); }
+  .section-dark  { background: var(--navy); border-top: none; }
+  .section-tint  { background: var(--bg-alt); }
+  .section-green { background: var(--green); border-top: none; }
+  .section-plano { background: var(--bg-alt); }
+  .s-hdr { display: flex; align-items: center; gap: 1rem; margin-bottom: 1.75rem; }
+  .s-tag {
+    font-family: var(--fd); font-size: .52rem; font-weight: 700;
+    letter-spacing: .18em; text-transform: uppercase;
+    color: var(--green); background: var(--green-lt);
+    padding: .18rem .6rem; border-radius: 2px; white-space: nowrap;
   }
-  .sec-title {
-    font-family: var(--font-display), sans-serif; font-size: 1.17rem; font-weight: 700;
-    color: var(--c-title); white-space: nowrap; letter-spacing: -0.01em;
+  .s-title {
+    font-family: var(--fd); font-size: 1.05rem; font-weight: 700;
+    color: var(--navy); letter-spacing: -.01em;
   }
-  .sec-rule { flex: 1; height: 1px; background: var(--c-border); }
-  .section-inner { padding-top: 3rem; padding-bottom: 3rem; }
+  .s-rule { flex: 1; height: 1px; background: var(--border); }
 
-  .section-features { background: var(--c-bg); border-top: 1px solid var(--c-border); padding: 3rem 0; }
-  .section-alt    { background: var(--c-bg-alt); border-top: 1px solid var(--c-border); }
-  .section-white  { background: var(--c-bg); border-top: 1px solid var(--c-border); }
+  /* ── BENEFICIOS ── */
+  .bene-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1.25rem; }
+  .bene-card {
+    background: var(--bg); border: 1.5px solid var(--border);
+    border-radius: 6px; padding: 1.4rem 1.25rem;
+    display: flex; flex-direction: column; gap: .75rem;
+    position: relative; overflow: hidden;
+  }
+  .bene-card::before {
+    content: ''; position: absolute; top: 0; left: 0; right: 0;
+    height: 3px; background: var(--green);
+  }
+  .bene-num {
+    font-family: var(--fm); font-size: 2.2rem; font-weight: 700;
+    color: var(--green-lt); letter-spacing: -.04em; line-height: 1;
+  }
+  .bene-num span { color: var(--green); }
+  .bene-title { font-family: var(--fd); font-size: .82rem; font-weight: 700; color: var(--navy); line-height: 1.3; }
+  .bene-desc { font-size: .8rem; color: var(--muted); line-height: 1.65; }
 
   /* ── CARACTERÍSTICAS ── */
-  .features-grid {
-    display: grid; grid-template-columns: repeat(3, 1fr);
-    gap: 1px; background: var(--c-border);
-    border: 1px solid var(--c-border);
+  .feat-grid {
+    display: grid; grid-template-columns: 1fr 1fr;
+    gap: 1px; background: var(--border);
+    border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden;
   }
-  .feat-card {
-    background: var(--c-bg); padding: 1.5rem;
-    display: flex; gap: 1rem; align-items: flex-start;
-    transition: background 0.2s;
+  .feat-item {
+    background: var(--bg); padding: 1.1rem 1.25rem;
+    display: flex; gap: .85rem; align-items: flex-start;
   }
-  .feat-card:hover { background: var(--c-bg-alt); }
-  .feat-icon-wrap {
-    flex-shrink: 0; width: 48px; height: 48px;
-    display: flex; align-items: center; justify-content: center;
-    background: var(--c-bg-alt); border: 1px solid var(--c-border);
-    border-radius: 8px; padding: 9px;
+  .feat-icon {
+    width: 32px; height: 32px; border-radius: 7px;
+    background: var(--green-lt); display: flex; align-items: center;
+    justify-content: center; flex-shrink: 0;
   }
   .feat-icon-img {
-    display: block; object-fit: contain;
-    filter: brightness(0) saturate(100%) invert(35%) sepia(22%) saturate(500%) hue-rotate(80deg) brightness(90%);
+    display: block; object-fit: contain; width: 18px; height: 18px;
+    filter: brightness(0) saturate(100%) invert(30%) sepia(30%) saturate(600%) hue-rotate(85deg) brightness(85%);
   }
-  .feat-titulo { font-family: var(--font-display), sans-serif; font-size: 0.88rem; font-weight: 700; color: var(--c-title); margin-bottom: 0.35rem; line-height: 1.3; }
-  .feat-desc   { font-size: 0.82rem; color: var(--c-body); line-height: 1.65; }
-  .feat-content { flex: 1; }
+  .feat-name { font-family: var(--fd); font-size: .78rem; font-weight: 700; color: var(--navy); margin-bottom: .2rem; }
+  .feat-desc { font-size: .75rem; color: var(--muted); line-height: 1.6; }
 
-  /* ── KPI CARDS ── */
-  .kpi-row {
-    display: grid; grid-template-columns: repeat(4, 1fr);
-    gap: 1rem; margin-bottom: 1.5rem;
+  /* ── NORMATIVA ── */
+  .norm-layout { display: grid; grid-template-columns: 200px 1fr; gap: 1.5rem; align-items: start; }
+  .norm-kpis { display: flex; flex-direction: column; gap: .75rem; }
+  .nkpi {
+    background: var(--bg-alt); border: 1.5px solid var(--border);
+    border-radius: 5px; padding: .85rem 1rem;
   }
-  .kpi-card {
-    background: var(--c-bg); padding: 1.25rem 1.25rem 1.1rem;
-    display: flex; flex-direction: column; gap: 0.2rem;
-    border: 1px solid var(--c-border); border-radius: 2px;
-    border-top: 3px solid var(--c-primary);
+  .nkpi.nkpi-estado.is-ok  { background: var(--ok-bg); border-color: #b8ddb8; }
+  .nkpi.nkpi-estado.is-fail { background: var(--fail-bg); border-color: #f0b0ac; }
+  .nkpi-lbl { font-family: var(--fd); font-size: .52rem; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; color: var(--muted); margin-bottom: .2rem; }
+  .nkpi.nkpi-estado.is-ok  .nkpi-lbl  { color: var(--ok); }
+  .nkpi.nkpi-estado.is-fail .nkpi-lbl { color: var(--fail); }
+  .nkpi-val { font-family: var(--fm); font-size: 1.3rem; font-weight: 700; color: var(--navy); letter-spacing: -.03em; line-height: 1; }
+  .nkpi-den { font-size: .8rem; color: var(--muted); font-weight: 400; }
+  .nkpi-sub { font-size: .68rem; color: var(--muted); margin-top: .15rem; }
+  .nkpi-val-sm { font-family: var(--fd); font-size: 1rem; font-weight: 800; color: var(--ok); line-height: 1.2; padding-top: .2rem; }
+  .nkpi.nkpi-estado.is-fail .nkpi-val-sm { color: var(--fail); }
+  .norm-list {
+    display: flex; flex-direction: column;
+    border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden;
   }
-  .kpi-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.25rem; }
-  .kpi-val   { font-size: 1.8rem; font-weight: 700; color: var(--c-title); letter-spacing: -0.03em; line-height: 1; }
-  .kpi-val--md { font-size: 1.15rem; }
-  .kpi-val--sm { font-size: 1rem; }
-  .kpi-denom { font-size: 1rem; font-weight: 400; color: var(--c-body); }
-  .kpi-unit  { font-size: 0.75rem; color: var(--c-body); margin-top: 0.1rem; }
+  .norm-row {
+    display: grid; grid-template-columns: 20px 1fr auto;
+    align-items: center; gap: .75rem;
+    padding: .75rem 1rem; border-bottom: 1px solid var(--border); background: var(--bg);
+  }
+  .norm-row:last-child { border-bottom: none; }
+  .norm-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+  .norm-dot.is-ok   { background: var(--ok); }
+  .norm-dot.is-fail { background: var(--fail); }
+  .norm-name { font-family: var(--fd); font-size: .73rem; font-weight: 700; color: var(--navy); }
+  .norm-detail { font-size: .68rem; color: var(--muted); margin-top: .1rem; }
+  .norm-detail b { color: var(--navy); font-family: var(--fm); font-weight: 400; }
+  .norm-detail i { font-style: normal; color: var(--faint); }
+  .ok-pill {
+    font-family: var(--fd); font-size: .5rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase;
+    padding: .18rem .55rem; border-radius: 30px; white-space: nowrap;
+  }
+  .ok-pill.is-ok   { background: var(--ok-bg); color: var(--ok); }
+  .ok-pill.is-fail { background: var(--fail-bg); color: var(--fail); }
 
-  /* ── STATUS BADGE ── */
-  .status-badge {
-    display: inline-block; font-family: var(--font-display), sans-serif;
-    font-size: 0.58rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase;
-    padding: 0.18rem 0.6rem; border-radius: 30px; width: fit-content; margin-top: 0.2rem;
+  /* ── INSTALACIÓN ── */
+  .inst-grid {
+    display: grid; grid-template-columns: 260px 1fr;
+    gap: 1px; background: var(--border);
+    border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden;
   }
-  .status-badge.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
-  .status-badge.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
-
-  /* ── VERIFICACIONES ── */
-  .verif-list { display: flex; flex-direction: column; border: 1px solid var(--c-border); background: var(--c-bg); }
-  .verif-item {
-    display: grid; grid-template-columns: 12px 1fr auto;
-    align-items: center; gap: 1rem;
-    padding: 1rem 1.25rem;
-    border-bottom: 1px solid var(--c-border);
-    transition: background 0.15s;
+  .inst-panel { background: var(--bg); }
+  .inst-head {
+    background: var(--bg-alt); padding: .7rem 1.1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; gap: .6rem;
   }
-  .verif-item:last-child { border-bottom: none; }
-  .verif-item:hover { background: var(--c-bg-alt); }
-  .verif-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
-  .verif-dot.is-ok   { background: var(--c-ok-text); }
-  .verif-dot.is-fail { background: var(--c-fail-text); }
-  .verif-content { display: flex; flex-direction: column; gap: 0.15rem; }
-  .verif-name   { font-family: var(--font-display), sans-serif; font-size: 0.78rem; font-weight: 700; color: var(--c-title); line-height: 1.3; }
-  .verif-detail { font-size: 0.72rem; color: var(--c-body); line-height: 1.5; }
-  .verif-detail strong { color: var(--c-title); font-weight: 600; }
-  .verif-detail em { font-style: normal; opacity: 0.65; }
-
-  /* ── DIMENSIONAMIENTO ── */
-  .dim-grid { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--c-border); }
-  .dim-panel { }
-  .dim-panel + .dim-panel { border-left: 1px solid var(--c-border); }
-  .dim-panel-head {
-    padding: 0.85rem 1.25rem; border-bottom: 1px solid var(--c-border);
-    display: flex; align-items: center; gap: 0.75rem;
-    background: var(--c-bg-alt);
+  .inst-badge {
+    font-family: var(--fd); font-size: .6rem; font-weight: 800;
+    background: var(--navy); color: #fff;
+    width: 20px; height: 20px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
   }
-  .dim-panel-badge {
-    font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 800;
-    background: var(--c-primary); color: #ffffff;
-    width: 22px; height: 22px; border-radius: 50%;
+  .inst-panel-title {
+    font-family: var(--fd); font-size: .65rem; font-weight: 700;
+    letter-spacing: .08em; text-transform: uppercase; color: var(--navy);
+  }
+  .inst-body { padding: .25rem 1.1rem 1.1rem; }
+  .inst-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    padding: .55rem 0; border-bottom: 1px solid var(--border);
+  }
+  .inst-row:last-child { border-bottom: none; }
+  .inst-lbl { font-size: .75rem; color: var(--muted); }
+  .inst-val { font-family: var(--fm); font-size: .78rem; color: var(--navy); font-weight: 600; }
+  .inst-plano {
+    padding: 1.25rem; background: #f9fafb;
     display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .dim-panel-title { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-title); }
-  .dim-panel-body { padding: 0.5rem 1.25rem 1.25rem; }
-  .dim-row { display: flex; justify-content: space-between; align-items: baseline; padding: 0.6rem 0; border-bottom: 1px solid var(--c-border); gap: 1rem; }
-  .dim-row:last-child { border-bottom: none; }
-  .dim-label { font-size: 0.78rem; color: var(--c-body); font-weight: 400; }
-  .dim-value { font-size: 0.85rem; color: var(--c-title); font-weight: 600; text-align: right; }
-  .dim-plano { padding: 1.5rem; background: var(--c-bg-alt); display: flex; align-items: center; justify-content: center; min-height: 200px; }
-
-  /* ── AI Plano ── */
-  .ai-plano-svg { width: 100%; overflow: auto; }
-  .ai-plano-svg svg { width: 100%; height: auto; display: block; }
-  .ai-plano-loading {
-    display: flex; flex-direction: column; align-items: center; justify-content: center;
-    gap: 1rem; padding: 3rem; color: var(--c-body); font-size: 0.82rem;
-  }
-  .ai-plano-dots { display: flex; gap: 6px; }
-  .ai-plano-dots span {
-    width: 7px; height: 7px; border-radius: 50%; background: var(--c-primary);
-    animation: dot-bounce 1.2s infinite ease-in-out both;
-  }
-  .ai-plano-dots span:nth-child(1) { animation-delay: 0s; }
-  .ai-plano-dots span:nth-child(2) { animation-delay: 0.2s; }
-  .ai-plano-dots span:nth-child(3) { animation-delay: 0.4s; }
-  @keyframes dot-bounce {
-    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
-    40%           { transform: scale(1);   opacity: 1; }
   }
 
   /* ── EQUIPAMIENTO ── */
-  .eq-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 1rem; }
-  .eq-card {
-    background: var(--c-bg); padding: 1.25rem;
-    border: 1px solid var(--c-border); border-radius: 2px;
-    display: flex; flex-direction: column;
-    border-top: 3px solid var(--c-primary);
-    transition: box-shadow 0.15s;
+  .eq-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr);
+    gap: 1px; background: var(--border);
+    border: 1.5px solid var(--border); border-radius: 6px; overflow: hidden;
   }
-  .eq-card:hover { box-shadow: 0 2px 12px rgba(0,0,0,0.07); }
-  .eq-name    { font-family: var(--font-display), sans-serif; font-size: 0.62rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.75rem; line-height: 1.4; }
-  .eq-val     { font-size: 1.7rem; font-weight: 700; color: var(--c-primary); letter-spacing: -0.03em; line-height: 1; margin-bottom: 0.3rem; }
-  .eq-unit    { font-size: 0.72rem; color: var(--c-body); font-weight: 400; margin-left: 0.2rem; }
-  .eq-formula { font-size: 0.72rem; color: var(--c-body); font-style: italic; line-height: 1.45; margin-bottom: 0.75rem; flex: 1; }
-  .eq-ref     { font-family: var(--font-display), sans-serif; font-size: 0.58rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-primary); border-top: 1px solid var(--c-border); padding-top: 0.5rem; display: block; }
+  .eq-card { background: var(--bg); padding: 1.1rem; }
+  .eq-val { font-family: var(--fm); font-size: 1.85rem; font-weight: 700; color: var(--green); letter-spacing: -.04em; line-height: 1; margin-bottom: .25rem; }
+  .eq-unit { font-size: .72rem; color: var(--muted); font-family: var(--fb); }
+  .eq-name { font-family: var(--fd); font-size: .58rem; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: var(--muted); margin-bottom: .25rem; }
+  .eq-formula { font-size: .72rem; color: var(--muted); line-height: 1.5; flex: 1; }
+  .eq-norm { font-family: var(--fd); font-size: .5rem; font-weight: 700; letter-spacing: .07em; text-transform: uppercase; color: var(--green); margin-top: .5rem; display: block; border-top: 1px solid var(--border); padding-top: .5rem; }
 
-  /* ── ARGUMENTARIO ── */
-  .section-dark { background: var(--c-title); padding: 4rem 0; border-top: 2px solid var(--c-primary); }
-  .arg-layout { display: grid; grid-template-columns: 260px 1fr; gap: 4rem; align-items: start; }
-  .arg-aside-label {
-    display: inline-block; font-family: var(--font-display), sans-serif;
-    font-size: 0.58rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase;
-    color: var(--c-primary); border: 1px solid rgba(79,118,77,0.35);
-    padding: 0.2rem 0.7rem; border-radius: 30px; margin-bottom: 1.25rem;
-  }
-  .arg-aside-title {
-    font-family: var(--font-display), sans-serif; font-weight: 800;
-    font-size: 2.2rem; color: #ffffff; line-height: 1.05; letter-spacing: -0.02em;
-    margin-bottom: 1rem;
-  }
-  .arg-aside-desc { font-size: 0.85rem; color: rgba(255,255,255,0.62); line-height: 1.7; }
-  .arg-body { font-size: 1rem; line-height: 1.85; color: rgba(255,255,255,0.68); font-weight: 400; }
-  .arg-body p { margin-bottom: 1rem; }
-  .arg-body p:last-child { margin-bottom: 0; }
-  .arg-body strong { color: #ffffff; font-weight: 700; }
-  .arg-body em { color: #8fd68f; font-style: normal; font-weight: 600; }
+  /* ── POR QUÉ GYC ── */
+  .gyc-layout { display: grid; grid-template-columns: 1fr 1fr; gap: 3rem; align-items: start; }
+  .gyc-overline { font-family: var(--fd); font-size: .52rem; font-weight: 700; letter-spacing: .2em; text-transform: uppercase; color: var(--green-mid); margin-bottom: 1rem; }
+  .gyc-title { font-family: var(--fd); font-weight: 800; font-size: 2rem; color: #fff; line-height: 1; letter-spacing: -.03em; margin-bottom: .85rem; }
+  .gyc-sub { font-size: .8rem; color: rgba(255,255,255,.42); line-height: 1.75; }
+  .gyc-points { display: flex; flex-direction: column; gap: .85rem; }
+  .gyc-point { padding-left: 1rem; border-left: 2px solid rgba(61,107,58,.5); }
+  .gyc-point p { font-size: .82rem; color: rgba(255,255,255,.62); line-height: 1.75; }
+  .gyc-point strong { color: #fff; font-weight: 700; }
+  .gyc-point em { color: #8fd68f; font-style: normal; font-weight: 600; }
 
-  /* ── Plano embebido ── */
-  .section-plano-embed { background: var(--c-bg-alt); padding: 3rem 0; }
-  .plano-embed-svg { width: 100%; border-radius: 4px; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,.1); }
-  .plano-embed-svg svg { display: block; width: 100%; height: auto; }
-  .plano-embed-fallback { padding: 2rem; text-align: center; color: var(--c-text-muted); font-size: 0.9rem; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
-  .plano-embed-fallback a { color: var(--c-primary); text-decoration: underline; }
+  /* ── PLANO EMBED ── */
+  .plano-svg { width: 100%; overflow: auto; }
+  .plano-svg svg { width: 100%; height: auto; display: block; }
+  .plano-fallback { padding: 2rem; text-align: center; color: var(--muted); font-size: .9rem; background: var(--bg); border-radius: 4px; border: 1px solid var(--border); }
   .plano-edit-row { display: flex; justify-content: flex-end; margin-top: 1rem; }
   .plano-edit-link {
-    display: inline-flex; align-items: center; gap: 0.4rem;
-    color: var(--c-primary); font-size: 0.82rem; font-weight: 700;
-    text-decoration: none; letter-spacing: 0.04em;
-    transition: opacity 0.15s;
+    display: inline-flex; align-items: center; gap: .4rem;
+    color: var(--green); font-size: .82rem; font-weight: 700;
+    text-decoration: none; letter-spacing: .04em;
   }
-  .plano-edit-link:hover { opacity: 0.7; }
-  .plano-no-dims { padding: 2.5rem; text-align: center; background: var(--c-bg); border-radius: 4px; border: 1px solid var(--c-border); }
-  .plano-no-dims p { color: var(--c-text-muted); font-size: 0.9rem; margin-bottom: 1rem; }
+  .plano-no-dims { padding: 2.5rem; text-align: center; background: var(--bg); border-radius: 4px; border: 1px solid var(--border); }
+  .plano-no-dims p { color: var(--muted); font-size: .9rem; margin-bottom: 1rem; }
+  .ai-plano-loading {
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 1rem; padding: 3rem; color: var(--muted); font-size: .82rem;
+  }
+  .ai-plano-dots { display: flex; gap: 6px; }
+  .ai-plano-dots span { width: 7px; height: 7px; border-radius: 50%; background: var(--green-mid); animation: dot-bounce 1.2s infinite ease-in-out both; }
+  .ai-plano-dots span:nth-child(1) { animation-delay: 0s; }
+  .ai-plano-dots span:nth-child(2) { animation-delay: .2s; }
+  .ai-plano-dots span:nth-child(3) { animation-delay: .4s; }
+  @keyframes dot-bounce { 0%,80%,100% { transform: scale(.6); opacity: .4; } 40% { transform: scale(1); opacity: 1; } }
 
-  .section-cta { background: var(--c-primary); padding: 2.5rem 0; }
-  .cta-layout { display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
-  .cta-title { font-family: var(--font-display), sans-serif; font-size: 1.52rem; font-weight: 800; color: #ffffff; letter-spacing: -0.01em; margin-bottom: 0.3rem; }
-  .cta-desc  { font-size: 0.95rem; color: rgba(255,255,255,0.75); }
-  .cta-actions { display: flex; gap: 0.75rem; flex-wrap: wrap; flex-shrink: 0; }
-
-  /* ── BUTTONS ── */
-  .btn-pill {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    background: var(--c-primary); color: #ffffff;
-    border: none; border-radius: 30px;
-    padding: 0.7rem 1.6rem; font-family: var(--font-body), sans-serif;
-    font-size: 0.88rem; font-weight: 700; cursor: pointer;
-    letter-spacing: 0.06em; text-transform: uppercase; text-decoration: none;
-    transition: background 0.15s;
-  }
-  .btn-pill:hover { background: var(--c-primary-dk); }
-  .btn-pill--light {
-    background: #ffffff; color: var(--c-primary);
-  }
-  .btn-pill--light:hover { background: rgba(255,255,255,0.9); }
-  .btn-outline {
-    display: inline-flex; align-items: center; gap: 0.5rem;
-    background: transparent; color: var(--c-primary);
-    border: 2px solid var(--c-primary); border-radius: 30px;
-    padding: 0.7rem 1.4rem; font-family: var(--font-body), sans-serif;
-    font-size: 0.88rem; font-weight: 600; cursor: pointer;
-    letter-spacing: 0.04em; text-decoration: none;
-    transition: background 0.15s, color 0.15s;
-  }
-  .btn-outline:hover { background: var(--c-primary); color: #ffffff; }
-  .btn-outline--light {
-    color: #ffffff; border-color: rgba(255,255,255,0.6);
-  }
-  .btn-outline--light:hover { background: rgba(255,255,255,0.15); color: #ffffff; }
+  /* ── CTA ── */
+  .cta-inner { display: flex; align-items: center; justify-content: space-between; gap: 2rem; flex-wrap: wrap; }
+  .cta-h { font-family: var(--fd); font-size: 1.2rem; font-weight: 800; color: #fff; letter-spacing: -.01em; margin-bottom: .2rem; text-wrap: balance; }
+  .cta-p { font-size: .82rem; color: rgba(255,255,255,.72); }
+  .cta-btns { display: flex; gap: .65rem; flex-wrap: wrap; flex-shrink: 0; }
+  .btn { display: inline-flex; align-items: center; gap: .4rem; border-radius: 4px; padding: .65rem 1.4rem; font-family: var(--fb); font-size: .82rem; font-weight: 700; cursor: pointer; letter-spacing: .04em; text-decoration: none; border: none; }
+  .btn-white { background: #fff; color: var(--green); }
+  .btn-ghost { background: transparent; color: #fff; border: 1.5px solid rgba(255,255,255,.45); }
+  .btn-primary { background: var(--green); color: #fff; }
 
   /* ── FOOTER ── */
-  .ftr { background: var(--c-title); padding: 1.25rem 0; border-top: 1px solid rgba(255,255,255,0.06); }
-  .ftr-inner { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 0.75rem; }
-  .ftr-brand { font-size: 0.65rem; color: rgba(255,255,255,0.5); letter-spacing: 0.12em; text-transform: uppercase; font-family: var(--font-display), sans-serif; font-weight: 600; }
-  .ftr-norm  { font-size: 0.62rem; color: rgba(255,255,255,0.42); letter-spacing: 0.04em; }
-  .ftr-back  { display: inline-flex; align-items: center; gap: 0.4rem; font-size: 0.68rem; color: rgba(255,255,255,0.62); text-decoration: none; letter-spacing: 0.08em; text-transform: uppercase; font-weight: 700; font-family: var(--font-display), sans-serif; transition: color 0.15s; }
-  .ftr-back:hover { color: rgba(255,255,255,0.9); }
+  .ftr {
+    background: var(--navy); padding: 1rem max(2.5rem, calc((100% - 860px) / 2));
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: .75rem;
+    border-top: 1px solid rgba(255,255,255,.06);
+  }
+  .ftr-brand { font-family: var(--fd); font-size: .58rem; font-weight: 600; color: rgba(255,255,255,.38); letter-spacing: .1em; text-transform: uppercase; }
+  .ftr-norms { font-size: .6rem; color: rgba(255,255,255,.28); }
+  .ftr-link { display: inline-flex; align-items: center; gap: .3rem; font-family: var(--fd); font-size: .58rem; font-weight: 700; color: rgba(255,255,255,.5); text-decoration: none; letter-spacing: .07em; text-transform: uppercase; }
 
   /* ── EMPTY STATE ── */
-  .empty-state { min-height: 100vh; background: var(--c-bg-alt); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; font-family: var(--font-body), sans-serif; }
-  .empty-title { font-family: var(--font-display), sans-serif; font-size: 1.52rem; font-weight: 800; color: var(--c-title); }
-  .empty-sub   { font-size: 1rem; color: var(--c-body); }
+  .empty-state { min-height: 100vh; background: var(--bg-alt); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 1rem; }
+  .empty-title { font-family: var(--fd); font-size: 1.52rem; font-weight: 800; color: var(--navy); }
+  .empty-sub { font-size: 1rem; color: var(--muted); }
+
+  /* ── PRINT ── */
+  @media print {
+    body { background: white; }
+    .doc { box-shadow: none; max-width: 100%; }
+    .topbar-btn { display: none; }
+    .hero-accent, .hero-dot-grid { display: none; }
+    .section-green, .section-dark, .hero, .ftr { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .bene-card, .feat-item, .norm-row, .inst-panel, .eq-card { break-inside: avoid; }
+    .section { padding: 1.4rem 1.5rem; }
+    .gyc-layout { grid-template-columns: 1fr 1.5fr; }
+    .bene-grid { grid-template-columns: repeat(3, 1fr); }
+    section { page-break-inside: avoid; }
+    h2 { page-break-after: avoid; }
+  }
 
   /* ── RESPONSIVE ── */
-  @media (max-width: 1024px) {
-    .hero-stats { grid-template-columns: repeat(2, auto); gap: 1.5rem 3rem; }
-    .hero-stat { border-right: none !important; margin-right: 0 !important; padding-right: 0 !important; }
-  }
-  @media (max-width: 900px) {
-    .features-grid { grid-template-columns: repeat(2, 1fr); }
-    .kpi-row { grid-template-columns: repeat(2, 1fr); }
-    .arg-layout { grid-template-columns: 1fr; gap: 2rem; }
-    .dim-grid { grid-template-columns: 1fr; }
-    .dim-panel + .dim-panel { border-left: none; border-top: 1px solid var(--c-border); }
-  }
-  @media (max-width: 640px) {
-    .hero { padding: 2.5rem 0 2rem; }
-    .hero-stats { grid-template-columns: repeat(2, 1fr); gap: 1.5rem 1rem; }
-    .hero-stat { padding: 0; }
-    .features-grid { grid-template-columns: 1fr; }
-    .kpi-row { grid-template-columns: 1fr 1fr; }
-    .cta-layout { flex-direction: column; align-items: flex-start; }
-  }
-  @media (max-width: 420px) {
-    .kpi-row { grid-template-columns: 1fr; }
-    .hero-stat-val { font-size: 1.6rem; }
+  @media (max-width: 720px) {
+    .hero-inner { grid-template-columns: 1fr; }
+    .hero-right { display: none; }
+    .norm-layout { grid-template-columns: 1fr; }
+    .inst-grid { grid-template-columns: 1fr; }
+    .gyc-layout { grid-template-columns: 1fr; gap: 2rem; }
+    .bene-grid { grid-template-columns: 1fr; }
+    .eq-grid { grid-template-columns: 1fr 1fr; }
+    .feat-grid { grid-template-columns: 1fr; }
+    .section { padding: 2rem 1.5rem; }
+    .hero { padding: 2.5rem 1.5rem 2rem; }
+    .ftr { padding: 1rem 1.5rem; }
   }
 
-  @media print {
-    @page {
-      size: A4 portrait;
-      margin: 12mm 14mm 14mm 14mm;
-    }
-
-    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-
-    /* Ocultar elementos interactivos */
-    .jrn-hdr, .section-cta, .ftr, .hdr-action, .ai-plano-loading, .plano-edit-row { display: none !important; }
-
-    body { background: #fff !important; font-size: 0.88rem; }
-
-    .wrap { max-width: 100%; padding: 0; }
-
-    /* Hero compacto */
-    .hero {
-      padding: 1.8rem 1.2rem 1.5rem;
-      background-color: var(--c-title) !important;
-      background-image: none !important;
-      page-break-after: avoid;
-    }
-    .hero::before, .hero::after { display: none !important; }
-    .hero-inner { position: relative; z-index: 1; }
-    .hero-stats { gap: 1.5rem; margin-top: 1.2rem; }
-    .hero-stat-val { font-size: 1.6rem; }
-    .hero-title { font-size: 1.8rem; }
-
-    /* Secciones */
-    .section-features, .section-alt { padding: 1.2rem 1rem; }
-    .features-grid { grid-template-columns: repeat(2, 1fr); gap: 0.8rem; }
-    .feat-card { padding: 0.7rem; }
-
-    /* Verificación normativa */
-    .check-list { gap: 0.4rem; }
-    .check-item { padding: 0.5rem 0.7rem; page-break-inside: avoid; }
-
-    /* Dimensionamiento — paneles A y B uno debajo del otro */
-    .dim-grid { grid-template-columns: 1fr !important; border: none; }
-    .dim-panel { page-break-inside: avoid; border: 1px solid var(--c-border) !important; margin-bottom: 0.6rem; }
-    .dim-panel + .dim-panel { border-left: 1px solid var(--c-border) !important; border-top: 1px solid var(--c-border) !important; }
-    .dim-plano { padding: 0.8rem; }
-    .ai-plano-svg svg { width: 100% !important; height: auto !important; }
-
-    /* Equipamiento */
-    .eq-grid { grid-template-columns: repeat(3, 1fr); gap: 0.6rem; }
-    .eq-card { padding: 0.6rem; page-break-inside: avoid; }
-
-    /* Argumentario */
-    .section-dark {
-      background: var(--c-title) !important;
-      padding: 1.4rem 1.2rem;
-      page-break-before: always;
-    }
-    .arg-layout { gap: 2rem; }
-    .arg-aside { min-width: 140px; }
-    .arg-aside-title { font-size: 1.4rem; }
-
-    /* Evitar cortes en medio de bloques */
-    h2, h3 { page-break-after: avoid; }
-    section { page-break-inside: avoid; }
-  }
-
-  /* ── TEXT WRAP ── */
-  .hero-title  { text-wrap: balance; }
-  .cta-title   { text-wrap: balance; }
-  .empty-title { text-wrap: balance; }
-
-  /* ── FOCUS VISIBLE ── */
-  .hdr-action:focus-visible {
-    outline: 2px solid rgba(255,255,255,0.8);
-    outline-offset: 3px;
-  }
-  .btn-pill:focus-visible {
-    outline: 2px solid #ffffff;
-    outline-offset: 3px;
-  }
-  .btn-pill--light:focus-visible {
-    outline: 2px solid var(--c-primary);
-    outline-offset: 3px;
-  }
-  .btn-outline:focus-visible {
-    outline: 2px solid var(--c-primary);
-    outline-offset: 3px;
-  }
-  .btn-outline--light:focus-visible {
-    outline: 2px solid rgba(255,255,255,0.8);
-    outline-offset: 3px;
-  }
-  .ftr-back:focus-visible {
-    outline: 2px solid rgba(255,255,255,0.7);
-    outline-offset: 3px;
-    border-radius: 2px;
-  }
-
-  /* ── TOUCH TARGETS ── */
-  @media (pointer: coarse) {
-    .hdr-action { min-height: 44px; padding: 0.6rem 1.25rem; }
-  }
-
-  /* ── REDUCED MOTION ── */
   @media (prefers-reduced-motion: reduce) {
     html { scroll-behavior: auto; }
-
-    /* Dot loading animation: show at full opacity, no bounce */
-    .ai-plano-dots span {
-      animation: none;
-      opacity: 1;
-      transform: none;
-    }
-
-    /* State transitions: instant */
-    .feat-card,
-    .verif-item,
-    .eq-card,
-    .hdr-action,
-    .btn-pill,
-    .btn-outline,
-    .ftr-back {
-      transition: none;
-    }
+    .ai-plano-dots span { animation: none; opacity: 1; }
+    .hs-fill { transition: none; }
   }
 `;

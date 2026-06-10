@@ -52,15 +52,19 @@ def node_generator(state: RAGState):
 
 
 def node_save_cache(state: RAGState):
-    embedder = GoogleGenerativeAIEmbeddings(
-        model=os.getenv("EMBEDDING_MODEL"),
-        google_api_key=os.getenv("GOOGLE_API_KEY")
-    )
-    guardar_cache(
-        query=state["query"],
-        embedder=embedder,
-        respuesta=state["answer"]
-    )
+    try:
+        embedder = GoogleGenerativeAIEmbeddings(
+            model=os.getenv("EMBEDDING_MODEL"),
+            google_api_key=os.getenv("GOOGLE_API_KEY")
+        )
+        guardar_cache(
+            query=state["query"],
+            embedder=embedder,
+            respuesta=state["answer"]
+        )
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Cache save skipped (Qdrant unavailable): {e}")
     return {}
 
 
