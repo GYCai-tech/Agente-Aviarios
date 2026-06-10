@@ -104,7 +104,7 @@ Fuente: diseñador del producto.
 
 | Configuración | Sup. total | Sup. disponible (excluye zona de puesta) |
 |---|---|---|
-| 2 plantas | 15,270 m² | 13,180 m² |
+| 2 plantas | 11,216 m² | 9,1232 m² |
 | 3 plantas | 19,328 m² | 16,194 m² |
 
 La **superficie disponible** es la que computa para densidad normativa.

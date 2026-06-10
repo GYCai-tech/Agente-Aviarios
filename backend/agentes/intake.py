@@ -293,8 +293,8 @@ _AVI_CLEARANCE = 4.0                       # clearance al extremo de cada fila (
 
 # Superficie por módulo según número de plantas (datos del diseñador)
 # "disponible" = excluye zona de puesta, computa para densidad normativa
-_AVI_SUP_TOTAL = {2: 15.270, 3: 19.328}   # m² superficie total por módulo
-_AVI_SUP_DISP  = {2: 13.180, 3: 16.194}   # m² superficie disponible (sin puesta)
+_AVI_SUP_TOTAL = {2: 11.216, 3: 19.328}   # m² superficie total por módulo (2 plantas: con suelo en tejado)
+_AVI_SUP_DISP  = {2: 9.1232, 3: 16.194}   # m² superficie disponible (sin puesta); 2 plantas: 11.216 − 2.0928
 
 
 class LayoutAviario(BaseModel):

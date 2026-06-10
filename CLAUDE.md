@@ -113,7 +113,7 @@ sup_yacija_disp  = superficie_nave − sup_cuerpo − sup_slot
 Huella para encaje en nave : 3.735 × 1.20 = 4.482 m²
 
                         Sup. total    Sup. disponible (sin zona de puesta)
-Módulo 2 plantas :      15.270 m²     13.180 m²
+Módulo 2 plantas :      11.216 m²     9.1232 m²
 Módulo 3 plantas :      19.328 m²     16.194 m²
 ```
 La **superficie disponible** es la que computa para el cálculo de densidad normativa.

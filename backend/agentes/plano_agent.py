@@ -859,7 +859,7 @@ def _metricas_aviario(
     sup_ext = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
 
     densidad_max     = 6.0 if sistema == "ecologico" else 9.0
-    sup_disp_por_mod = 16.194 if niveles == 3 else 13.180
+    sup_disp_por_mod = 16.194 if niveles == 3 else 9.1232
     sup_disp         = total * sup_disp_por_mod + sup_ext
     # Yacija = suelo libre (nave menos huella de módulos) + superficies de plataformas por cada planta
     yacija  = (nave_m2 - huella + sup_ext) + total * sup_disp_por_mod
