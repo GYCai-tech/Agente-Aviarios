@@ -49,7 +49,15 @@
     .topbar-btn { display: inline-flex; align-items: center; gap: .4rem; background: rgba(255,255,255,.1); color: rgba(255,255,255,.85); border: 1px solid rgba(255,255,255,.15); border-radius: 4px; padding: .32rem .8rem; font-family: var(--fb); font-size: .68rem; font-weight: 600; cursor: pointer; }
 
     /* ── HERO ── */
-    .hero { background: var(--navy); padding: 3.5rem 2.5rem 3rem; position: relative; overflow: hidden; }
+    .hero {
+      background: var(--navy);
+      background-image: linear-gradient(rgba(0, 8, 35, 0.45), rgba(0, 8, 35, 0.45)), url('frontend/public/IMG_9878.JPG');
+      background-size: cover;
+      background-position: center;
+      padding: 3.5rem 2.5rem 3rem;
+      position: relative;
+      overflow: hidden;
+    }
     .hero-dot-grid {
       position: absolute; inset: 0; pointer-events: none;
       background-image: radial-gradient(circle, rgba(255,255,255,.06) 1px, transparent 1px);
