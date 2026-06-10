@@ -88,7 +88,10 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
 
     # Densidad mínima alcanzable (aviario con todos los módulos que caben)
     if niveles >= 2:
-        num_mod_avi, sup_disp, _ = _sup_util_aviario(datos.superficie_nave_m2, niveles)
+        num_mod_avi, sup_disp, _, _ = _sup_util_aviario(
+            datos.superficie_nave_m2, niveles,
+            datos.largo_nave_m, datos.ancho_nave_m, datos.altura_nave_cm, datos.sistema,
+        )
         densidad_avi = round(datos.num_gallinas / sup_disp, 2) if sup_disp > 0 else float("inf")
     else:
         num_mod_avi = 0
@@ -146,7 +149,7 @@ def calcular_factibilidad(datos: DatosBasicos) -> ResultadoFactibilidad:
         sup_util = _AVI_SUP_DISP[niveles]
         mods_needed = math.ceil(datos.num_gallinas / (densidad_max * sup_util))
         sup_minima_avi = math.ceil(mods_needed * _AVI_HUELLA_M2 * 10) / 10
-        gallinas_max_avi = int(densidad_max * num_mod_avi * sup_util) if num_mod_avi > 0 else 0
+        gallinas_max_avi = int(densidad_max * sup_disp) if num_mod_avi > 0 else 0
     elif niveles < 2:
         # Aviario no viable por altura: calcular cuánto espacio se necesitaría si se pudiera
         sup_util = _AVI_SUP_DISP[2]  # referencia con 2 niveles
@@ -289,12 +292,13 @@ _AVI_MOD_B     = 3.30                      # dimensión paralela al ancho de nav
 _AVI_HUELLA_M2 = round(_AVI_MOD_A * _AVI_MOD_B, 4)  # 3.96 m²
 _AVI_CAP       = 144                       # gallinas/módulo (independiente de niveles)
 _AVI_PASILLO   = 1.0                       # pasillo entre filas (m)
-_AVI_CLEARANCE = 4.0                       # clearance al extremo de cada fila (dirección largo, m)
+_AVI_CLEARANCE       = 4.0                 # clearance a un extremo de cada fila (dirección largo, m)
+_AVI_CLEARANCE_FONDO = 3.0                 # clearance al otro extremo (m); total descontado al largo = 4 + 3 = 7
 
 # Superficie por módulo según número de plantas (datos del diseñador)
 # "disponible" = excluye zona de puesta, computa para densidad normativa
-_AVI_SUP_TOTAL = {2: 11.216, 3: 19.328}   # m² superficie total por módulo (2 plantas: con suelo en tejado)
-_AVI_SUP_DISP  = {2: 9.1232, 3: 16.194}   # m² superficie disponible (sin puesta); 2 plantas: 11.216 − 2.0928
+_AVI_SUP_TOTAL = {2: 7.638, 3: 11.216}    # m² superficie total por módulo (2 niveles / 3 niveles)
+_AVI_SUP_DISP  = {2: 5.5452, 3: 9.1232}   # m² superficie disponible (= total − 2.0928 de zona de puesta)
 
 
 class LayoutAviario(BaseModel):
@@ -308,21 +312,25 @@ def _optimizar_layout_aviario(W: float, L: float, H: float, densidad_max: float)
     """
     Layout del aviario:
     - Módulo: 1.20 m paralelo al largo, 3.30 m paralelo al ancho.
-    - Las filas van a lo largo del eje largo. Cada fila tiene 4 m de clearance
-      en su extremo (dirección largo). Módulos por fila = floor((largo - 4) / 1.20).
+    - Las filas van a lo largo del eje largo. Se descuentan 4 m en un extremo y
+      3 m en el otro (clearances). Módulos por fila = floor((largo - 7) / 1.20).
     - Las filas se colocan a lo largo del ancho con pasillos de 1 m entre ellas.
-      Número de filas = floor(ancho / (3.30 + pasillo)) ajustado al espacio real.
+      Número de filas = floor((ancho + pasillo) / (3.30 + pasillo)).
+
+    Superficie disponible para densidad = superficie de los módulos (sin zona de
+    puesta) + suelo útil de la nave (largo_util × ancho). La yacija mínima exigida
+    es 1/3 de la superficie total (módulos con puesta + suelo útil).
     """
     if H < 300:
         return None
 
     niveles = 2 if H < 400 else 3
 
-    # Módulos por fila (dirección largo): clearance de 4 m en ambos extremos
-    avail_largo = L - 2 * _AVI_CLEARANCE
-    if avail_largo < _AVI_MOD_A:
+    # Módulos por fila (dirección largo): clearance de 4 m en un extremo y 3 m en el otro
+    largo_util = L - _AVI_CLEARANCE - _AVI_CLEARANCE_FONDO
+    if largo_util < _AVI_MOD_A:
         return None
-    mods_per_row = math.floor(avail_largo / _AVI_MOD_A)
+    mods_per_row = math.floor(largo_util / _AVI_MOD_A)
 
     # Filas (dirección ancho): cada fila ocupa 3.30 m + 1 m pasillo,
     # excepto la última que no necesita pasillo
@@ -334,8 +342,11 @@ def _optimizar_layout_aviario(W: float, L: float, H: float, densidad_max: float)
         return None
 
     total_mods = mods_per_row * num_rows
-    sup_disp = round(total_mods * _AVI_SUP_DISP[niveles], 2)
-    gallinas = min(_AVI_CAP * total_mods, int(densidad_max * sup_disp))
+    suelo_util = round(largo_util * W, 2)                                  # suelo útil de la nave (m²)
+    sup_disp   = round(total_mods * _AVI_SUP_DISP[niveles] + suelo_util, 2)
+    sup_total  = round(total_mods * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
+    yacija_min = round(sup_total / 3, 2)
+    gallinas   = min(_AVI_CAP * total_mods, int(densidad_max * sup_disp))
 
     return {
         "modulos": total_mods,
@@ -344,7 +355,10 @@ def _optimizar_layout_aviario(W: float, L: float, H: float, densidad_max: float)
         "mods_por_fila": mods_per_row,
         "num_filas": num_rows,
         "orientacion": "longitudinal",
+        "suelo_util": suelo_util,
         "sup_disp": sup_disp,
+        "sup_total": sup_total,
+        "yacija_min": yacija_min,
         "densidad_real": round(gallinas / sup_disp, 2) if sup_disp > 0 else 0,
         "descripcion": f"{num_rows} filas de {mods_per_row} módulos",
     }
@@ -646,6 +660,7 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             continue
 
         layout_obj = None
+        suelo_util = 0.0   # suelo útil de la nave (largo_util × ancho); 0 si no hay dimensiones
         if tiene_dimensiones:
             lay = _optimizar_layout_aviario(
                 datos.ancho_nave_m, datos.largo_nave_m,  # type: ignore[arg-type]
@@ -655,9 +670,7 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
                 # Físicamente caben los mismos módulos independientemente del nivel.
                 # Solo varía la superficie disponible por módulo según el nivel.
                 num_mod_avi = lay["modulos"]
-                sup_disp    = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
-                max_avi     = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
-                dens_avi    = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
+                suelo_util  = lay["suelo_util"]
                 if lay["niveles"] == niveles:
                     layout_obj = LayoutAviario(
                         orientacion=lay["orientacion"],
@@ -670,22 +683,26 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
                 num_mod_avi = math.floor(S / _AVI_HUELLA_M2)
                 if num_mod_avi == 0:
                     continue
-                sup_disp   = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
-                max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
-                dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
         else:
             num_mod_avi = math.floor(S / _AVI_HUELLA_M2)
             if num_mod_avi == 0:
                 continue
-            sup_disp   = round(num_mod_avi * _AVI_SUP_DISP[niveles], 2)
-            max_avi    = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
-            dens_avi   = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
 
-        # Yacija = suelo libre (nave menos huella) + superficies de plataformas de cada planta
-        sup_yacija_av = round(max(0.0, S - num_mod_avi * _AVI_HUELLA_M2 + sup_disp), 1)
-        yacija_min_av = round((S + sup_disp) / 3, 1)
-        yacija_pct_av = round(sup_yacija_av / (S + sup_disp) * 100, 1) if (S + sup_disp) > 0 else 0.0
-        parque_m2 = max(0.0, round((sup_disp - 2 * S) / 2, 1))
+        # Superficie disponible (densidad) = módulos sin puesta + suelo útil de la nave.
+        # Superficie total = módulos con puesta + suelo útil. Yacija mínima = 1/3 del total.
+        sup_disp     = round(num_mod_avi * _AVI_SUP_DISP[niveles] + suelo_util, 2)
+        sup_total_av = round(num_mod_avi * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
+        max_avi      = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
+        dens_avi     = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
+
+        # Yacija: el suelo útil es la zona de yacija y debe ser ≥ 1/3 de la superficie total
+        if suelo_util > 0:
+            sup_yacija_av = round(suelo_util, 1)
+        else:
+            sup_yacija_av = round(max(0.0, S - num_mod_avi * _AVI_HUELLA_M2), 1)
+        yacija_min_av = round(sup_total_av / 3, 1)
+        yacija_pct_av = round(sup_yacija_av / sup_total_av * 100, 1) if sup_total_av > 0 else 0.0
+        parque_m2 = max(0.0, round((num_mod_avi * _AVI_SUP_DISP[niveles] - 2 * S) / 2, 1))
         sup_disp_por_mod = _AVI_SUP_DISP[niveles]
         if parque_m2 > 0:
             N_max_a = min(math.floor(2 * S / sup_disp_por_mod), num_mod_avi)
@@ -729,12 +746,38 @@ def _niveles_aviario(altura_cm: float) -> int:
     return 1
 
 
-def _sup_util_aviario(nave_m2: float, niveles: int) -> tuple[int, float, float]:
-    """Devuelve (num_modulos_caben, sup_disponible_total, sup_total_total)."""
-    num_modulos = math.floor(nave_m2 / _AVI_HUELLA_M2)
-    sup_disp  = round(num_modulos * _AVI_SUP_DISP[niveles], 2)
-    sup_total = round(num_modulos * _AVI_SUP_TOTAL[niveles], 2)
-    return num_modulos, sup_disp, sup_total
+def _suelo_util_aviario(largo_nave_m: float | None, ancho_nave_m: float | None) -> float:
+    """Suelo útil de la nave para densidad/yacija del aviario: (largo − 4 − 3) × ancho.
+    Devuelve 0 si no se conocen las dimensiones."""
+    if largo_nave_m is None or ancho_nave_m is None:
+        return 0.0
+    largo_util = largo_nave_m - _AVI_CLEARANCE - _AVI_CLEARANCE_FONDO
+    return round(largo_util * ancho_nave_m, 2) if largo_util > 0 else 0.0
+
+
+def _sup_util_aviario(
+    nave_m2: float, niveles: int,
+    largo_nave_m: float | None = None, ancho_nave_m: float | None = None,
+    altura_nave_cm: float | None = None, sistema: str = "suelo",
+) -> tuple[int, float, float, float]:
+    """Devuelve (num_modulos_caben, sup_disponible, sup_total, suelo_util).
+
+    Metodología: la superficie disponible (densidad) y la total incluyen el suelo
+    útil de la nave (largo_util × ancho), no solo las plataformas de los módulos.
+    Con dimensiones usa el layout real (clearance 4+3); si no, estima los módulos
+    por superficie y suelo_util = 0.
+    """
+    suelo_util = _suelo_util_aviario(largo_nave_m, ancho_nave_m)
+    num_modulos: int | None = None
+    if largo_nave_m is not None and ancho_nave_m is not None and altura_nave_cm is not None:
+        lay = _optimizar_layout_aviario(ancho_nave_m, largo_nave_m, altura_nave_cm, _densidad_max_para(sistema))
+        if lay is not None:
+            num_modulos = lay["modulos"]
+    if num_modulos is None:
+        num_modulos = math.floor(nave_m2 / _AVI_HUELLA_M2)
+    sup_disp  = round(num_modulos * _AVI_SUP_DISP[niveles] + suelo_util, 2)
+    sup_total = round(num_modulos * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
+    return num_modulos, sup_disp, sup_total, suelo_util
 
 
 def recomendar_zona(datos: DatosRecomendacion, respuestas: dict[str, str] | None = None) -> Recomendacion:
@@ -760,7 +803,11 @@ def recomendar_zona(datos: DatosRecomendacion, respuestas: dict[str, str] | None
                   "Se necesitan ≥ 300 cm para instalar un aviario de 2 niveles.",
         )
 
-    num_modulos_caben, sup_disp_aviario, _ = _sup_util_aviario(datos.superficie_nave_m2, niveles_posibles)
+    num_modulos_caben, sup_disp_aviario, _, _ = _sup_util_aviario(
+        datos.superficie_nave_m2, niveles_posibles,
+        getattr(datos, "largo_nave_m", None), getattr(datos, "ancho_nave_m", None),
+        datos.altura_nave_cm, datos.sistema,
+    )
     densidad_con_aviario = (
         datos.num_gallinas / sup_disp_aviario if sup_disp_aviario > 0 else float("inf")
     )
@@ -844,6 +891,8 @@ class DatosIntake(BaseModel):
     superficie_nave_m2: float
     altura_nave_cm: float
     tipo_zona: TipoZona
+    ancho_nave_m: Optional[float] = None
+    largo_nave_m: Optional[float] = None
 
 
 class RequisitoCalculado(BaseModel):
@@ -952,13 +1001,23 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
     if tipo_zona == "aviario":
         niveles = _niveles_aviario(datos.altura_nave_cm)
         densidad_max_avi = 6.0 if datos.sistema == "ecologico" else 9.0
-        num_modulos_caben, _, sup_total = _sup_util_aviario(datos.superficie_nave_m2, niveles)
-        modulos_necesarios = math.ceil(n / (densidad_max_avi * _AVI_SUP_DISP[niveles]))
-        sup_disp = round(modulos_necesarios * _AVI_SUP_DISP[niveles], 2)
+        num_modulos_caben, _, _, suelo_util = _sup_util_aviario(
+            datos.superficie_nave_m2, niveles,
+            getattr(datos, "largo_nave_m", None), getattr(datos, "ancho_nave_m", None),
+            datos.altura_nave_cm, datos.sistema,
+        )
+        disp_por_mod = _AVI_SUP_DISP[niveles]
+        # Módulos necesarios para n gallinas: el suelo útil ya aporta superficie disponible
+        modulos_necesarios = max(1, math.ceil(max(0.0, n / densidad_max_avi - suelo_util) / disp_por_mod))
+        sup_disp_modulos = round(modulos_necesarios * disp_por_mod, 2)
+        sup_disp = round(sup_disp_modulos + suelo_util, 2)
+        sup_total_nec = round(modulos_necesarios * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
+        sup_total = round(num_modulos_caben * _AVI_SUP_TOTAL[niveles], 2)  # solo módulos (info "caben")
         densidad_real = n / sup_disp if sup_disp > 0 else float("inf")
+        suelo_label = f" + {suelo_util:.1f} m² suelo" if suelo_util > 0 else ""
         parametro_label = (
-            f"Densidad interior aviario {niveles} plantas — "
-            f"{modulos_necesarios} módulos necesarios · {_AVI_SUP_DISP[niveles]} m² disp./módulo"
+            f"Densidad interior aviario {niveles} niveles — "
+            f"{modulos_necesarios} módulos × {disp_por_mod} m²{suelo_label}"
             f" = {sup_disp:.1f} m² disponibles"
         )
         articulo_densidad = "Directiva 1999/74/CE Art. 4.3.a + RD 3/2002 Anexo IV"
@@ -1045,13 +1104,18 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             articulo="Cálculo interno",
         ))
     else:
-        # Aviario: yacija = suelo nave completo; requerida = 1/3 de (nave + todas las plantas)
-        yacija_minima_tercio_avi = round((datos.superficie_nave_m2 + sup_disp) / 3, 2)
+        # Aviario: la yacija es el suelo útil de la nave; requerida = 1/3 de la superficie total
+        yacija_minima_tercio_avi = round(sup_total_nec / 3, 2)
         yacija_requerida_avi = max(yacija_min_m2, yacija_minima_tercio_avi)
-        yacija_disponible_avi = datos.superficie_nave_m2
-        parque_avi = max(0.0, round((sup_disp - 2 * datos.superficie_nave_m2) / 2, 1))
+        yacija_disponible_avi = round(suelo_util if suelo_util > 0 else datos.superficie_nave_m2, 2)
+        parque_avi = max(0.0, round((sup_disp_modulos - 2 * datos.superficie_nave_m2) / 2, 1))
+        yacija_label = (
+            "Superficie yacija disponible (suelo útil de nave)"
+            if suelo_util > 0 else
+            "Superficie yacija disponible (suelo nave completo)"
+        )
         verificaciones.append(VerificacionNave(
-            parametro="Superficie yacija disponible (suelo nave completo)",
+            parametro=yacija_label,
             cumple=yacija_disponible_avi >= yacija_requerida_avi,
             valor_real=yacija_disponible_avi,
             valor_limite=yacija_requerida_avi,
@@ -1064,7 +1128,8 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             valor_minimo=yacija_requerida_avi,
             unidad="m²",
             formula=(
-                f"1/3 × ({datos.superficie_nave_m2} m² nave + {sup_disp} m² módulos) "
+                f"1/3 × {sup_total_nec} m² superficie total "
+                f"({modulos_necesarios} módulos con puesta + suelo útil) "
                 f"= {yacija_minima_tercio_avi} m²"
             ),
             articulo="RD 3/2002 Anexo IV",
@@ -1075,7 +1140,7 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
                 valor_minimo=parque_avi,
                 unidad="m²",
                 formula=(
-                    f"({sup_disp} m² módulos − 2 × {datos.superficie_nave_m2} m² nave) / 2 "
+                    f"({sup_disp_modulos} m² módulos − 2 × {datos.superficie_nave_m2} m² nave) / 2 "
                     f"= {parque_avi} m²"
                 ),
                 articulo="RD 3/2002 Anexo IV",
@@ -1089,9 +1154,9 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
             valor_minimo=float(modulos_necesarios),
             unidad="módulos",
             formula=(
-                f"⌈{n} / ({densidad_max_avi:.0f} gal/m² × {_AVI_SUP_DISP[niveles]} m²)⌉ "
+                f"⌈({n}/{densidad_max_avi:.0f} − {suelo_util:.1f} m² suelo) / {disp_por_mod} m²⌉ "
                 f"= {modulos_necesarios} módulo{'s' if modulos_necesarios > 1 else ''} "
-                f"({niveles} plantas · {_AVI_SUP_DISP[niveles]} m² disp./módulo)"
+                f"({niveles} niveles · {disp_por_mod} m² disp./módulo)"
             ),
             articulo="Directiva 1999/74/CE Art. 4.3.a",
         ))

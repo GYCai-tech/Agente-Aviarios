@@ -855,14 +855,16 @@ def _metricas_aviario(
 ) -> MetricasPlano:
     total   = num_filas * mods_por_fila
     huella  = total * _AVI_ANCHO_MOD * _AVI_PROF_MOD
-    nave_m2 = ancho * largo
     sup_ext = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
 
     densidad_max     = 6.0 if sistema == "ecologico" else 9.0
-    sup_disp_por_mod = 16.194 if niveles == 3 else 9.1232
-    sup_disp         = total * sup_disp_por_mod + sup_ext
-    # Yacija = suelo libre (nave menos huella de módulos) + superficies de plataformas por cada planta
-    yacija  = (nave_m2 - huella + sup_ext) + total * sup_disp_por_mod
+    sup_disp_por_mod = 9.1232 if niveles == 3 else 5.5452
+    # Suelo útil de la nave (metodología: largo − 4 − 3 de clearances) × ancho
+    largo_util = max(0.0, largo - 4.0 - 3.0)
+    suelo_util = round(largo_util * ancho, 2)
+    sup_disp   = total * sup_disp_por_mod + suelo_util + sup_ext
+    # Yacija = suelo útil de la nave (+ exterior); debe ser ≥ 1/3 de la superficie total
+    yacija     = suelo_util + sup_ext
     gal_max          = int(densidad_max * sup_disp) if total > 0 else 0
 
     aves_proyecto = gallinas_override if gallinas_override > 0 else gal_max
