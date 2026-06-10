@@ -41,14 +41,17 @@ def buscar_cache(query, embedder, score=0.92):
 
 
 def guardar_cache(query, embedder, respuesta):
-    embedding = embedder.embed_query(query)
-    qdrant_client.upsert(
-        collection_name="cache_respuestas",
-        points=[
-            PointStruct(
-                id=str(uuid.uuid4()),
-                vector=embedding,
-                payload={"respuesta": respuesta}
-            )
-        ]
-    )
+    try:
+        embedding = embedder.embed_query(query)
+        qdrant_client.upsert(
+            collection_name="cache_respuestas",
+            points=[
+                PointStruct(
+                    id=str(uuid.uuid4()),
+                    vector=embedding,
+                    payload={"respuesta": respuesta}
+                )
+            ]
+        )
+    except Exception as e:
+        logger.warning(f"Cache save failed (Qdrant unavailable): {e}")

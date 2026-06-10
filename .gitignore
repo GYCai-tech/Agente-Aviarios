@@ -29,3 +29,9 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# Logs
+*.log
+
+# Claude Code (config local, no compartible)
+.claude/settings.local.json

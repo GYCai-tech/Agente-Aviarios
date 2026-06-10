@@ -1,0 +1,153 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-06-02T00:00:00Z",
+  "title": "Design System: Agente Aviario — Gómez y Crespo",
+  "extensions": {
+    "colorMeta": {
+      "forest-green":       { "role": "primary",   "displayName": "Forest Green",       "canonical": "oklch(49% 0.07 145)", "tonalRamp": ["#0f2410","#1e3b1c","#2e5a2c","#4f764d","#6d9e6b","#8bc087","#a8dca4","#d4f0d2"] },
+      "forest-green-deep":  { "role": "primary",   "displayName": "Forest Green Deep",  "canonical": "oklch(34% 0.07 145)", "tonalRamp": ["#0a1c0a","#132913","#1e3b1c","#234926","#2e5a2c","#3d7039","#5a9956","#8bd485"] },
+      "forest-green-tint":  { "role": "primary",   "displayName": "Forest Green Tint",  "canonical": "oklch(93% 0.025 145)","tonalRamp": ["#1e3b1c","#2e5a2c","#4f764d","#6d9e6b","#a8dca4","#c6edca","#d8f4db","#eaf5ea"] },
+      "ok-text":            { "role": "primary",   "displayName": "OK Text",            "canonical": "oklch(40% 0.085 145)", "tonalRamp": ["#0a1c0a","#132913","#1d4a1e","#1d6b22","#2d8c35","#4aad51","#79cd7e","#b3eab7"] },
+      "ok-icon":            { "role": "primary",   "displayName": "OK Icon",            "canonical": "oklch(46% 0.085 155)", "tonalRamp": ["#0a1c14","#132a1e","#1e4029","#2E7D4F","#3d9c64","#5abd7e","#8dd4a5","#c0ecd2"] },
+      "midnight-ink":       { "role": "neutral",   "displayName": "Midnight Ink",       "canonical": "oklch(10% 0.015 265)","tonalRamp": ["#020313","#0a0e22","#131929","#000823","#1e2538","#3b4255","#5e657a","#c8ccd8"] },
+      "slate-body":         { "role": "neutral",   "displayName": "Slate Body",         "canonical": "oklch(38% 0.025 270)","tonalRamp": ["#0e1020","#202540","#484e62","#696f85","#8d94a8","#b0b7c8","#cdd3e0","#e8ebf0"] },
+      "institutional-white":{ "role": "neutral",   "displayName": "Institutional White","canonical": "oklch(100% 0 0)",    "tonalRamp": ["#c8ccd8","#dde0e8","#e8ebf0","#f0f2f5","#f6f7f8","#fafafa","#fcfcfc","#ffffff"] },
+      "field-gray":         { "role": "neutral",   "displayName": "Field Gray",         "canonical": "oklch(97% 0.004 265)","tonalRamp": ["#c5c8d0","#d2d5dd","#dce0e8","#e6e9f0","#eef0f5","#f2f3f7","#F6F7F8","#fafbfc"] },
+      "hairline":           { "role": "neutral",   "displayName": "Hairline",           "canonical": "oklch(87% 0 0)",     "tonalRamp": ["#999999","#aaaaaa","#bbbbbb","#cccccc","#dddddd","#e5e5e5","#eeeeee","#f5f5f5"] },
+      "fail-bg":            { "role": "tertiary",  "displayName": "Fail Background",    "canonical": "oklch(95% 0.025 20)","tonalRamp": ["#4D1E1E","#7a2b28","#b5261e","#d43c33","#e87068","#f5a9a5","#fbd0ce","#fdecea"] },
+      "fail-text":          { "role": "tertiary",  "displayName": "Fail Text",          "canonical": "oklch(40% 0.13 20)", "tonalRamp": ["#2a0806","#4D1E1E","#7a2b28","#b5261e","#d43c33","#e87068","#f5a9a5","#fdecea"] },
+      "amber-warning":      { "role": "secondary", "displayName": "Amber Warning",      "canonical": "oklch(68% 0.13 75)", "tonalRamp": ["#3d2800","#6b4600","#997000","#d4a017","#e8c040","#f0d060","#f7e590","#fdf5cc"] },
+      "amber-bg":           { "role": "secondary", "displayName": "Amber Background",   "canonical": "oklch(98% 0.02 90)", "tonalRamp": ["#6b4600","#997000","#d4a017","#e8c040","#f5e090","#fdf5cc","#fffbeb","#fffef8"] },
+      "regulation-blue":    { "role": "secondary", "displayName": "Regulation Blue",    "canonical": "oklch(50% 0.16 240)","tonalRamp": ["#00193d","#003070","#0052a8","#0274BE","#1a8fd4","#55abe0","#8dcbef","#cce8f8"] }
+    },
+    "typographyMeta": {
+      "display":  { "displayName": "Display",    "purpose": "Page title only. One instance per page. Agente Aviario heading." },
+      "headline": { "displayName": "Headline",   "purpose": "Step and section titles. One per step (Datos del proyecto, Capacidad de la nave)." },
+      "title":    { "displayName": "Title",      "purpose": "Card titles, product names within comparison panels." },
+      "body":     { "displayName": "Body",       "purpose": "All prose, descriptions, analysis text, recommendation reasons. Max 65–75ch." },
+      "label":    { "displayName": "Label",      "purpose": "Field labels, section headers, badge text, progress step names. Uppercase only here." },
+      "mono":     { "displayName": "Data Mono",  "purpose": "Every numeric value: hen counts, m² areas, densities, module counts. Never prose." }
+    },
+    "shadows": [
+      { "name": "ambient-result",  "value": "0 2px 16px rgba(0,0,0,0.07)",       "purpose": "Final result block (result-wrap) only. Frames the deliverable as the most important element on the page." },
+      { "name": "hover-green-glow","value": "0 2px 12px rgba(79,118,77,0.1)",    "purpose": "Mode-card hover only. Echoes the border-color change with a tinted glow." }
+    ],
+    "motion": [
+      { "name": "step-in",     "value": "opacity 0 → 1, translateY 8px → 0, 220ms ease-out", "purpose": "New step entering the wizard. Applied via .step-anim keyframe." },
+      { "name": "pulse-dots",  "value": "opacity 0.3 → 1 → 0.3, 1300ms ease infinite",       "purpose": "Loading state dots. Three dots, 200ms staggered delay." },
+      { "name": "state-shift", "value": "border-color, background, color 150ms linear",        "purpose": "All hover/focus state transitions on interactive components." }
+    ],
+    "breakpoints": [
+      { "name": "mobile", "value": "520px",  "note": "Single-column layout, hide header nav links, field-row collapses to 1fr." },
+      { "name": "tablet", "value": "768px",  "note": "Primary design target. Sales reps use iPads at farm visits." },
+      { "name": "desktop","value": "1024px", "note": "Max-width 760px centered — no wider layout needed." }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "The main call to action at the end of each wizard step (Calcular, Confirmar, Ver recomendación).",
+      "html": "<button class=\"ds-btn-primary\">Calcular <svg width=\"14\" height=\"10\" viewBox=\"0 0 14 10\" fill=\"none\"><path d=\"M1 5h12M8 1l5 4-5 4\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button>",
+      "css": ".ds-btn-primary { display: inline-flex; align-items: center; gap: 8px; background: #4f764d; color: #fff; border: none; border-radius: 30px; padding: 12px 28px; font-family: 'Source Sans Pro', sans-serif; font-size: 0.9rem; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; cursor: pointer; transition: background 150ms linear; text-decoration: none; } .ds-btn-primary:hover { background: #234926; } .ds-btn-primary:focus-visible { outline: 2px solid #4f764d; outline-offset: 3px; } .ds-btn-primary:disabled { opacity: 0.4; cursor: default; }"
+    },
+    {
+      "name": "Outline Button",
+      "kind": "button",
+      "refersTo": "button-outline",
+      "description": "Secondary action (Nueva consulta, Modificar datos). Never the primary CTA.",
+      "html": "<button class=\"ds-btn-outline\">Nueva consulta</button>",
+      "css": ".ds-btn-outline { display: inline-flex; align-items: center; gap: 8px; background: transparent; color: #4f764d; border: 2px solid #4f764d; border-radius: 30px; padding: 11px 24px; font-family: 'Source Sans Pro', sans-serif; font-size: 0.9rem; font-weight: 600; letter-spacing: 0.04em; cursor: pointer; transition: background 150ms linear, color 150ms linear; } .ds-btn-outline:hover { background: #4f764d; color: #fff; } .ds-btn-outline:focus-visible { outline: 2px solid #4f764d; outline-offset: 3px; }"
+    },
+    {
+      "name": "Back Button",
+      "kind": "button",
+      "refersTo": null,
+      "description": "Navigation back to the previous step. Not an action — a nav affordance. No border, no background.",
+      "html": "<button class=\"ds-btn-back\"><svg width=\"12\" height=\"10\" viewBox=\"0 0 12 10\" fill=\"none\"><path d=\"M5 1L1 5m0 0l4 4M1 5h10\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg>Volver</button>",
+      "css": ".ds-btn-back { display: inline-flex; align-items: center; gap: 7px; font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; color: #484e62; cursor: pointer; border: none; background: none; padding: 0; letter-spacing: 0.08em; text-transform: uppercase; transition: color 150ms linear; } .ds-btn-back:hover { color: #4f764d; } .ds-btn-back:focus-visible { outline: 2px solid #4f764d; outline-offset: 2px; border-radius: 2px; }"
+    },
+    {
+      "name": "Text Input",
+      "kind": "input",
+      "refersTo": "field-input",
+      "description": "Numeric input for hen count, surface area, height. Always paired with a unit label anchored to the right.",
+      "html": "<div class=\"ds-field\"><label class=\"ds-field-label\">Gallinas a alojar</label><div class=\"ds-field-wrap\"><input type=\"number\" class=\"ds-field-input\" placeholder=\"500\" /><span class=\"ds-field-unit\">aves</span></div></div>",
+      "css": ".ds-field { display: flex; flex-direction: column; gap: 6px; } .ds-field-label { font-family: 'Montserrat', sans-serif; font-size: 0.68rem; font-weight: 700; color: #000823; letter-spacing: 0.08em; text-transform: uppercase; } .ds-field-wrap { position: relative; display: flex; align-items: center; } .ds-field-input { width: 100%; background: #fff; border: 1px solid #dddddd; border-radius: 2px; padding: 11px 52px 11px 14px; font-family: 'Source Sans Pro', sans-serif; font-size: 0.95rem; color: #000823; outline: none; transition: border-color 150ms linear, box-shadow 150ms linear; } .ds-field-input:focus { border-color: #4f764d; box-shadow: 0 0 0 3px rgba(79,118,77,0.1); } .ds-field-unit { position: absolute; right: 14px; font-size: 0.82rem; color: #bbbbbb; pointer-events: none; }"
+    },
+    {
+      "name": "Status Badge — OK",
+      "kind": "chip",
+      "refersTo": "status-ok",
+      "description": "Read-only indicator for viable systems or passing verification checks.",
+      "html": "<span class=\"ds-badge-ok\">Viable</span>",
+      "css": ".ds-badge-ok { display: inline-flex; align-items: center; background: #eaf5ea; color: #1d6b22; border: 1px solid #4f764d; border-radius: 30px; padding: 2px 10px; font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }"
+    },
+    {
+      "name": "Status Badge — Fail",
+      "kind": "chip",
+      "refersTo": "status-fail",
+      "description": "Read-only indicator for non-viable systems or failing checks.",
+      "html": "<span class=\"ds-badge-fail\">No viable</span>",
+      "css": ".ds-badge-fail { display: inline-flex; align-items: center; background: #fdecea; color: #b5261e; border-radius: 30px; padding: 2px 10px; font-family: 'Montserrat', sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; white-space: nowrap; }"
+    },
+    {
+      "name": "Mode Card",
+      "kind": "card",
+      "refersTo": "mode-card",
+      "description": "Large touch-target selector cards on the opening screen. Icon + title + description + arrow. Hover transitions border to green and bg to green tint.",
+      "html": "<button class=\"ds-mode-card\"><div class=\"ds-mode-icon\"><svg width=\"28\" height=\"28\" viewBox=\"0 0 28 28\" fill=\"none\"><rect x=\"4\" y=\"4\" width=\"20\" height=\"20\" rx=\"2\" stroke=\"currentColor\" stroke-width=\"1.8\"/><path d=\"M9 14l3.5 3.5 6.5-6.5\" stroke=\"currentColor\" stroke-width=\"1.8\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></div><div class=\"ds-mode-body\"><div class=\"ds-mode-title\">Verificar instalación</div><p class=\"ds-mode-desc\">Tengo <strong>X gallinas</strong> y quiero saber si caben en mi nave.</p></div><svg class=\"ds-mode-arrow\" width=\"16\" height=\"12\" viewBox=\"0 0 16 12\" fill=\"none\"><path d=\"M1 6h14M9 1l6 5-6 5\" stroke=\"currentColor\" stroke-width=\"1.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></button>",
+      "css": ".ds-mode-card { display: flex; align-items: center; gap: 18px; padding: 20px 24px; text-align: left; width: 100%; border: 2px solid #dddddd; border-radius: 2px; background: #fff; cursor: pointer; transition: border-color 150ms linear, background 150ms linear, box-shadow 150ms linear; font-family: inherit; } .ds-mode-card:hover { border-color: #4f764d; background: #eaf5ea; box-shadow: 0 2px 12px rgba(79,118,77,0.1); } .ds-mode-icon { width: 52px; height: 52px; border-radius: 50%; background: #F6F7F8; color: #4f764d; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: background 150ms linear; } .ds-mode-card:hover .ds-mode-icon { background: rgba(79,118,77,0.18); } .ds-mode-body { flex: 1; min-width: 0; } .ds-mode-title { font-family: 'Montserrat', sans-serif; font-size: 1rem; font-weight: 800; color: #000823; margin-bottom: 4px; } .ds-mode-desc { font-family: 'Source Sans Pro', sans-serif; font-size: 0.88rem; color: #484e62; line-height: 1.55; margin: 0; } .ds-mode-arrow { color: #dddddd; flex-shrink: 0; transition: color 150ms linear, transform 150ms linear; } .ds-mode-card:hover .ds-mode-arrow { color: #4f764d; transform: translateX(3px); } .ds-mode-card:focus-visible { outline: 2px solid #4f764d; outline-offset: 2px; }"
+    },
+    {
+      "name": "Check Row",
+      "kind": "custom",
+      "refersTo": null,
+      "description": "Signature component for the normative verification report. Parameter name, real value vs limit, pass/fail diff badge.",
+      "html": "<div class=\"ds-check-row\"><div class=\"ds-check-icon is-ok\"><svg width=\"12\" height=\"10\" viewBox=\"0 0 12 10\" fill=\"none\"><path d=\"M1 5l3.5 3.5 6.5-7\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"/></svg></div><span class=\"ds-check-name\">Densidad de alojamiento</span><div class=\"ds-check-vals\"><span class=\"ds-check-real\">6.2</span><span class=\"ds-check-sep\">/</span><span class=\"ds-check-ref\">≤ 9 gal/m²</span></div><span class=\"ds-check-diff is-ok\">+2.8 margen</span></div>",
+      "css": ".ds-check-row { display: flex; align-items: center; padding: 12px 28px; border-bottom: 1px solid #dddddd; gap: 12px; } .ds-check-row:last-child { border-bottom: none; } .ds-check-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; } .ds-check-icon.is-ok { background: #eaf5ea; color: #2E7D4F; } .ds-check-icon.is-fail { background: #fdecea; color: #b5261e; } .ds-check-name { flex: 1; font-family: 'Source Sans Pro', sans-serif; font-size: 0.9rem; color: #000823; } .ds-check-vals { display: flex; align-items: center; gap: 6px; font-size: 0.82rem; flex-shrink: 0; } .ds-check-real { color: #000823; font-weight: 600; } .ds-check-sep { color: #dddddd; } .ds-check-ref { color: #484e62; } .ds-check-diff { font-family: 'Montserrat', sans-serif; font-size: 0.7rem; font-weight: 700; padding: 2px 9px; border-radius: 30px; flex-shrink: 0; white-space: nowrap; } .ds-check-diff.is-ok { background: #eaf5ea; color: #1d6b22; } .ds-check-diff.is-fail { background: #fdecea; color: #b5261e; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "El Cuaderno de Campo del Ingeniero",
+    "overview": "This is a tool carried into barns and farm offices, shown on a tablet screen to a farmer making a six-figure equipment decision. The visual system earns trust through precision, not through charm. Every element pulls its weight: numbers are displayed in monospace at clear sizes, pass/fail states are unambiguous at arm's length, and the layout guides the eye from input to output without detours.\n\nThe aesthetic reference is the field data sheet: a single-column instrument on white stock, dark ink for text, forest green as the one color that carries meaning (active, viable, confirmed), warm amber for warnings, red for failures. Decoration that carries no information does not exist here.\n\nThis system explicitly rejects the generic SaaS aesthetic: no cream or off-white backgrounds, no floating cards with generous border-radii, no gradient heroes, no icon-heavy onboarding. It also rejects the bureaucratic government-portal look.",
+    "keyCharacteristics": [
+      "White canvas with forest green as the sole chromatic accent",
+      "Sharp edges (2px) on data surfaces; pill shapes (30px) reserved for action buttons and status badges",
+      "Monospace for all numeric data; no mixing with proportional type",
+      "Strong semantic vocabulary: green = viable/ok, red = fail, amber = warning",
+      "Horizontal hairline dividers, not card stacks, to separate information sections",
+      "Minimal elevation: flat at rest, one diffuse shadow reserved for the final result block"
+    ],
+    "rules": [
+      { "name": "The One Accent Rule",        "body": "Forest green appears on fewer than 15% of any screen's surface area. Its presence means something: viable, confirmed, action required. When it appears everywhere, it means nothing.", "section": "colors" },
+      { "name": "The Contrast Minimum Rule",  "body": "Body text is #484e62 on white (7.4:1). #808285 is forbidden for body text — it reads 3.8:1 on white and fails WCAG AA.", "section": "colors" },
+      { "name": "The No-Decorative-Color Rule","body": "Amber and red exist to signal state. If the color has no semantic reason, it does not appear.", "section": "colors" },
+      { "name": "The Mono-for-Numbers Rule",  "body": "Every numeric value that the client might read, compare, or write down gets JetBrains Mono. No exceptions.", "section": "typography" },
+      { "name": "The No-Display-in-Labels Rule","body": "Montserrat is the label font. Running text in Montserrat makes the interface feel like a PowerPoint, not a professional instrument.", "section": "typography" },
+      { "name": "The Flat-by-Default Rule",   "body": "Data surfaces are flat at rest. Shadows appear only on the final result block and on hover-state mode cards. Any other use of box-shadow is a violation.", "section": "elevation" }
+    ],
+    "dos": [
+      "Do use #484e62 (Slate Body) for all body text and secondary descriptions. It clears WCAG AA (7.4:1 on white).",
+      "Do use JetBrains Mono for every numeric value the client will read, compare, or write down.",
+      "Do keep the page background #ffffff — pure white, always.",
+      "Do use 2px border radius (sharp) for data containers and form fields. Reserve 30px pills for action buttons and status badges only.",
+      "Do use full-border or full-background-tint for warning containers.",
+      "Do test every screen at tablet viewport (768px–1024px).",
+      "Do apply prefers-reduced-motion: reduce to all CSS animations."
+    ],
+    "donts": [
+      "Don't use border-left or border-right greater than 1px as a colored accent stripe on any container.",
+      "Don't use #808285 for body text or descriptions. It fails WCAG AA on white (3.8:1).",
+      "Don't put Montserrat uppercase tracked labels on every section.",
+      "Don't apply box-shadow to cards, inputs, mode selectors, or factibilidad boxes.",
+      "Don't use Forest Green as a background color for large surface areas.",
+      "Don't use Montserrat for body copy or multi-sentence descriptions.",
+      "Don't design with cream, sand, beige, or warm-tinted off-white backgrounds.",
+      "Don't introduce floating cards, gradient headers, hero sections with large illustrations, or rounded-corner (8px+) containers.",
+      "Don't use color as the only distinguisher between pass and fail states — always pair with icon and text.",
+      "Don't put numeric data in proportional fonts."
+    ]
+  }
+}
