@@ -12,7 +12,8 @@ logging.basicConfig(
     format="%(asctime)s - %(levelname)s - %(message)s"
 )
 
-import google.generativeai as _genai
+from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_core.messages import HumanMessage, SystemMessage
 from fastapi import FastAPI, File, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
@@ -265,8 +266,10 @@ async def analizar_plano_imagen(file: UploadFile = File(...)):
     mime_type = file.content_type or "image/jpeg"
     b64 = base64.b64encode(contents).decode()
 
-    _genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    model = _genai.GenerativeModel("gemini-2.0-flash")
+    model = ChatGoogleGenerativeAI(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
+    )
 
     prompt = (
         "Analiza esta imagen. Puede ser un plano arquitectónico, fotografía de una nave agrícola "
@@ -281,11 +284,13 @@ async def analizar_plano_imagen(file: UploadFile = File(...)):
     )
 
     try:
-        response = model.generate_content([
-            {"inline_data": {"mime_type": mime_type, "data": b64}},
-            prompt,
+        response = model.invoke([
+            HumanMessage(content=[
+                {"type": "text", "text": prompt},
+                {"type": "image_url", "image_url": f"data:{mime_type};base64,{b64}"},
+            ])
         ])
-        text = response.text.strip()
+        text = response.content.strip()
         if "```" in text:
             text = text.split("```")[1].lstrip("json").strip()
         parsed = _json.loads(text)
@@ -350,13 +355,15 @@ async def consulta_libre(request: ConsultaLibreRequest):
         f"DOCUMENTACIÓN DE REFERENCIA:\n{contexto}"
     )
 
-    _genai.configure(api_key=os.getenv("GOOGLE_API_KEY"))
-    model = _genai.GenerativeModel(
-        os.getenv("GEMINI_MODEL", "gemini-2.0-flash"),
-        system_instruction=system_prompt,
+    model = ChatGoogleGenerativeAI(
+        model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash"),
+        google_api_key=os.getenv("GOOGLE_API_KEY"),
     )
-    response = model.generate_content(request.pregunta)
-    return ConsultaLibreResponse(respuesta=response.text.strip())
+    response = model.invoke([
+        SystemMessage(content=system_prompt),
+        HumanMessage(content=request.pregunta),
+    ])
+    return ConsultaLibreResponse(respuesta=response.content.strip())
 
 
 @app.get("/health")
