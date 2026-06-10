@@ -21,6 +21,13 @@ _AVI_PASILLO     = 1.20   # m pasillo entre filas
 _AVI_CLEAR_LAT   = 4.00   # m zona equipos lateral
 _FOSA_ANCHO      = 1.50   # m fosa purín
 
+# Densidad máxima legal por sistema (gal/m²) — debe coincidir con intake._DENSIDAD_MAX
+_DENSIDAD_MAX = {"suelo": 9.0, "campero": 6.0, "ecologico": 4.0, "jaulas": 9.0}
+
+
+def _densidad_max_sistema(sistema: str) -> float:
+    return _DENSIDAD_MAX.get(sistema, 9.0)
+
 # ── Constantes — Nidal A-Nida ─────────────────────────────────────────────────
 _NIDAL_ANCHO_MOD = 1.20   # m ancho por módulo (X)
 _NIDAL_PROF_MOD  = 1.40   # m profundidad cuerpo (Y)
@@ -857,7 +864,7 @@ def _metricas_aviario(
     huella  = total * _AVI_ANCHO_MOD * _AVI_PROF_MOD
     sup_ext = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
 
-    densidad_max     = 6.0 if sistema == "ecologico" else 9.0
+    densidad_max     = _densidad_max_sistema(sistema)
     sup_disp_por_mod = 9.1232 if niveles == 3 else 5.5452
     # Suelo útil de la nave (metodología: largo − 4 − 3 de clearances) × ancho
     largo_util = max(0.0, largo - 4.0 - 3.0)
@@ -901,7 +908,7 @@ def _metricas_nidal(
     yacija      = max(0.0, nave_m2 - huella - sup_slot + sup_ext)
     sup_efect   = nave_m2 - huella + sup_ext
     densidad    = gallinas / sup_efect if sup_efect > 0 and gallinas > 0 else 0.0
-    densidad_max = 6.0 if sistema == "ecologico" else 9.0
+    densidad_max = _densidad_max_sistema(sistema)
     gal_max      = min(num_modulos * 144, int(densidad_max * sup_efect)) if sup_efect > 0 else num_modulos * 144
     return MetricasPlano(
         num_filas=1,
@@ -947,7 +954,7 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 num_mods, cfg.gallinas, cfg.sistema,
                 ancho_alero_m=cfg.ancho_alero_m,
             )
-            dens_max_nidal = 6.0 if cfg.sistema == "ecologico" else 9.0
+            dens_max_nidal = _densidad_max_sistema(cfg.sistema)
             parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas,
                               hoja="1 DE 1",
                               gallinas_max=metricas.gallinas_max,
@@ -979,7 +986,7 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             cfg.gallinas, cfg.sistema, cfg.niveles,
             ancho_alero_m=cfg.ancho_alero_m,
         )
-        dens_max_cfg = 6.0 if cfg.sistema == "ecologico" else 9.0
+        dens_max_cfg = _densidad_max_sistema(cfg.sistema)
         parts += _footer("aviario", cfg.nombre_cliente or "Propuesta GyC",
                          nf * mpf, cfg.gallinas, hoja="1 DE 1",
                          gallinas_max=metricas.gallinas_max,
