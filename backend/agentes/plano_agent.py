@@ -45,6 +45,36 @@ PAD_T  = 60
 PAD_R  = 40
 PAD_B  = 130
 
+# ── Paleta del plano (limpio / profesional) ────────────────────────────────────
+_FONT           = "'Segoe UI',Helvetica,Arial,sans-serif"
+_COL_INK        = "#1f2a44"   # contorno de nave, título
+_COL_GRID       = "#eaeef3"   # rejilla de fondo
+_COL_DIM        = "#9aa3b2"   # líneas de cota
+_COL_DIM_TXT    = "#5b6573"   # texto de cota
+_COL_MOD_FILL   = "#e7eef7"   # módulo aviario
+_COL_MOD_STR    = "#3a557a"
+_COL_MOD_DIV    = "#aebfd4"
+_COL_MOD_TXT    = "#2f486e"
+_COL_EQUIP_FILL = "#f4efe3"   # zona equipos (noria / comida)
+_COL_EQUIP_STR  = "#c7b184"
+_COL_EQUIP_TXT  = "#8a7338"
+_COL_RASC_FILL  = "#eceff4"   # rascador
+_COL_RASC_STR   = "#9aa6ba"
+_COL_RASC_TXT   = "#5f6b7e"
+_COL_FOSA_FILL  = "#ece1d0"   # fosa de purín
+_COL_FOSA_STR   = "#9a7a50"
+_COL_FOSA_HATCH = "#cbb791"
+_COL_FOSA_TXT   = "#6e5226"
+_COL_PASILLO    = "#f6f8fa"   # pasillos
+_COL_PASILLO_S  = "#dde2e9"
+_COL_PASILLO_T  = "#97a1b0"
+_COL_EXT_FILL   = "#edf4ec"   # zona exterior
+_COL_EXT_STR    = "#5f905f"
+_COL_EXT_TXT    = "#356535"
+_COL_PANEL      = "#f7f8fa"   # paneles (bloque de título)
+_COL_OK         = "#2f6b46"
+_COL_WARN       = "#b4602a"
+
 
 # ── Modelos Pydantic ──────────────────────────────────────────────────────────
 
@@ -102,6 +132,7 @@ class MetricasPlano(BaseModel):
     clearance_pared_m: float
     pasillo_m: float
     clearance_lateral_m: float
+    densidad_max: float = 9.0
 
 
 class LayoutConfigResponse(BaseModel):
@@ -116,7 +147,7 @@ def _e(v: float, d: int = 1) -> str:
     return f"{v:.{d}f}"
 
 
-def _rect(x, y, w, h, fill="none", stroke="#000823", sw=1.5, rx=0, opacity=1.0, extra="") -> str:
+def _rect(x, y, w, h, fill="none", stroke=_COL_INK, sw=1.5, rx=0, opacity=1.0, extra="") -> str:
     op = f' fill-opacity="{opacity}"' if opacity < 1 else ""
     return (
         f'<rect x="{_e(x)}" y="{_e(y)}" width="{_e(w)}" height="{_e(h)}" '
@@ -127,7 +158,7 @@ def _rect(x, y, w, h, fill="none", stroke="#000823", sw=1.5, rx=0, opacity=1.0, 
     )
 
 
-def _line(x1, y1, x2, y2, stroke="#484e62", sw=0.8, dash="") -> str:
+def _line(x1, y1, x2, y2, stroke=_COL_DIM, sw=0.8, dash="") -> str:
     d = f' stroke-dasharray="{dash}"' if dash else ""
     return (
         f'<line x1="{_e(x1)}" y1="{_e(y1)}" x2="{_e(x2)}" y2="{_e(y2)}" '
@@ -135,10 +166,10 @@ def _line(x1, y1, x2, y2, stroke="#484e62", sw=0.8, dash="") -> str:
     )
 
 
-def _text(x, y, content, size=9, anchor="middle", fill="#484e62", bold=False, extra="") -> str:
-    fw = "bold" if bold else "normal"
+def _text(x, y, content, size=9, anchor="middle", fill=_COL_DIM_TXT, bold=False, extra="") -> str:
+    fw = "600" if bold else "400"
     return (
-        f'<text x="{_e(x)}" y="{_e(y)}" font-family="monospace" font-size="{size}" '
+        f'<text x="{_e(x)}" y="{_e(y)}" font-family="{_FONT}" font-size="{size}" '
         f'font-weight="{fw}" text-anchor="{anchor}" fill="{fill}"'
         + (f" {extra}" if extra else "")
         + f">{content}</text>"
@@ -147,21 +178,21 @@ def _text(x, y, content, size=9, anchor="middle", fill="#484e62", bold=False, ex
 
 def _arrow_h(x1, x2, y, label) -> list[str]:
     arr = 5
-    out = [_line(x1, y, x2, y, stroke="#888", sw=0.7)]
+    out = [_line(x1, y, x2, y, stroke=_COL_DIM, sw=0.7)]
     for xp, sign in ((x1, 1), (x2, -1)):
-        out.append(_line(xp, y, xp + sign * arr, y - 3, stroke="#888", sw=0.7))
-        out.append(_line(xp, y, xp + sign * arr, y + 3, stroke="#888", sw=0.7))
-    out.append(_text((x1 + x2) / 2, y - 4, label, size=8, fill="#555"))
+        out.append(_line(xp, y, xp + sign * arr, y - 3, stroke=_COL_DIM, sw=0.7))
+        out.append(_line(xp, y, xp + sign * arr, y + 3, stroke=_COL_DIM, sw=0.7))
+    out.append(_text((x1 + x2) / 2, y - 4, label, size=8, fill=_COL_DIM_TXT))
     return out
 
 
 def _arrow_v(x, y1, y2, label) -> list[str]:
     arr = 5
-    out = [_line(x, y1, x, y2, stroke="#888", sw=0.7)]
+    out = [_line(x, y1, x, y2, stroke=_COL_DIM, sw=0.7)]
     for yp, sign in ((y1, 1), (y2, -1)):
-        out.append(_line(x, yp, x - 3, yp + sign * arr, stroke="#888", sw=0.7))
-        out.append(_line(x, yp, x + 3, yp + sign * arr, stroke="#888", sw=0.7))
-    out.append(_text(x - 7, (y1 + y2) / 2 + 3, label, size=8, anchor="end", fill="#555"))
+        out.append(_line(x, yp, x - 3, yp + sign * arr, stroke=_COL_DIM, sw=0.7))
+        out.append(_line(x, yp, x + 3, yp + sign * arr, stroke=_COL_DIM, sw=0.7))
+    out.append(_text(x - 7, (y1 + y2) / 2 + 3, label, size=8, anchor="end", fill=_COL_DIM_TXT))
     return out
 
 
@@ -391,7 +422,7 @@ def _build_nidal_distribucion_svg(
 
         # Fondo zona exterior
         els.append(_rect(PAD_L, ext_y0, dw, ext_ph,
-                         fill="#e8f0e8", stroke="#3a7a3a", sw=2.0))
+                         fill=_COL_EXT_FILL, stroke=_COL_EXT_STR, sw=2.0))
 
         # Achurado diagonal (líneas cada 18 px)
         step = 18
@@ -608,11 +639,11 @@ def _build_aviario_svg(
     w_rasc  = zw - fosa_w
     x_fosa  = PAD_L + dw - fosa_w
 
-    els.append(_rect(PAD_L, PAD_T, dw, nave_ph, fill="#fafafa", stroke="#000823", sw=2.5))
-    els.append(_rect(PAD_L, PAD_T, zw, nave_ph, fill="#fff8e0", stroke="#c8a000", sw=0.8, opacity=0.7))
-    els.append(_rect(x_der, PAD_T, w_rasc, nave_ph, fill="#f0e8ff", stroke="#7040c0", sw=0.8, opacity=0.7))
+    els.append(_rect(PAD_L, PAD_T, dw, nave_ph, fill="#ffffff", stroke=_COL_INK, sw=2.5))
+    els.append(_rect(PAD_L, PAD_T, zw, nave_ph, fill=_COL_EQUIP_FILL, stroke=_COL_EQUIP_STR, sw=0.8, opacity=0.7))
+    els.append(_rect(x_der, PAD_T, w_rasc, nave_ph, fill=_COL_RASC_FILL, stroke=_COL_RASC_STR, sw=0.8, opacity=0.7))
 
-    els.append(_rect(x_fosa, PAD_T, fosa_w, nave_ph, fill="#e8d8c0", stroke="#7a5020", sw=1.5))
+    els.append(_rect(x_fosa, PAD_T, fosa_w, nave_ph, fill=_COL_FOSA_FILL, stroke=_COL_FOSA_STR, sw=1.5))
     cx_fosa = x_fosa + fosa_w / 2
     cy_mid  = PAD_T + nave_ph / 2
     fosa_m  = min(_FOSA_ANCHO, clearance_lat - 0.5)
@@ -624,32 +655,32 @@ def _build_aviario_svg(
     step = 14
     for k in range(-int(nave_ph / step) - 1, int(fosa_w / step) + 2):
         ox = x_fosa + k * step
-        els.append(_line(ox, PAD_T, ox + nave_ph, PAD_T + nave_ph, stroke="#b89060", sw=0.5))
+        els.append(_line(ox, PAD_T, ox + nave_ph, PAD_T + nave_ph, stroke=_COL_FOSA_HATCH, sw=0.5))
     els.append('</g>')
     # Etiqueta centrada: usar translate+rotate para que ambas líneas queden centradas juntas
     els.append(f'<g transform="translate({_e(cx_fosa)},{_e(cy_mid)}) rotate(-90)">')
-    els.append(f'<text x="0" y="-5" font-family="monospace" font-size="8" '
-               f'font-weight="bold" text-anchor="middle" fill="#5a3010">FOSA DE PURÍN</text>')
-    els.append(f'<text x="0" y="9" font-family="monospace" font-size="7" '
-               f'font-weight="normal" text-anchor="middle" fill="#5a3010">{fosa_m:.1f} m</text>')
+    els.append(f'<text x="0" y="-5" font-family="{_FONT}" font-size="8" '
+               f'font-weight="600" text-anchor="middle" fill="{_COL_FOSA_TXT}">FOSA DE PURÍN</text>')
+    els.append(f'<text x="0" y="9" font-family="{_FONT}" font-size="7" '
+               f'font-weight="400" text-anchor="middle" fill="{_COL_FOSA_TXT}">{fosa_m:.1f} m</text>')
     els.append('</g>')
 
     for i in range(num_filas):
         y_m = clearance_pared + i * (_AVI_PROF_MOD + pasillo)
         ry  = PAD_T + y_m * sy
         rh  = _AVI_PROF_MOD * sy
-        els.append(_rect(PAD_L, ry, zw, rh, fill="#ffecec", stroke="#cc2200", sw=1.2))
+        els.append(_rect(PAD_L, ry, zw, rh, fill=_COL_EQUIP_FILL, stroke=_COL_EQUIP_STR, sw=1.2))
         els.append(_text(PAD_L + zw / 2, ry + rh / 2 + 4,
-                         "NORIA · COMIDA", size=7, fill="#880000"))
-        els.append(_rect(x_der, ry, w_rasc, rh, fill="#ffecec", stroke="#cc2200", sw=1.2))
+                         "NORIA · COMIDA", size=7, fill=_COL_EQUIP_TXT))
+        els.append(_rect(x_der, ry, w_rasc, rh, fill=_COL_RASC_FILL, stroke=_COL_RASC_STR, sw=1.2))
         els.append(_text(x_der + w_rasc / 2, ry + rh / 2 + 4,
-                         "RASCADOR", size=7, fill="#880000"))
+                         "RASCADOR", size=7, fill=_COL_RASC_TXT))
 
     y_lbl = PAD_T + clearance_pared * sy / 2 + 3
     els.append(_text(PAD_L + zw / 2, y_lbl,
-                     f"← {clearance_lat:.1f} m EQUIPO", size=7, fill="#806000", bold=True))
+                     f"← {clearance_lat:.1f} m EQUIPO", size=7, fill=_COL_EQUIP_TXT, bold=True))
     els.append(_text(x_der + w_rasc / 2, y_lbl,
-                     f"EQUIPO {clearance_lat:.1f} m →", size=7, fill="#4a1090", bold=True))
+                     f"EQUIPO {clearance_lat:.1f} m →", size=7, fill=_COL_RASC_TXT, bold=True))
 
     for i in range(num_filas):
         y_m = clearance_pared + i * (_AVI_PROF_MOD + pasillo)
@@ -657,14 +688,14 @@ def _build_aviario_svg(
         ry  = PAD_T + y_m * sy
         rw  = mods_por_fila * _AVI_ANCHO_MOD * sx
         rh  = _AVI_PROF_MOD * sy
-        els.append(_rect(rx, ry, rw, rh, fill="#ffecec", stroke="#cc2200", sw=1.8, opacity=0.95))
+        els.append(_rect(rx, ry, rw, rh, fill=_COL_MOD_FILL, stroke=_COL_MOD_STR, sw=1.8, opacity=0.95))
         for j in range(1, mods_por_fila):
             lx = rx + j * _AVI_ANCHO_MOD * sx
-            els.append(_line(lx, ry, lx, ry + rh, stroke="#cc2200", sw=0.6))
+            els.append(_line(lx, ry, lx, ry + rh, stroke=_COL_MOD_DIV, sw=0.6))
         els.append(_text(
             rx + rw / 2, ry + rh / 2 + 4,
             f"FILA {i+1}  ·  {mods_por_fila} módulos  ·  {mods_por_fila * _AVI_ANCHO_MOD:.2f} m",
-            size=8, fill="#880000",
+            size=8, fill=_COL_MOD_TXT, bold=True,
         ))
         cx_cota = PAD_L + dw + 20
         els += _arrow_v(cx_cota, ry, ry + rh, f"{_AVI_PROF_MOD:.2f} m")
@@ -676,9 +707,9 @@ def _build_aviario_svg(
         rx    = PAD_L + clearance_lat * sx
         rw    = mods_por_fila * _AVI_ANCHO_MOD * sx
         els.append(_rect(rx, ry, rw, rh_p,
-                         fill="#f0ece0", stroke="#bbb", sw=0.5, opacity=0.7))
+                         fill=_COL_PASILLO, stroke=_COL_PASILLO_S, sw=0.5, opacity=0.7))
         els.append(_text(rx + rw / 2, ry + rh_p / 2 + 3,
-                         f"PASILLO  {pasillo:.2f} m", size=7, fill="#888"))
+                         f"PASILLO  {pasillo:.2f} m", size=7, fill=_COL_PASILLO_T))
 
     rx0 = PAD_L + clearance_lat * sx
     rx1 = rx0 + mods_por_fila * _AVI_ANCHO_MOD * sx
@@ -707,7 +738,7 @@ def _build_aviario_svg(
         ext_y0  = nave_bot_px
         ext_y1  = ext_y0 + ext_ph
         els.append(_rect(PAD_L, ext_y0, dw, ext_ph,
-                         fill="#e8f0e8", stroke="#3a7a3a", sw=2.0))
+                         fill=_COL_EXT_FILL, stroke=_COL_EXT_STR, sw=2.0))
         step_h = 18
         clip_x0, clip_y0 = PAD_L, ext_y0
         clip_x1, clip_y1 = PAD_L + dw, ext_y1
@@ -727,11 +758,11 @@ def _build_aviario_svg(
             else:
                 xb, yb = clip_x0 + (y2 - clip_y1), clip_y1
             if ya <= clip_y1 and yb >= clip_y0:
-                els.append(_line(xa, ya, xb, yb, stroke="#4a8a4a", sw=0.6))
+                els.append(_line(xa, ya, xb, yb, stroke=_COL_EXT_STR, sw=0.6))
             i += 1
         els.append(_text(PAD_L + dw / 2, ext_y0 + ext_ph / 2 + 4,
                          f"ZONA EXTERIOR  {ancho_alero_m:.1f} m",
-                         size=11, fill="#1a5a1a", bold=True))
+                         size=11, fill=_COL_EXT_TXT, bold=True))
         els += _arrow_v(PAD_L - 42, ext_y0, ext_y1, f"{ancho_alero_m:.1f} m")
         els.append(_line(PAD_L - 50, ext_y1, PAD_L, ext_y1,
                          stroke="#aaa", sw=0.5, dash="3,2"))
@@ -757,11 +788,11 @@ def _footer(
 
     # ── Línea de métricas clave ───────────────────────────────────────
     band_y   = y0 + 16
-    col_ok   = "#234926"
-    col_err  = "#b05000"
+    col_ok   = _COL_OK
+    col_err  = _COL_WARN
     dens_col = col_ok if densidad <= densidad_max else col_err
     gmax_str = f"{gallinas_max:,}".replace(",", ".")
-    dens_str = f"{densidad:.1f} gal/m²"
+    dens_str = f"{densidad:.1f} / {densidad_max:.0f} gal/m²"
     sep      = "·"
 
     # Tres bloques en posiciones fijas: módulos | aves | densidad
@@ -775,13 +806,18 @@ def _footer(
         els.append(_text(x, band_y, txt, size=9, anchor="start", fill=col, bold=True))
     # separadores
     for x in xs[1:]:
-        els.append(_text(x - 14, band_y, sep, size=9, anchor="middle", fill="#aaa"))
+        els.append(_text(x - 14, band_y, sep, size=9, anchor="middle", fill=_COL_DIM))
 
     # ── Leyenda ────────────────────────────────────────────────────────
     y_leg = band_y + 16
 
     if req_tipo == "aviario":
-        items = [("#ffecec", "#cc2200", "Módulo aviario")]
+        items = [
+            (_COL_MOD_FILL, _COL_MOD_STR, "Módulo aviario"),
+            (_COL_EQUIP_FILL, _COL_EQUIP_STR, "Noria / comida"),
+            (_COL_RASC_FILL, _COL_RASC_STR, "Rascador"),
+            (_COL_FOSA_FILL, _COL_FOSA_STR, "Fosa de purín"),
+        ]
     else:
         items = [
             ("#cc2200", "#cc2200", "Cuerpo A-Nida + sinfín"),
@@ -800,32 +836,39 @@ def _footer(
     bx = SVG_W - PAD_R - 250
     by = band_y
     bw, bh = 250, 62
-    els.append(_rect(bx, by, bw, bh, fill="#f5f5f5", stroke="#000823", sw=1.0))
-    els.append(_line(bx, by + 21, bx + bw, by + 21, sw=0.6, stroke="#000823"))
-    els.append(_line(bx, by + 42, bx + bw, by + 42, sw=0.6, stroke="#000823"))
+    els.append(_rect(bx, by, bw, bh, fill=_COL_PANEL, stroke=_COL_INK, sw=1.0, rx=3))
+    els.append(_line(bx, by + 21, bx + bw, by + 21, sw=0.5, stroke=_COL_INK))
+    els.append(_line(bx, by + 42, bx + bw, by + 42, sw=0.5, stroke=_COL_INK))
     producto = "Aviario Industrial" if req_tipo == "aviario" else "A-Nida Plus"
-    els.append(_text(bx + bw / 2, by + 15, "GÓMEZ Y CRESPO", size=9, bold=True, fill="#000823"))
-    els.append(_text(bx + bw / 2, by + 33, producto, size=8, fill="#234926"))
+    gallinas_str = f"{gallinas:,}".replace(",", ".")
+    els.append(_text(bx + bw / 2, by + 15, "GÓMEZ Y CRESPO", size=9, bold=True, fill=_COL_INK))
+    els.append(_text(bx + bw / 2, by + 33, producto, size=8, fill=_COL_OK))
     els.append(_text(bx + bw / 2, by + 56,
-                     f"{nombre_cliente}  ·  {total_modulos} mód.  ·  {gallinas:,} aves",
-                     size=7, fill="#484e62"))
-    els.append(_text(bx + bw - 4, by + 15, "ESC 1:50", size=7, anchor="end", fill="#888"))
-    els.append(_text(bx + bw - 4, by + 28, f"HOJA {hoja}", size=7, anchor="end", fill="#888"))
+                     f"{nombre_cliente}  ·  {total_modulos} mód.  ·  {gallinas_str} aves",
+                     size=7, fill=_COL_DIM_TXT))
+    els.append(_text(bx + bw - 4, by + 15, "ESC 1:50", size=7, anchor="end", fill=_COL_DIM_TXT))
+    els.append(_text(bx + bw - 4, by + 28, f"HOJA {hoja}", size=7, anchor="end", fill=_COL_DIM_TXT))
 
     nx, ny = PAD_L + 22, y_leg + 22
-    els.append(_line(nx, ny + 14, nx, ny, stroke="#000823", sw=1.3))
-    els.append(f'<polygon points="{_e(nx)},{_e(ny)} {_e(nx-4)},{_e(ny+8)} {_e(nx+4)},{_e(ny+8)}" fill="#000823"/>')
-    els.append(_text(nx, ny - 5, "N", size=9, bold=True, fill="#000823"))
+    els.append(_line(nx, ny + 14, nx, ny, stroke=_COL_INK, sw=1.3))
+    els.append(f'<polygon points="{_e(nx)},{_e(ny)} {_e(nx-4)},{_e(ny+8)} {_e(nx+4)},{_e(ny+8)}" fill="{_COL_INK}"/>')
+    els.append(_text(nx, ny - 5, "N", size=9, bold=True, fill=_COL_INK))
 
     return els
 
 
 def _wrap_svg(parts: list[str]) -> str:
     inner = "\n  ".join(parts)
+    bg = (
+        f'<rect width="{SVG_W}" height="{SVG_H}" fill="#ffffff"/>'
+        f'<defs><pattern id="gcgrid" width="40" height="40" patternUnits="userSpaceOnUse">'
+        f'<path d="M40 0H0V40" fill="none" stroke="{_COL_GRID}" stroke-width="1"/></pattern></defs>'
+        f'<rect width="{SVG_W}" height="{SVG_H}" fill="url(#gcgrid)"/>'
+    )
     return (
         f'<svg viewBox="0 0 {SVG_W} {SVG_H}" width="{SVG_W}" height="{SVG_H}" xmlns="http://www.w3.org/2000/svg" '
-        f'style="font-family:monospace;background:#fff">\n  '
-        f'{inner}\n</svg>'
+        f'style="font-family:{_FONT};background:#fff">\n  '
+        f'{bg}\n  {inner}\n</svg>'
     )
 
 
@@ -891,6 +934,7 @@ def _metricas_aviario(
         clearance_pared_m=clearance_pared,
         pasillo_m=pasillo,
         clearance_lateral_m=clearance_lat,
+        densidad_max=densidad_max,
     )
 
 
@@ -922,6 +966,7 @@ def _metricas_nidal(
         clearance_pared_m=0.0,
         pasillo_m=0.0,
         clearance_lateral_m=0.0,
+        densidad_max=densidad_max,
     )
 
 
@@ -943,7 +988,7 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                     num_mods = math.ceil(cfg.gallinas / 144) if cfg.gallinas > 0 else 1
             nombre = cfg.nombre_cliente or "Propuesta GyC"
 
-            parts: list[str] = ['<rect width="1100" height="720" fill="#ffffff"/>']
+            parts: list[str] = []
             parts += _build_nidal_distribucion_svg(
                 cfg.ancho_nave_m, cfg.largo_nave_m,
                 num_mods, nombre, cfg.gallinas, dw, dh,
@@ -969,7 +1014,7 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             cfg.clearance_pared_m, cfg.pasillo_m, clearance_lat,
             cfg.num_filas, cfg.mods_por_fila,
         )
-        parts = ['<rect width="1100" height="720" fill="#ffffff"/>']
+        parts = []
         parts += _build_aviario_svg(
             cfg.ancho_nave_m, cfg.largo_nave_m,
             nf, mpf,
@@ -1012,7 +1057,7 @@ def generar_plano_svg(req: PlanoRequest) -> PlanoResponse:
     try:
         dw = SVG_W - PAD_L - PAD_R
         dh = SVG_H - PAD_T - PAD_B
-        parts: list[str] = ['<rect width="1100" height="720" fill="#ffffff"/>']
+        parts: list[str] = []
 
         if req.tipo_zona == "aviario":
             if req.filas:
