@@ -3,7 +3,6 @@ from typing import TypedDict
 from langgraph.graph import StateGraph, END
 from .retriever import retriever_context
 from .generator import generator
-from .reranker import reranking
 from .semantic_cache import buscar_cache, guardar_cache
 from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
@@ -42,14 +41,6 @@ def node_retriever(state: RAGState):
     return {"context": result}
 
 
-def node_reranker(state: RAGState):
-    result = reranking(
-        query=state["query"],
-        chunks=state["context"]
-    )
-    return {"context": result}
-
-
 def node_generator(state: RAGState):
     result = generator(
         api=os.getenv("GOOGLE_API_KEY"),
@@ -81,7 +72,6 @@ graph = StateGraph(RAGState)
 
 graph.add_node("cache", node_cache)
 graph.add_node("retriever", node_retriever)
-graph.add_node("reranker", node_reranker)
 graph.add_node("generator", node_generator)
 graph.add_node("save_cache", node_save_cache)
 
@@ -93,8 +83,7 @@ graph.add_conditional_edges(
     {"end": END, "retriever": "retriever"}
 )
 
-graph.add_edge("retriever", "reranker")
-graph.add_edge("reranker", "generator")
+graph.add_edge("retriever", "generator")
 graph.add_edge("generator", "save_cache")
 graph.add_edge("save_cache", END)
 

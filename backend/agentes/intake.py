@@ -1,3 +1,4 @@
+from __future__ import annotations
 import math
 from typing import Literal, Optional
 import numpy as np
