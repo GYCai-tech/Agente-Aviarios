@@ -35,3 +35,6 @@ Thumbs.db
 
 # Claude Code (config local, no compartible)
 .claude/settings.local.json
+
+# Propuestas compartidas (datos en runtime, no codigo)
+backend/propuestas_guardadas/

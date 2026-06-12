@@ -1,8 +1,11 @@
 from __future__ import annotations
 import logging
 import os
+import re as _re
+import uuid as _uuid
 import base64
 import json as _json
+from datetime import datetime
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 
@@ -15,7 +18,7 @@ logging.basicConfig(
 
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.messages import HumanMessage, SystemMessage
-from fastapi import FastAPI, File, UploadFile
+from fastapi import FastAPI, File, UploadFile, Body, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from schemas.pydantic_models import (
@@ -251,6 +254,37 @@ def plano(request: PlanoRequest):
 @app.post("/plano-config", response_model=LayoutConfigResponse)
 def plano_config(request: LayoutConfig):
     return generar_desde_config(request)
+
+
+# ── Propuestas compartidas (enlace privado para el cliente) ───────────────────
+
+_PROPUESTAS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "propuestas_guardadas")
+_PROPUESTA_ID_RE = _re.compile(r"^[0-9a-f]{32}$")
+
+
+class PropuestaGuardada(BaseModel):
+    id: str
+
+
+@app.post("/propuestas", response_model=PropuestaGuardada)
+def guardar_propuesta(payload: dict = Body(...)):
+    os.makedirs(_PROPUESTAS_DIR, exist_ok=True)
+    pid = _uuid.uuid4().hex
+    payload["_guardada_en"] = datetime.now().isoformat(timespec="seconds")
+    with open(os.path.join(_PROPUESTAS_DIR, f"{pid}.json"), "w", encoding="utf-8") as f:
+        _json.dump(payload, f, ensure_ascii=False)
+    return PropuestaGuardada(id=pid)
+
+
+@app.get("/propuestas/{propuesta_id}")
+def obtener_propuesta(propuesta_id: str):
+    if not _PROPUESTA_ID_RE.match(propuesta_id):
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    ruta = os.path.join(_PROPUESTAS_DIR, f"{propuesta_id}.json")
+    if not os.path.isfile(ruta):
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    with open(ruta, encoding="utf-8") as f:
+        return _json.load(f)
 
 
 class PlanoImagenResponse(BaseModel):

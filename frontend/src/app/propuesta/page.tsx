@@ -158,8 +158,22 @@ export default function PropuestaPage() {
   const [data, setData] = useState<ProposalData | null>(null);
   const [mounted, setMounted] = useState(false);
   const [metricas, setMetricas] = useState<MetricasPlano | null>(null);
+  const [esCompartida, setEsCompartida] = useState(false);
+  const [shareUrl, setShareUrl] = useState("");
+  const [shareState, setShareState] = useState<"idle" | "saving" | "copied" | "error">("idle");
 
   useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) {
+      // Vista del cliente: la propuesta viene del backend, no del localStorage
+      setEsCompartida(true);
+      fetch(`/api/propuestas?id=${encodeURIComponent(id)}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d && d.informe) setData(d); })
+        .catch(() => { })
+        .finally(() => setMounted(true));
+      return;
+    }
     try {
       const raw = localStorage.getItem("gc_propuesta");
       if (raw) setData(JSON.parse(raw));
@@ -167,15 +181,46 @@ export default function PropuestaPage() {
     setMounted(true);
   }, []);
 
+  async function compartir() {
+    if (!data || shareState === "saving") return;
+    setShareState("saving");
+    try {
+      const res = await fetch("/api/propuestas", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      });
+      const j = await res.json();
+      if (!j.id) throw new Error("sin id");
+      const url = `${window.location.origin}/p/${j.id}`;
+      setShareUrl(url);
+      try { await navigator.clipboard.writeText(url); } catch { }
+      setShareState("copied");
+      setTimeout(() => setShareState("idle"), 4000);
+    } catch {
+      setShareState("error");
+      setTimeout(() => setShareState("idle"), 4000);
+    }
+  }
+
   if (!mounted) return null;
 
   if (!data) {
     return (
       <div className="empty-state">
         <style>{BASE_CSS}</style>
-        <p className="empty-title">Sin datos de propuesta</p>
-        <p className="empty-sub">Genera un informe desde la calculadora primero.</p>
-        <a href="/" className="btn">← Volver a la calculadora</a>
+        {esCompartida ? (
+          <>
+            <p className="empty-title">Propuesta no disponible</p>
+            <p className="empty-sub">El enlace no es válido o la propuesta ya no existe. Contacta con tu comercial de Gómez y Crespo.</p>
+          </>
+        ) : (
+          <>
+            <p className="empty-title">Sin datos de propuesta</p>
+            <p className="empty-sub">Genera un informe desde la calculadora primero.</p>
+            <a href="/" className="btn">← Volver a la calculadora</a>
+          </>
+        )}
       </div>
     );
   }
@@ -204,7 +249,7 @@ export default function PropuestaPage() {
   const densidadReal = metricas ? metricas.densidad : (densidadVerif ? densidadVerif.valor_real : 0);
   const densidadLimite = metricas ? metricas.densidad_max : (densidadVerif ? densidadVerif.valor_limite : densMax);
   const densidadOk = densidadLimite > 0 ? densidadReal <= densidadLimite : informe.cumple_nave;
-  const productoNombre = isAviario ? "Aviario Industrial" : "A-Nida";
+  const productoNombre = isAviario ? "Aviario" : "A-Nida";
   const verifOk = informe.verificaciones_nave.filter(v => v.cumple).length;
   const verifTotal = informe.verificaciones_nave.length;
 
@@ -240,17 +285,45 @@ export default function PropuestaPage() {
     <>
       <style>{BASE_CSS}</style>
 
-      <JourneyHeader
-        activeStep={4}
-        actions={
+      {esCompartida ? (
+        <header className="share-topbar">
+          <img src="/gyc-logo.png" alt="Gómez y Crespo" style={{ height: 34, width: "auto" }} />
           <button className="topbar-btn" onClick={() => window.print()}>
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
             Exportar PDF
           </button>
-        }
-      />
+        </header>
+      ) : (
+        <JourneyHeader
+          activeStep={4}
+          actions={
+            <>
+              <button className="topbar-btn" onClick={compartir} disabled={shareState === "saving"}>
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M8.5 4 11 6.5 8.5 9M11 6.5H4.5A3.5 3.5 0 0 1 1 3V2" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                {shareState === "saving" ? "Generando enlace…" : shareState === "copied" ? "Enlace copiado ✓" : shareState === "error" ? "Error, reintenta" : "Compartir enlace"}
+              </button>
+              <button className="topbar-btn" onClick={() => window.print()}>
+                <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
+                  <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+                Exportar PDF
+              </button>
+            </>
+          }
+        />
+      )}
+
+      {shareUrl && !esCompartida && (
+        <div className="share-toast" role="status">
+          <span>Enlace para el cliente</span>
+          <input readOnly value={shareUrl} onFocus={e => e.currentTarget.select()} />
+          <button onClick={() => setShareUrl("")} aria-label="Cerrar aviso">✕</button>
+        </div>
+      )}
 
       <div className="doc">
 
@@ -384,11 +457,13 @@ export default function PropuestaPage() {
                   />
                 ) : (
                   <div className="plano-no-dims">
-                    <p>Introduce el ancho y largo de la nave en la calculadora para ver el plano de distribución.</p>
-                    <a href="/plano" className="plano-edit-link">
-                      Abrir editor de plano
-                      <svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
-                    </a>
+                    <p>{esCompartida ? "Plano de distribución no disponible para esta propuesta." : "Introduce el ancho y largo de la nave en la calculadora para ver el plano de distribución."}</p>
+                    {!esCompartida && (
+                      <a href="/plano" className="plano-edit-link">
+                        Abrir editor de plano
+                        <svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
+                      </a>
+                    )}
                   </div>
                 )}
               </div>
@@ -412,7 +487,7 @@ export default function PropuestaPage() {
               ) : (
                 <div className="clave"><div className="clave-n">4</div><div><div className="clave-t">Densidad {densidadReal.toFixed(1)} gal·m²</div><div className="clave-d">Dentro del límite normativo de {densidadLimite} gal·m².</div></div></div>
               )}
-              {tieneNaveDims && (
+              {tieneNaveDims && !esCompartida && (
                 <a href="/plano" className="plano-edit-link">
                   Abrir editor interactivo
                   <svg width="12" height="9" viewBox="0 0 12 9" fill="none"><path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -498,10 +573,12 @@ export default function PropuestaPage() {
         <footer className="footer">
           <span className="fb">Gómez y Crespo</span>
           <span className="fn">RD 3/2002 · Directiva 1999/74/CE · RD 637/2021</span>
-          <a href="/" className="flink">
-            <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M3.5 1L1 4m0 0l2.5 3M1 4h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
-            Calculadora
-          </a>
+          {!esCompartida && (
+            <a href="/" className="flink">
+              <svg width="8" height="8" viewBox="0 0 8 8" fill="none"><path d="M3.5 1L1 4m0 0l2.5 3M1 4h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" /></svg>
+              Calculadora
+            </a>
+          )}
         </footer>
 
       </div>{/* .doc */}
@@ -531,6 +608,13 @@ const BASE_CSS = `
   .kicker.on-dark{color:var(--green-mid);}
   .num-mark{font-family:var(--fm);font-size:.78rem;font-weight:700;letter-spacing:.1em;color:var(--faint);}
   .lede{font-size:1.18rem;line-height:1.7;color:var(--muted);max-width:54ch;}
+
+  /* ── COMPARTIR ── */
+  .share-topbar{position:sticky;top:0;z-index:50;background:var(--navy);display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.65rem 1.5rem;}
+  .share-toast{position:fixed;top:14px;left:50%;transform:translateX(-50%);z-index:60;display:flex;align-items:center;gap:.7rem;background:var(--navy);color:#fff;padding:.55rem .7rem .55rem 1.1rem;border-radius:8px;box-shadow:0 10px 34px rgba(0,8,35,.4);font-size:.8rem;white-space:nowrap;}
+  .share-toast input{width:300px;max-width:46vw;background:rgba(255,255,255,.08);border:1px solid rgba(255,255,255,.22);color:#fff;border-radius:4px;padding:.32rem .55rem;font-family:var(--fm);font-size:.68rem;}
+  .share-toast button{background:none;border:none;color:rgba(255,255,255,.6);cursor:pointer;font-size:.85rem;padding:.2rem;}
+  .share-toast button:hover{color:#fff;}
 
   /* ── TOPBAR BTN (JourneyHeader) ── */
   .topbar-btn{display:inline-flex;align-items:center;gap:.4rem;background:rgba(255,255,255,.1);color:rgba(255,255,255,.85);border:1px solid rgba(255,255,255,.15);border-radius:4px;padding:.32rem .8rem;font-family:var(--fb);font-size:.68rem;font-weight:600;cursor:pointer;}
@@ -734,7 +818,7 @@ const BASE_CSS = `
     body{background:#fff;}
     *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
     .doc{box-shadow:none;max-width:100%;overflow:visible;}
-    .jrn-hdr,.topbar-btn,.plano-edit-link{display:none !important;}
+    .jrn-hdr,.topbar-btn,.plano-edit-link,.share-topbar,.share-toast{display:none !important;}
 
     /* dossier: cada bloque ocupa una página completa a sangre */
     .cover{height:297mm;break-after:page;}
