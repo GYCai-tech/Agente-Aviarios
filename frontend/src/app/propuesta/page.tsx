@@ -62,11 +62,20 @@ function renderMd(text: string): string {
 
 // ── Plano de distribución (determinista) ──────────────────────────────────────
 
+interface MetricasPlano {
+  total_modulos: number;
+  gallinas_max: number;
+  yacija_m2: number;
+  densidad: number;
+  densidad_max: number;
+}
+
 function PlanoEmbed({
-  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles,
+  ancho_nave_m, largo_nave_m, gallinas, sistema, tipo_zona, niveles, onMetricas,
 }: {
   ancho_nave_m: number; largo_nave_m: number; gallinas: number;
   sistema: string; tipo_zona: "nidal_colectivo" | "aviario"; niveles?: number;
+  onMetricas?: (m: MetricasPlano) => void;
 }) {
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -89,8 +98,10 @@ function PlanoEmbed({
           }),
         });
         const data = await res.json();
-        if (data.svg) setSvg(data.svg);
-        else setError(data.error ?? "Sin plano");
+        if (data.svg) {
+          setSvg(data.svg);
+          if (data.metricas) onMetricas?.(data.metricas);
+        } else setError(data.error ?? "Sin plano");
       } catch {
         setError("Error al generar el plano");
       } finally {
@@ -119,8 +130,8 @@ function PlanoEmbed({
 // ── Contenido editorial por producto ──────────────────────────────────────────
 
 const FOTOS = {
-  aviario: { cover: "/IMG_9878.JPG", sistema: "/Máxima calidad.JPG", materiales: "/IMG_9878.JPG" },
-  nidal_colectivo: { cover: "/hero-nidal.jpg", sistema: "/Máxima calidad.JPG", materiales: "/hero-nidal.jpg" },
+  aviario: { cover: "/IMG_9878.JPG", sistema: "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg", materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg" },
+  nidal_colectivo: { cover: "/hero-nidal.jpg", sistema: "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg", materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg" },
 } as const;
 
 const CHIPS = {
@@ -146,6 +157,7 @@ const DETALLES = {
 export default function PropuestaPage() {
   const [data, setData] = useState<ProposalData | null>(null);
   const [mounted, setMounted] = useState(false);
+  const [metricas, setMetricas] = useState<MetricasPlano | null>(null);
 
   useEffect(() => {
     try {
@@ -182,15 +194,17 @@ export default function PropuestaPage() {
   const cumple = informe.cumple_nave;
   const fechaHoy = new Date().toLocaleDateString("es-ES", { day: "numeric", month: "short", year: "numeric" }).toUpperCase();
   const densMax = sistema === "ecologico" ? 6 : 9;
-  const supDispPorMod = nivelesEfectivos === 3 ? 16.194 : 13.18;
-  const numModulos = isAviario
+  // Respaldo local (CLAUDE.md): solo si el plano aún no ha devuelto métricas del backend
+  const supDispPorMod = nivelesEfectivos === 3 ? 9.1232 : 5.5452;
+  const numModulosFallback = isAviario
     ? Math.ceil(parseInt(gallinas) / Math.floor(densMax * supDispPorMod))
     : Math.ceil(parseInt(gallinas) / 144);
+  const numModulos = metricas?.total_modulos || numModulosFallback;
   const densidadVerif = informe.verificaciones_nave.find(v => v.parametro.toLowerCase().includes("densidad"));
-  const densidadReal = densidadVerif ? densidadVerif.valor_real : 0;
-  const densidadLimite = densidadVerif ? densidadVerif.valor_limite : densMax;
+  const densidadReal = metricas ? metricas.densidad : (densidadVerif ? densidadVerif.valor_real : 0);
+  const densidadLimite = metricas ? metricas.densidad_max : (densidadVerif ? densidadVerif.valor_limite : densMax);
+  const densidadOk = densidadLimite > 0 ? densidadReal <= densidadLimite : informe.cumple_nave;
   const productoNombre = isAviario ? "Aviario Industrial" : "A-Nida";
-  const productoCodigo = isAviario ? "COD. 10007 · Multinivel" : "Nidal colectivo";
   const verifOk = informe.verificaciones_nave.filter(v => v.cumple).length;
   const verifTotal = informe.verificaciones_nave.length;
 
@@ -202,9 +216,17 @@ export default function PropuestaPage() {
   const chips = CHIPS[tipo_zona];
   const detalles = DETALLES[tipo_zona];
 
-  // Superficie de yacija aproximada: nave menos huella de módulos
+  // Producción estimada: 1 huevo cada 1,5 días por gallina
+  const huevosAnio = Math.round(gallinasInt * (365 / 1.5));
+  const huevosAnioFmt = huevosAnio >= 1_000_000
+    ? `${(huevosAnio / 1_000_000).toLocaleString("es-ES", { maximumFractionDigits: 1 })} M`
+    : huevosAnio.toLocaleString("es-ES");
+
+  // Yacija: la del plano (backend) si está disponible; si no, aproximación local
   // (aviario 4.482 m²/mód · nidal cuerpo+slot 5.28 m²/mód)
-  const supYacija = Math.max(0, Math.round(supFloat - numModulos * (isAviario ? 4.482 : 5.28)));
+  const supYacija = metricas
+    ? Math.round(metricas.yacija_m2)
+    : Math.max(0, Math.round(supFloat - numModulos * (isAviario ? 4.482 : 5.28)));
 
   const coverSub = isAviario
     ? `Sistema ${sistemaLabel.toLowerCase()} de ${nivelesEfectivos} niveles para ${gallinasInt.toLocaleString("es-ES")} ponedoras en una nave de ${supRound.toLocaleString("es-ES")} m².`
@@ -237,9 +259,10 @@ export default function PropuestaPage() {
           <div className="cover-photo" style={{ backgroundImage: `url('${encodeURI(fotos.cover)}')` }} />
           <div className="cover-veil" />
           <div className="cover-top">
-            <div className="logo">GÓMEZ Y CRESPO</div>
+            <div className="logo">
+              <img src="/gyc-logo.png" alt="Gómez y Crespo" style={{ height: "80px", width: "auto", display: "block" }} />
+            </div>
             <div className="cover-meta">
-              <span className="cover-cod">{productoCodigo}</span>
               <span>{fechaHoy}</span>
             </div>
           </div>
@@ -250,13 +273,6 @@ export default function PropuestaPage() {
             </h1>
             <div className="cover-rule" />
             <p className="cover-sub">{coverSub}</p>
-            <span className={`cover-badge ${cumple ? "" : "is-fail"}`}>
-              {cumple ? (
-                <><svg width="11" height="9" viewBox="0 0 11 9" fill="none"><path d="M1 4.5l3 3 6-6" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" /></svg> Instalación viable · RD 3/2002</>
-              ) : (
-                <><svg width="9" height="9" viewBox="0 0 8 8" fill="none"><path d="M1 1l6 6M7 1L1 7" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" /></svg> Revisar parámetros · RD 3/2002</>
-              )}
-            </span>
           </div>
         </header>
 
@@ -264,25 +280,28 @@ export default function PropuestaPage() {
         <section className="section cream">
           <div className="sec-head"><span className="kicker">En un vistazo</span><span className="rule" /><span className="num-mark">01 / 06</span></div>
           <h2 className="glance-lede">Una explotación de {gallinasInt.toLocaleString("es-ES")} ponedoras, resuelta en una sola nave.</h2>
-          <p className="lede">Más capacidad sobre la misma superficie, materiales pensados para durar y un único interlocutor de principio a fin.</p>
+          <p className="lede">Multiplica la capacidad de tu nave sobre la misma superficie. Automatización estructural con materiales de alta resistencia, diseñados a medida para maximizar tu producción y garantizar una puesta en marcha eficiente.</p>
           <div className="glance-grid">
             <div className="glance-cell"><div className="glance-v">{gallinasInt.toLocaleString("es-ES")}</div><div className="glance-l">Ponedoras · {sistemaLabel.toLowerCase()}</div></div>
             <div className="glance-cell"><div className="glance-v">{supRound.toLocaleString("es-ES")} <small>m²</small></div><div className="glance-l">Superficie de nave</div></div>
             <div className="glance-cell"><div className="glance-v">{numModulos}</div><div className="glance-l">{isAviario ? `Módulos · ${nivelesEfectivos} niveles` : "Módulos A-Nida"}</div></div>
-            <div className="glance-cell"><div className="glance-v">20+ <small>años</small></div><div className="glance-l">Vida útil de la estructura</div></div>
+            <div className="glance-cell"><div className="glance-v">{huevosAnioFmt} <small>huevos/año</small></div><div className="glance-l">Producción anual estimada</div></div>
           </div>
         </section>
-
         {/* ═══════ SPREAD 01 · EL SISTEMA ═══════ */}
         <section className="spread">
           <div className="spread-media" style={{ backgroundImage: `url('${encodeURI(fotos.sistema)}')` }} />
           <div className="spread-text">
             <div className="spread-num">02 — El sistema</div>
-            <h2 className="spread-h">{isAviario ? "Diseñado para producir más, con menos manos" : "El nidal que guía a la gallina a poner donde debe"}</h2>
+            <h2 className="spread-h">{isAviario ? "Maximiza tu producción con un entorno de puesta eficiente" : "El nidal que guía a la gallina a poner donde debe"}</h2>
             {isAviario ? (
-              <p className="spread-p">El aviario industrial de {nivelesEfectivos} niveles aprovecha la altura de la nave para alojar <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> donde una instalación en suelo apenas llegaría a {supeloConvencional.toLocaleString("es-ES")}, sin obras ni ampliación de parcela. La recolección de huevos es automática en cinta y el manejo diario, sencillo para el operario.</p>
+              <p className="spread-p">
+                El aviario industrial de {nivelesEfectivos} niveles aprovecha la altura de la nave para alojar <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong>, multiplicando la densidad y la producción en la misma superficie. Gracias a su diseño altamente eficiente, optimiza cada metro cúbico disponible garantizando un flujo continuo de huevos limpios mediante recolección automática en cinta, minimizando el trabajo operativo.
+              </p>
             ) : (
-              <p className="spread-p">Cada módulo A-Nida aloja <strong>144 gallinas</strong>: con {numModulos} módulos cubres las {gallinasInt.toLocaleString("es-ES")} aves de tu explotación sin obra civil ni grúas. El slot de acceso guía a la gallina al nidal en el momento de la puesta, reduciendo drásticamente el huevo sucio y roto en suelo.</p>
+              <p className="spread-p">
+                Cada módulo A-Nida aloja <strong>144 gallinas</strong>: optimiza el espacio de tu nave alojando <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> con la máxima eficiencia técnica. Su diseño inteligente reduce drásticamente el huevo en suelo, guiando a la gallina hacia un entorno óptimo de puesta que asegura un mayor porcentaje de huevo limpio, intacto y comercializable.
+              </p>
             )}
             <div className="chips">
               {chips.map(c => (
@@ -297,16 +316,16 @@ export default function PropuestaPage() {
           <div className="spread-media" style={{ backgroundImage: `url('${encodeURI(fotos.materiales)}')`, backgroundPosition: "center bottom" }} />
           <div className="spread-text on-green">
             <div className="spread-num">03 — Materiales</div>
-            <h2 className="spread-h">Construido para durar 20 años en corral</h2>
+            <h2 className="spread-h">Calidad de materiales premium diseñada para durar</h2>
             {isAviario ? (
-              <p className="spread-p">Estructura de <strong>acero galvanizado con recubrimiento PosMAC®</strong>, con resistencia superior a la corrosión en ambiente intensivo y mantenimiento mínimo. Los nidos AstroTurf mantienen el <strong>huevo sucio por debajo del 1%</strong>, mejorando la categoría del producto desde el primer ciclo.</p>
+              <p className="spread-p">Estructura de <strong>acero galvanizado con recubrimiento PosMAC®</strong>, con resistencia superior a la corrosión en ambiente intensivo y mantenimiento mínimo. Los nidos AstroTurf reducen el <strong>huevo sucio</strong>, mejorando la categoría del producto desde el primer ciclo.</p>
             ) : (
               <p className="spread-p">Chapa <strong>DX51D+Z275</strong> con galvanizado de alta calidad: 20 micras de Zinc según ISO 9223 y EN 10346:2015. El diseño en chapa minimiza las zonas ocultas para <strong>evitar la proliferación del ácaro rojo</strong> y permite limpiar y desinfectar sin desmontar el nidal.</p>
             )}
             <div className="detail-band">
               {detalles.map(d => (
                 <div key={d.cap} className="detail">
-                  <div className="detail-icon"><img src={d.icon} alt="" width={22} height={22} /></div>
+                  <div className="detail-icon"><img src={d.icon} alt="" width={36} height={36} /></div>
                   <div className="detail-cap">{d.cap}</div>
                   <div className="detail-sub">{d.sub}</div>
                 </div>
@@ -315,17 +334,19 @@ export default function PropuestaPage() {
           </div>
         </section>
 
+
+
         {/* ═══════ RESPALDO · 50 AÑOS ═══════ */}
         <section className="section dark">
           <div className="respaldo">
             <div className="kicker on-dark">Sobre Gómez y Crespo</div>
             <div className="respaldo-big"><em>50</em> años</div>
-            <p className="respaldo-sub">fabricando equipamiento avícola, con presencia en más de 30 países.</p>
+            <p className="respaldo-sub">cuidando del bienestar animal.</p>
             <div className="respaldo-row">
               <div className="respaldo-cell"><div className="v">ISO 9001</div><div className="l">Calidad</div></div>
               <div className="respaldo-cell"><div className="v">ISO 14001</div><div className="l">Medio ambiente</div></div>
               <div className="respaldo-cell"><div className="v">+30</div><div className="l">Países</div></div>
-              <div className="respaldo-cell"><div className="v">Llave en mano</div><div className="l">Fabricación · transporte · montaje</div></div>
+              <div className="respaldo-cell"><div className="v">Diseñado para durar</div><div className="l">Fabricación · transporte · montaje</div></div>
             </div>
             {argParrafos.length > 0 && (
               <div className="arg-points">
@@ -346,7 +367,10 @@ export default function PropuestaPage() {
           <p className="nave-intro">Así queda distribuida tu explotación sobre los <strong>{supRound.toLocaleString("es-ES")} m² de nave</strong>: {numModulos} módulos {isAviario ? `de ${nivelesEfectivos} niveles` : "A-Nida"}, pasillos de servicio y yacija libre para el ave.</p>
           <div className="nave-grid">
             <div className="sheet">
-              <div className="sheet-head"><span className="sh-t">Vista de planta</span><span className="sh-c">{isAviario ? "COD. 10007" : "A-NIDA"} · Esc. ref.</span></div>
+              <div className="sheet-head">
+                <span className="sh-t"><span className="sh-mark" aria-hidden="true" />Vista de planta</span>
+                <span className="sh-c">{isAviario ? "COD. 10007" : "A-NIDA"} · {fechaHoy} · Esc. ref.</span>
+              </div>
               <div className="sheet-plano">
                 {tieneNaveDims ? (
                   <PlanoEmbed
@@ -356,6 +380,7 @@ export default function PropuestaPage() {
                     sistema={sistema}
                     tipo_zona={tipo_zona}
                     niveles={nivelesEfectivos}
+                    onMetricas={setMetricas}
                   />
                 ) : (
                   <div className="plano-no-dims">
@@ -368,10 +393,14 @@ export default function PropuestaPage() {
                 )}
               </div>
               <div className="titleblock">
+                <div className="tb-cell tb-brand">
+                  <div className="tb-brand-name">Gómez y Crespo</div>
+                  <div className="tb-brand-sub">Plano de distribución</div>
+                </div>
                 <div className="tb-cell"><div className="tb-k">Proyecto</div><div className="tb-v">{productoNombre}</div></div>
-                <div className="tb-cell"><div className="tb-k">Módulos</div><div className="tb-v">{numModulos}{isAviario ? ` · ${nivelesEfectivos} niveles` : " · A-Nida"}</div></div>
-                <div className="tb-cell"><div className="tb-k">Superficie</div><div className="tb-v">{supRound.toLocaleString("es-ES")} m²</div></div>
-                <div className="tb-cell"><div className="tb-k">Densidad</div><div className="tb-v">{densidadReal.toFixed(1)} / {densidadLimite} gal·m²</div></div>
+                <div className="tb-cell"><div className="tb-k">Módulos</div><div className="tb-v tb-num">{numModulos}{isAviario ? ` × ${nivelesEfectivos} niv.` : ""}</div></div>
+                <div className="tb-cell"><div className="tb-k">Superficie</div><div className="tb-v tb-num">{supRound.toLocaleString("es-ES")} m²</div></div>
+                <div className="tb-cell"><div className="tb-k">Densidad</div><div className={`tb-v tb-num ${densidadOk ? "tb-ok" : "tb-fail"}`}>{densidadReal.toFixed(1)} / {densidadLimite} gal·m²</div></div>
               </div>
             </div>
             <div className="claves">
@@ -454,7 +483,7 @@ export default function PropuestaPage() {
         <section className="section green">
           <div className="closing">
             <h2 className="closing-h">Hablemos de tu explotación</h2>
-            <p className="closing-p">Solicita tu presupuesto o agenda una visita. Nuestro equipo comercial responde en menos de 48 horas.</p>
+            <p className="closing-p">Solicita tu presupuesto o agenda una visita.</p>
             <a href="mailto:info@gomezycrespo.com" className="btn">
               Solicitar presupuesto
               <svg width="15" height="11" viewBox="0 0 15 11" fill="none"><path d="M1 5.5h12M9 1l5 4.5L9 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
@@ -557,10 +586,10 @@ const BASE_CSS = `
 
   /* material detail band */
   .detail-band{display:grid;grid-template-columns:repeat(3,1fr);gap:1.4rem;margin-top:1.8rem;}
-  .detail-icon{width:48px;height:48px;border-radius:10px;background:var(--paper);border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;}
-  .detail-icon img{width:22px;height:22px;object-fit:contain;filter:brightness(0) saturate(100%) invert(30%) sepia(30%) saturate(600%) hue-rotate(85deg) brightness(85%);}
-  .detail-cap{font-family:var(--fd);font-size:.74rem;font-weight:700;color:var(--ink);margin-top:.65rem;}
-  .detail-sub{font-size:.78rem;color:var(--muted);line-height:1.45;}
+  .detail-icon{width:64px;height:64px;border-radius:12px;background:var(--paper);border:1.5px solid var(--line);display:flex;align-items:center;justify-content:center;}
+  .detail-icon img{width:36px;height:36px;object-fit:contain;filter:brightness(0) saturate(100%) invert(30%) sepia(30%) saturate(600%) hue-rotate(85deg) brightness(85%);}
+  .detail-cap{font-family:var(--fd);font-size:.95rem;font-weight:700;color:var(--ink);margin-top:.65rem;}
+  .detail-sub{font-size:.88rem;color:var(--muted);line-height:1.45;}
 
   /* ── RESPALDO ── */
   .respaldo{text-align:center;max-width:760px;margin:0 auto;}
@@ -582,25 +611,34 @@ const BASE_CSS = `
   /* ── TU NAVE (plano protagonista) ── */
   .nave-intro{font-size:1.1rem;line-height:1.7;color:var(--muted);max-width:54ch;margin-bottom:2.4rem;}
   .nave-intro strong{color:var(--ink);font-weight:600;}
-  .nave-grid{display:grid;grid-template-columns:1.65fr 1fr;gap:2.4rem;align-items:stretch;}
-  .sheet{background:var(--paper);border:1px solid var(--line);border-radius:12px;overflow:hidden;display:flex;flex-direction:column;}
-  .sheet-head{display:flex;align-items:center;justify-content:space-between;padding:.9rem 1.3rem;border-bottom:1px solid var(--line);}
-  .sheet-head .sh-t{font-family:var(--fm);font-size:.62rem;font-weight:700;letter-spacing:.14em;text-transform:uppercase;color:var(--muted);}
-  .sheet-head .sh-c{font-family:var(--fm);font-size:.62rem;letter-spacing:.08em;color:var(--faint);}
-  .sheet-plano{flex:1;padding:1.8rem;background:var(--cream);display:flex;align-items:center;justify-content:center;background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);background-size:24px 24px;}
-  .titleblock{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--line);}
-  .tb-cell{padding:.95rem 1.2rem;border-left:1px solid var(--line);}
+  .nave-grid{display:flex;flex-direction:column;gap:2.2rem;}
+  .sheet{background:var(--paper);border:1.5px solid #25304e;border-radius:4px;overflow:hidden;display:flex;flex-direction:column;box-shadow:0 2px 18px rgba(0,8,35,.08);}
+  .sheet-head{display:flex;align-items:center;justify-content:space-between;gap:1rem;padding:.85rem 1.3rem;background:var(--navy);}
+  .sheet-head .sh-t{display:inline-flex;align-items:center;gap:.55rem;font-family:var(--fm);font-size:.64rem;font-weight:700;letter-spacing:.16em;text-transform:uppercase;color:#fff;}
+  .sh-mark{width:9px;height:9px;background:var(--green-mid);}
+  .sheet-head .sh-c{font-family:var(--fm);font-size:.62rem;letter-spacing:.08em;color:rgba(255,255,255,.55);white-space:nowrap;}
+  .sheet-plano{position:relative;flex:1;padding:2.4rem;background:var(--cream);display:flex;align-items:center;justify-content:center;background-image:linear-gradient(var(--line-soft) 1px,transparent 1px),linear-gradient(90deg,var(--line-soft) 1px,transparent 1px);background-size:24px 24px;}
+  .sheet-plano::before{content:"";position:absolute;inset:14px;border:1px solid var(--line);pointer-events:none;}
+  .sheet-plano::after{content:"";position:absolute;inset:8px;pointer-events:none;background-image:linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0),linear-gradient(var(--green) 0 0);background-position:top left,top left,top right,top right,bottom left,bottom left,bottom right,bottom right;background-size:16px 2px,2px 16px,16px 2px,2px 16px,16px 2px,2px 16px,16px 2px,2px 16px;background-repeat:no-repeat;}
+  .titleblock{display:grid;grid-template-columns:1.25fr 1fr .95fr .9fr 1.05fr;border-top:1.5px solid #25304e;background:var(--paper);}
+  .tb-cell{padding:.9rem 1.1rem;border-left:1px solid var(--line);}
   .tb-cell:first-child{border-left:none;}
+  .tb-brand-name{font-family:var(--fd);font-weight:800;font-size:.78rem;letter-spacing:.07em;text-transform:uppercase;color:var(--navy);}
+  .tb-brand-sub{font-size:.74rem;color:var(--muted);margin-top:.28rem;}
   .tb-k{font-family:var(--fm);font-size:.56rem;font-weight:700;letter-spacing:.13em;text-transform:uppercase;color:var(--muted);}
   .tb-v{font-family:var(--fd);font-weight:800;font-size:.95rem;color:var(--ink);margin-top:.32rem;letter-spacing:-.01em;}
-  .claves{display:flex;flex-direction:column;gap:1.15rem;justify-content:center;}
+  .tb-num{font-variant-numeric:tabular-nums;}
+  .tb-ok{color:var(--ok);}
+  .tb-fail{color:var(--fail);}
+  .claves{display:grid;grid-template-columns:repeat(4,1fr);gap:1.4rem 1.8rem;align-items:start;}
+  .claves .plano-edit-link{grid-column:1/-1;justify-self:start;}
   .clave{display:flex;gap:.95rem;align-items:flex-start;}
   .clave-n{flex:0 0 auto;width:32px;height:32px;border-radius:8px;background:var(--green-lt);color:var(--green);font-family:var(--fd);font-weight:800;font-size:.9rem;display:flex;align-items:center;justify-content:center;}
   .clave-t{font-family:var(--fd);font-weight:700;font-size:.95rem;color:var(--ink);margin-bottom:.15rem;}
   .clave-d{font-size:.88rem;color:var(--muted);line-height:1.5;}
 
   /* plano embed */
-  .plano-svg{width:100%;overflow:auto;}
+  .plano-svg{position:relative;z-index:1;width:100%;overflow:auto;}
   .plano-svg svg{width:100%;height:auto;display:block;}
   .plano-fallback{padding:2rem;text-align:center;color:var(--muted);font-size:.9rem;background:var(--paper);border-radius:8px;border:1px solid var(--line);}
   .plano-fallback a{color:var(--green);font-weight:700;text-decoration:none;}
@@ -668,8 +706,8 @@ const BASE_CSS = `
   .empty-title{font-family:var(--fd);font-size:1.52rem;font-weight:800;color:var(--navy);}
   .empty-sub{font-size:1rem;color:var(--muted);}
 
-  /* ── RESPONSIVE ── */
-  @media(max-width:880px){
+  /* ── RESPONSIVE (solo pantalla: en impresión se mantiene el layout de escritorio) ── */
+  @media screen and (max-width:880px){
     .section{padding:3.5rem 1.5rem;}
     .glance-grid{grid-template-columns:1fr 1fr;}
     .spread{grid-template-columns:1fr;}
@@ -679,9 +717,12 @@ const BASE_CSS = `
     .detail-band{grid-template-columns:1fr;}
     .ficha-grid{grid-template-columns:1fr;}
     .eq-grid{grid-template-columns:1fr 1fr 1fr;}
-    .nave-grid{grid-template-columns:1fr;}
+    .claves{grid-template-columns:1fr;}
     .titleblock{grid-template-columns:1fr 1fr;}
-    .tb-cell:nth-child(2){border-left:none;}
+    .tb-brand{grid-column:1/-1;}
+    .tb-cell{border-top:1px solid var(--line);}
+    .tb-brand{border-top:none;}
+    .tb-cell:nth-child(even){border-left:none;}
     .cover{height:600px;}
     .cover-top,.cover-foot{padding-left:1.5rem;padding-right:1.5rem;}
     .respaldo-cell{padding:1.2rem 1.3rem;}
@@ -689,15 +730,29 @@ const BASE_CSS = `
 
   /* ── PRINT ── */
   @media print{
+    @page{size:A4;margin:0;}
     body{background:#fff;}
-    .doc{box-shadow:none;max-width:100%;}
-    .jrn-hdr,.topbar-btn{display:none !important;}
-    .cover,.cover-photo,.spread-media,.section.dark,.section.green,.spread-text.on-green,.footer{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
-    .section{padding:2.2rem 1.5rem;page-break-inside:avoid;}
-    .cover{height:560px;}
-    .spread{min-height:auto;}
-    .glance-cell,.data-row,.eq-cell,.clave{break-inside:avoid;}
-    h2{page-break-after:avoid;}
+    *{-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .doc{box-shadow:none;max-width:100%;overflow:visible;}
+    .jrn-hdr,.topbar-btn,.plano-edit-link{display:none !important;}
+
+    /* dossier: cada bloque ocupa una página completa a sangre */
+    .cover{height:297mm;break-after:page;}
+    .section,.spread{break-inside:avoid;break-after:page;min-height:297mm;}
+    .section:has(.ficha-grid){break-inside:auto;}
+    .section.dark{display:flex;flex-direction:column;justify-content:center;}
+    .section.green{min-height:276mm;break-after:avoid;display:flex;flex-direction:column;justify-content:center;}
+    .footer{break-inside:avoid;}
+
+    .section{padding:14mm 12mm;}
+    .spread{min-height:297mm;}
+    .spread-media{min-height:0;}
+    .spread-text{padding:12mm 10mm;}
+
+    /* nada se parte por la mitad */
+    .sheet,.glance-grid,.eq-grid,.titleblock,.compliance,.detail-band,.respaldo-row,.chips{break-inside:avoid;}
+    .glance-cell,.data-row,.eq-cell,.clave,.detail,.respaldo-cell,.arg-point,.veri-row{break-inside:avoid;}
+    h2,.sec-head,.veri-head,.nave-intro{break-after:avoid;}
   }
 
   @media (prefers-reduced-motion: reduce){
