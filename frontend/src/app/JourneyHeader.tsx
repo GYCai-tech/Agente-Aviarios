@@ -39,7 +39,7 @@ const CSS = `
 .jrn-back:hover { color: rgba(255,255,255,0.9); }
 .jrn-back svg { flex-shrink: 0; }
 .jrn-logo {
-  height: 28px;
+  height: 40px;
   width: auto;
   display: block;
   filter: brightness(0) invert(1);
