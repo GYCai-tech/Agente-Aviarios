@@ -707,8 +707,28 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             if num_mod_avi == 0:
                 continue
 
+        # Yacija mínima = 1/3 de la sup. total. Calcular máximo de módulos que la cumple.
+        if suelo_util > 0:
+            # suelo_util >= (m * SUP_TOTAL + suelo_util) / 3  →  m <= 2*suelo_util / SUP_TOTAL
+            num_mod_yacija_max = math.floor(2 * suelo_util / _AVI_SUP_TOTAL[niveles]) if _AVI_SUP_TOTAL[niveles] > 0 else num_mod_avi
+        else:
+            # (S - m*huella) >= m*SUP_TOTAL/3  →  m <= S / (huella + SUP_TOTAL/3)
+            denom_yacija = _AVI_HUELLA_M2 + _AVI_SUP_TOTAL[niveles] / 3
+            num_mod_yacija_max = math.floor(S / denom_yacija) if denom_yacija > 0 else num_mod_avi
+
+        if num_mod_avi > num_mod_yacija_max:
+            num_mod_avi = num_mod_yacija_max
+
+        if num_mod_avi == 0:
+            opciones.append(OpcionCapacidad(
+                sistema=f"aviario_{niveles}", label=f"Aviario {niveles} niveles",
+                max_gallinas=0, num_modulos=0,
+                densidad_real=0, densidad_max=densidad_max, viable=False,
+            ))
+            continue
+
         # Superficie disponible (densidad) = módulos sin puesta + suelo útil de la nave.
-        # Superficie total = módulos con puesta + suelo útil. Yacija mínima = 1/3 del total.
+        # Superficie total = módulos con puesta + suelo útil.
         sup_disp     = round(num_mod_avi * _AVI_SUP_DISP[niveles] + suelo_util, 2)
         sup_total_av = round(num_mod_avi * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
         max_avi      = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
@@ -717,7 +737,6 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             max_avi = min(max_avi, _MAX_GALLINAS_ECOLOGICO)
         dens_avi     = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
 
-        # Yacija: el suelo útil es la zona de yacija y debe ser ≥ 1/3 de la superficie total
         if suelo_util > 0:
             sup_yacija_av = round(suelo_util, 1)
         else:
@@ -748,7 +767,7 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             num_modulos=num_mod_avi,
             densidad_real=dens_avi,
             densidad_max=densidad_max,
-            viable=True,
+            viable=dens_avi <= densidad_max,
             sup_disponible_m2=sup_disp,
             sup_yacija_m2=sup_yacija_av,
             yacija_pct=yacija_pct_av,
