@@ -133,9 +133,9 @@ function PlanoEmbed({
 // Sustituir las rutas cuando estén disponibles las imágenes definitivas.
 const FOTOS = {
   aviario: {
-    cover:      "/IMG_9878.JPG",                          // portada aviario
-    sistema:    "/aviario-sistema.jpg",                   // spread "El sistema"
-    materiales: "/aviario-materiales.jpg",                // spread "Materiales"
+    cover:      "/IMG_9878.JPG",
+    sistema:    "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg",
+    materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg",
   },
   nidal_colectivo: {
     cover:      "/hero-nidal.jpg",                        // portada nidal
