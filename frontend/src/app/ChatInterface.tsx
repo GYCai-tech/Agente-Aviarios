@@ -1339,6 +1339,9 @@ export default function ChatInterface() {
             const okCount   = informe.verificaciones_nave.filter((v) => v.cumple).length;
             const failCount = informe.verificaciones_nave.filter((v) => !v.cumple).length;
             const cumple    = informe.cumple_nave;
+            const warnCount = informe.advertencias.length;
+            // Tres estados: ok (cumple sin advertencias), warn (cumple métricamente pero hay requisitos adicionales críticos), fail
+            const verdict: "ok" | "warn" | "fail" = !cumple ? "fail" : warnCount > 0 ? "warn" : "ok";
 
             return (
               <div key={`result-${animKey}`} className="step-anim">
@@ -1353,25 +1356,29 @@ export default function ChatInterface() {
                 <div className="result-wrap">
 
                   {/* Veredicto */}
-                  <div className={`vrd-card ${cumple ? "is-ok" : "is-fail"}`} role="alert">
+                  <div className={`vrd-card is-${verdict}`} role="alert">
                     <div className="vrd-card-head">
                       <span className="vrd-card-label">Veredicto</span>
-                      <span className={`vrd-card-badge ${cumple ? "is-ok" : "is-fail"}`}>{cumple ? "Cumple" : "No cumple"}</span>
+                      <span className={`vrd-card-badge is-${verdict}`}>
+                        {verdict === "ok" ? "Cumple" : verdict === "warn" ? "Revisar" : "No cumple"}
+                      </span>
                     </div>
                     <div className="vrd-card-body">
-                      <div className={`vrd-icon ${cumple ? "is-ok" : "is-fail"}`}>
-                        {cumple
-                          ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                          : <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
-                        }
+                      <div className={`vrd-icon is-${verdict}`}>
+                        {verdict === "ok" && <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>}
+                        {verdict === "warn" && <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M11 7v5M11 15.5v.5" stroke="white" strokeWidth="2.5" strokeLinecap="round"/><path d="M3 18L11 4l8 14H3z" stroke="white" strokeWidth="2" strokeLinejoin="round"/></svg>}
+                        {verdict === "fail" && <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>}
                       </div>
                       <div className="vrd-text">
                         <div className="vrd-main">
-                          {cumple ? "La nave cumple los parámetros básicos" : `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}
+                          {verdict === "ok"   && "La nave cumple los parámetros básicos"}
+                          {verdict === "warn" && "Las métricas pasan, pero hay requisitos adicionales críticos"}
+                          {verdict === "fail" && `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}
                         </div>
                         <div className="vrd-stats">
                           <span className="vrd-stat is-ok">{okCount} correcto{okCount !== 1 ? "s" : ""}</span>
                           {failCount > 0 && <span className="vrd-stat is-fail">{failCount} a revisar</span>}
+                          {verdict === "warn" && <span className="vrd-stat is-warn">{warnCount} advertencia{warnCount !== 1 ? "s" : ""}</span>}
                         </div>
                       </div>
                     </div>
@@ -1792,6 +1799,7 @@ const CHAT_CSS = `
     gap: 0.75rem; padding: 0.7rem 1.1rem;
   }
   .vrd-card.is-ok   .vrd-card-head { background: #1e3d1b; }
+  .vrd-card.is-warn .vrd-card-head { background: #3d2d00; }
   .vrd-card.is-fail .vrd-card-head { background: #4d1e1e; }
   .vrd-card-label {
     font-family: var(--font-display), sans-serif;
@@ -1805,6 +1813,7 @@ const CHAT_CSS = `
     letter-spacing: 0.1em; text-transform: uppercase;
   }
   .vrd-card-badge.is-ok   { color: #a7d9a2; }
+  .vrd-card-badge.is-warn { color: #fcd97a; }
   .vrd-card-badge.is-fail { color: #f0a09a; }
   .vrd-card-body {
     display: flex; align-items: center; gap: 1.1rem;
@@ -1812,6 +1821,7 @@ const CHAT_CSS = `
   }
   .vrd-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .vrd-icon.is-ok   { background: #2E7D4F; }
+  .vrd-icon.is-warn { background: #b87e00; }
   .vrd-icon.is-fail { background: #C0392B; }
   .vrd-text { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
   .vrd-main {
@@ -1826,6 +1836,7 @@ const CHAT_CSS = `
     padding: 0.18rem 0.65rem; border-radius: 30px; letter-spacing: 0.04em;
   }
   .vrd-stat.is-ok   { background: var(--c-ok-bg);  color: var(--c-ok-text); }
+  .vrd-stat.is-warn { background: #fef3c7; color: #92400e; }
   .vrd-stat.is-fail { background: var(--c-fail-bg); color: var(--c-fail-text); }
 
   /* Secciones — tarjetas claras con cabecera, como los paneles de capacidad */
