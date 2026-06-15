@@ -16,7 +16,7 @@ TipoZona = Literal["nidal_colectivo", "aviario"]
 _DENSIDAD_MAX: dict[str, float] = {
     "suelo":     9.0,   # RD 3/2002 Anexo II
     "campero":   9.0,   # Directiva 1999/74/CE — sistemas alternativos: máx. 9 gal/m² utilizable
-    "ecologico": 4.0,   # Regl. UE 2018/848 (acto de ejecución; referencia interna)
+    "ecologico": 6.0,   # Regl. UE 2018/848 (acto de ejecución; referencia interna)
     "jaulas":    9.0,
 }
 
