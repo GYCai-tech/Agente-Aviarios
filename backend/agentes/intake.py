@@ -20,6 +20,9 @@ _DENSIDAD_MAX: dict[str, float] = {
     "jaulas":    9.0,
 }
 
+# Límite absoluto de gallinas por unidad de producción ecológica (Regl. UE 2018/848)
+_MAX_GALLINAS_ECOLOGICO = 3_000
+
 def _densidad_max_para(sistema: str) -> float:
     return _DENSIDAD_MAX.get(sistema, 9.0)
 
@@ -625,6 +628,12 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
                 sup_disp_nidal = round(sup_interior_max + parque_needed, 2)
                 dens_nidal = round(gal_max_parque / sup_disp_nidal, 2)
 
+        # Límite absoluto para producción ecológica: 3.000 gal/unidad (Regl. UE 2018/848)
+        if datos.sistema == "ecologico":
+            max_gal_nidal = min(max_gal_nidal, _MAX_GALLINAS_ECOLOGICO)
+            if gallinas_a_nidal is not None:
+                gallinas_a_nidal = min(gallinas_a_nidal, _MAX_GALLINAS_ECOLOGICO)
+
         opciones.append(OpcionCapacidad(
             sistema="nidal_colectivo",
             label="Nidal colectivo A-Nida",
@@ -694,6 +703,9 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
         sup_disp     = round(num_mod_avi * _AVI_SUP_DISP[niveles] + suelo_util, 2)
         sup_total_av = round(num_mod_avi * _AVI_SUP_TOTAL[niveles] + suelo_util, 2)
         max_avi      = min(_AVI_CAP * num_mod_avi, int(densidad_max * sup_disp))
+        # Límite absoluto para producción ecológica: 3.000 gal/unidad (Regl. UE 2018/848)
+        if datos.sistema == "ecologico":
+            max_avi = min(max_avi, _MAX_GALLINAS_ECOLOGICO)
         dens_avi     = round(max_avi / sup_disp, 2) if sup_disp > 0 else 0
 
         # Yacija: el suelo útil es la zona de yacija y debe ser ≥ 1/3 de la superficie total
@@ -710,7 +722,10 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             if N_max_a > 0:
                 sup_disp_a = round(N_max_a * sup_disp_por_mod, 2)
                 modulos_a: Optional[int] = N_max_a
-                gallinas_a: Optional[int] = min(_AVI_CAP * N_max_a, int(densidad_max * sup_disp_a))
+                gal_a = min(_AVI_CAP * N_max_a, int(densidad_max * sup_disp_a))
+                if datos.sistema == "ecologico":
+                    gal_a = min(gal_a, _MAX_GALLINAS_ECOLOGICO)
+                gallinas_a: Optional[int] = gal_a
             else:
                 modulos_a = None
                 gallinas_a = None
