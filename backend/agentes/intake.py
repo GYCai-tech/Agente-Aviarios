@@ -1050,10 +1050,13 @@ def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advert
         niveles = 1
         num_modulos = math.ceil(n / 144)
         sup_modulos = round(num_modulos * 1.20 * 1.40, 2)  # 1,68 m² por módulo (planta 1,2×1,4)
-        sup_efectiva = round(datos.superficie_nave_m2 - sup_modulos, 2)
+        sup_ext_nidal = (getattr(datos, "sup_exterior_m2", None) or 0.0) if datos.sistema in ("campero", "ecologico") else 0.0
+        sup_interior = round(datos.superficie_nave_m2 - sup_modulos, 2)
+        sup_efectiva = round(sup_interior + sup_ext_nidal, 2)
         densidad_real = n / sup_efectiva if sup_efectiva > 0 else float("inf")
+        ext_label = f" + {sup_ext_nidal:.0f} m² exterior" if sup_ext_nidal > 0 else ""
         parametro_label = (
-            f"Densidad interior (sup. real {sup_efectiva:.1f} m² — "
+            f"Densidad {'total' if sup_ext_nidal > 0 else 'interior'} (sup. real {sup_interior:.1f} m²{ext_label} — "
             f"descontados {sup_modulos:.1f} m² de {num_modulos} módulos)"
         )
         articulo_densidad = "RD 3/2002 Anexo IV" + (" + Regl. UE 2018/848" if datos.sistema == "ecologico" else "")
