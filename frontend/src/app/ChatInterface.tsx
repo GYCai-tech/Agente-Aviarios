@@ -56,21 +56,53 @@ function fmtInline(t: string): string {
 function renderMd(text: string): string {
   const lines = text.split('\n');
   let html = '';
-  let listTag = '';
-  const closeList = () => { if (listTag) { html += `</${listTag}>`; listTag = ''; } };
+  let inCat  = false;
+  let inSub  = false;
+  const closeSub = () => { if (inSub)  { html += '</ul>';   inSub  = false; } };
+  const closeCat = () => { closeSub();  if (inCat)  { html += '</div>'; inCat  = false; } };
+
   for (const raw of lines) {
     const line = raw.trim();
+
+    // Etiqueta de sección ##KEY##
     const secM = line.match(/^##(\w+)##$/);
-    if (secM) { closeList(); const label = SECTION_LABELS[secM[1]] ?? secM[1]; html += `<div class="md-section">${label}</div>`; continue; }
+    if (secM) {
+      closeCat();
+      const label = SECTION_LABELS[secM[1]] ?? secM[1];
+      html += `<div class="md-section">${label}</div>`;
+      continue;
+    }
+
+    // Ítem numerado → cabecera de categoría con badge
     const olM = line.match(/^(\d+)\.\s+(.+)/);
-    if (olM) { if (listTag !== 'ol') { closeList(); html += '<ol class="md-ol">'; listTag = 'ol'; } html += `<li>${fmtInline(olM[2])}</li>`; continue; }
+    if (olM) {
+      closeCat();
+      html += `<div class="md-cat"><div class="md-cat-head"><span class="md-cat-num">${olM[1]}</span><span class="md-cat-title">${fmtInline(olM[2])}</span></div>`;
+      inCat = true;
+      continue;
+    }
+
+    // Bullet → sub-ítem de la categoría activa o lista suelta
     const ulM = line.match(/^\*\s+(.+)/);
-    if (ulM) { if (listTag !== 'ul') { closeList(); html += '<ul class="md-ul">'; listTag = 'ul'; } html += `<li>${fmtInline(ulM[1])}</li>`; continue; }
-    if (!line) { closeList(); continue; }
-    closeList();
+    if (ulM) {
+      if (inCat) {
+        if (!inSub) { html += '<ul class="md-sub">'; inSub = true; }
+        html += `<li>${fmtInline(ulM[1])}</li>`;
+      } else {
+        html += `<ul class="md-ul"><li>${fmtInline(ulM[1])}</li></ul>`;
+      }
+      continue;
+    }
+
+    // Línea vacía
+    if (!line) { closeCat(); continue; }
+
+    // Párrafo normal
+    closeCat();
     html += `<p class="md-p">${fmtInline(line)}</p>`;
   }
-  closeList();
+
+  closeCat();
   return html;
 }
 
@@ -1878,26 +1910,52 @@ const CHAT_CSS = `
   .analysis-head--btn:hover { background: #eaebe8; }
   .analysis-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
   .analysis-toggle { font-size: 0.75rem; font-weight: 600; color: var(--c-primary); display: flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
-  .analysis-body  { padding: 1.25rem 1.1rem 1.5rem; font-size: 0.88rem; line-height: 1.7; color: #374151; }
+  .analysis-body  { padding: 1.1rem; font-size: 0.88rem; line-height: 1.7; color: #374151; display: flex; flex-direction: column; gap: 0.55rem; }
   .analysis-body strong { font-weight: 700; color: #111827; }
   .analysis-body em { font-style: italic; }
 
+  /* Etiqueta de sección */
   .md-section {
     font-family: var(--font-display), sans-serif;
-    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    font-size: 0.6rem; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
     color: var(--c-primary);
-    margin-top: 1.5rem; margin-bottom: 0.6rem;
-    padding-bottom: 0.4rem; border-bottom: 1px solid #e5e7eb;
+    padding-bottom: 0.4rem; border-bottom: 2px solid var(--c-primary);
+    margin-top: 0.5rem;
   }
   .md-section:first-child { margin-top: 0; }
-  .md-p { margin-bottom: 0.7rem; }
-  .md-p:last-child { margin-bottom: 0; }
-  .md-ol { margin: 0.4rem 0 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem; }
-  .md-ul { margin: 0.3rem 0 0.6rem 0; display: flex; flex-direction: column; gap: 0.3rem; list-style: none; padding: 0; }
-  .md-ol li { font-size: 0.87rem; color: #374151; line-height: 1.6; }
-  .md-ol li::marker { color: var(--c-primary); font-weight: 700; font-size: 0.82rem; }
-  .md-ul li { font-size: 0.87rem; color: #374151; line-height: 1.6; padding-left: 1.1rem; position: relative; }
-  .md-ul li::before { content: "·"; position: absolute; left: 0.3rem; color: var(--c-primary); font-weight: 700; font-size: 1rem; line-height: 1.4; }
+
+  /* Párrafo */
+  .md-p { font-size: 0.875rem; color: #374151; line-height: 1.7; margin: 0; }
+
+  /* Tarjeta de categoría numerada */
+  .md-cat { border: 1px solid #e5e7eb; border-radius: 6px; overflow: hidden; }
+  .md-cat-head {
+    display: flex; align-items: center; gap: 0.7rem;
+    padding: 0.6rem 0.85rem;
+    background: var(--c-bg-alt);
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .md-cat-num {
+    width: 20px; height: 20px; border-radius: 50%;
+    background: var(--c-primary); color: #fff;
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.65rem; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .md-cat-title { font-size: 0.85rem; font-weight: 600; color: #111827; line-height: 1.3; }
+
+  /* Sub-ítems dentro de categoría */
+  .md-sub {
+    list-style: none; margin: 0; padding: 0.5rem 0.85rem;
+    display: flex; flex-direction: column; gap: 0.4rem;
+  }
+  .md-sub li { font-size: 0.83rem; color: #374151; line-height: 1.55; padding-left: 1rem; position: relative; }
+  .md-sub li::before { content: "·"; position: absolute; left: 0.15rem; color: var(--c-primary); font-weight: 700; font-size: 1rem; line-height: 1.3; }
+
+  /* Lista suelta (bullets sin categoría padre) */
+  .md-ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.3rem; }
+  .md-ul li { font-size: 0.83rem; color: #374151; line-height: 1.55; padding-left: 1rem; position: relative; }
+  .md-ul li::before { content: "·"; position: absolute; left: 0.15rem; color: var(--c-primary); font-weight: 700; font-size: 1rem; line-height: 1.3; }
   .md-section-label { display: none; }
 
   .result-footer { font-size: 0.72rem; color: #9ca3af; font-style: italic; padding: 0.1rem 0.2rem; margin-bottom: 0.5rem; }
