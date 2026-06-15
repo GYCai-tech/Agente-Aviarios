@@ -144,6 +144,8 @@ export interface OpcionCapacidad {
   parque_invierno_m2?: number;
   modulos_opcion_a?: number;
   gallinas_opcion_a?: number;
+  sup_disponible_opcion_a_m2?: number;
+  sup_yacija_opcion_b_m2?: number;
 }
 
 export interface ResultadoCapacidad {

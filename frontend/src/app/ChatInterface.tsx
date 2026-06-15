@@ -156,19 +156,63 @@ const IcoBox = () => (
 );
 
 // ── Selector parque de invierno ─────────────────────────────────────────────────
-function ParqueSelector({ op }: { op: OpcionCapacidad }) {
+function ParqueSelector({ op, onSelect }: { op: OpcionCapacidad; onSelect: (ef: OpcionCapacidad) => void }) {
   const [modo, setModo] = useState<"sin" | "con">("con");
 
-  const supPorMod = op.num_modulos > 0 ? (op.sup_disponible_m2 ?? 0) / op.num_modulos : 0;
-  const supDispA  = (op.modulos_opcion_a ?? 0) * supPorMod;
-  const densA     = supDispA > 0 ? (op.gallinas_opcion_a ?? 0) / supDispA : 0;
+  // "Sin parque": usa sup_disponible_opcion_a_m2 que viene del backend (sup real sin parque)
+  const supSin  = op.sup_disponible_opcion_a_m2 ?? (op.sup_disponible_m2 ?? 0);
+  const galSin  = op.gallinas_opcion_a ?? 0;
+  const modSin  = op.modulos_opcion_a ?? 0;
+  const densSin = supSin > 0 && galSin > 0 ? galSin / supSin : 0;
+  const yaijaSin = op.sup_yacija_m2 ?? 0;
+
+  // "Con parque": valores principales de la opción
+  const supCon   = op.sup_disponible_m2 ?? 0;
+  const galCon   = op.max_gallinas;
+  const modCon   = op.num_modulos;
+  const densCon  = op.densidad_real;
+  const yaijaCon = op.sup_yacija_opcion_b_m2 ?? op.sup_yacija_m2 ?? 0;
 
   const data = modo === "sin"
-    ? { gallinas: op.gallinas_opcion_a ?? 0, modulos: op.modulos_opcion_a ?? 0, densidad: densA, tagType: "ok" as const, tag: "✓ Yacija OK · nave sola" }
-    : { gallinas: op.max_gallinas, modulos: op.num_modulos, densidad: op.densidad_real, tagType: "parque" as const, tag: `+ ${op.parque_invierno_m2} m² parque de invierno` };
+    ? { gallinas: galSin, modulos: modSin, densidad: densSin, sup: supSin, yacija: yaijaSin, tagType: "ok" as const, tag: "✓ Yacija OK · nave sola" }
+    : { gallinas: galCon, modulos: modCon, densidad: densCon, sup: supCon, yacija: yaijaCon, tagType: "parque" as const, tag: `+ ${op.parque_invierno_m2} m² parque de invierno` };
+
+  const opEfectivo: OpcionCapacidad = modo === "sin"
+    ? { ...op, max_gallinas: galSin, num_modulos: modSin, densidad_real: densSin, sup_disponible_m2: supSin, sup_yacija_m2: yaijaSin }
+    : op;
 
   return (
     <div className="cap-card-parque">
+      {/* Stats que cambian con el toggle */}
+      <div className="cap-stats-grid">
+        <div className="cap-stat">
+          <span className="cap-stat-label"><IcoArea /> Sup. normativa</span>
+          <span className="cap-stat-val">{data.sup.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+        </div>
+        <div className="cap-stat">
+          <span className="cap-stat-label"><IcoDensity /> Densidad</span>
+          <span className="cap-stat-val">{data.densidad.toFixed(1)} / {op.densidad_max.toFixed(0)} gal/m²</span>
+        </div>
+      </div>
+      <div className="cap-density-bar-wrap">
+        <div
+          className={`cap-density-bar-fill${data.densidad >= op.densidad_max ? " is-full" : ""}`}
+          style={{ width: `${Math.min(100, (data.densidad / op.densidad_max) * 100)}%` }}
+        />
+      </div>
+      <div className="cap-stats-grid">
+        <div className="cap-stat">
+          <span className="cap-stat-label"><IcoHay /> Yacija disponible</span>
+          <span className={`cap-stat-val${data.yacija < (op.yacija_min_m2 ?? 0) ? " is-warn" : ""}`}>
+            {data.yacija.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
+          </span>
+        </div>
+        <div className="cap-stat">
+          <span className="cap-stat-label"><IcoCheck /> Yacija requerida</span>
+          <span className="cap-stat-val">{(op.yacija_min_m2 ?? 0).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²</span>
+        </div>
+      </div>
+      {/* Toggle */}
       <div className="cap-parque-toggle">
         <button className={`cap-parque-toggle-btn${modo === "sin" ? " is-active" : ""}`} onClick={() => setModo("sin")}>
           Sin parque
@@ -194,6 +238,12 @@ function ParqueSelector({ op }: { op: OpcionCapacidad }) {
         </div>
         <span className={`cap-parque-opcion-tag cap-parque-opcion-tag--${data.tagType}`}>{data.tag}</span>
       </div>
+      <button className="cap-card-cta" onClick={() => onSelect(opEfectivo)}>
+        Generar propuesta
+        <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">
+          <path d="M1 4.5h10M7 1l4 3.5-4 3.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      </button>
     </div>
   );
 }
@@ -944,8 +994,8 @@ export default function ChatInterface() {
                         <div className="cap-card-details"><span>Altura insuficiente para este sistema</span></div>
                       )}
 
-                      {/* Stats grid */}
-                      {op.viable && (
+                      {/* Stats grid — solo cuando NO hay bifurcación por parque (ParqueSelector tiene sus propias stats) */}
+                      {op.viable && (op.parque_invierno_m2 ?? 0) === 0 && (
                         <>
                           <div className="cap-stats-grid">
                             <div className="cap-stat">
@@ -994,12 +1044,13 @@ export default function ChatInterface() {
                         </div>
                       )}
 
-                      {/* Selector parque de invierno */}
+                      {/* Selector parque — incluye stats + CTA actualizados por modo */}
                       {op.viable && (op.parque_invierno_m2 ?? 0) > 0 && (
-                        <ParqueSelector op={op} />
+                        <ParqueSelector op={op} onSelect={onSeleccionarCapacidad} />
                       )}
 
-                      {op.viable && (
+                      {/* CTA solo cuando no hay parque (si hay parque, vive dentro de ParqueSelector) */}
+                      {op.viable && (op.parque_invierno_m2 ?? 0) === 0 && (
                         <button className="cap-card-cta" onClick={() => onSeleccionarCapacidad(op)}>
                           Generar propuesta
                           <svg width="12" height="9" viewBox="0 0 12 9" fill="none" aria-hidden="true">

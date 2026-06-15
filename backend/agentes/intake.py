@@ -468,6 +468,8 @@ class OpcionCapacidad(BaseModel):
     parque_invierno_m2: float = 0
     modulos_opcion_a: Optional[int] = None
     gallinas_opcion_a: Optional[int] = None
+    sup_disponible_opcion_a_m2: Optional[float] = None   # superficie efectiva "sin parque"
+    sup_yacija_opcion_b_m2: Optional[float] = None        # yacija "con parque" (N_max_fis módulos)
 
 
 class ResultadoCapacidad(BaseModel):
@@ -611,6 +613,7 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
         num_mod_nidal = m_opt
         sup_disp_nidal = sup_disp
         dens_nidal = round(n_opt / sup_disp, 2) if sup_disp > 0 else 0.0
+        sup_yacija_parque: Optional[float] = None   # yacija cuando se usa N_max_fis módulos
 
         if N_max_fis > m_opt:
             gal_max_parque = N_max_fis * _NIDAL_CAP
@@ -627,12 +630,16 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
                 num_mod_nidal = N_max_fis
                 sup_disp_nidal = round(sup_interior_max + parque_needed, 2)
                 dens_nidal = round(gal_max_parque / sup_disp_nidal, 2)
+                sup_yacija_parque = round(sup_yacija_max, 2)
 
         # Límite absoluto para producción ecológica: 3.000 gal/unidad (Regl. UE 2018/848)
         if datos.sistema == "ecologico":
             max_gal_nidal = min(max_gal_nidal, _MAX_GALLINAS_ECOLOGICO)
             if gallinas_a_nidal is not None:
                 gallinas_a_nidal = min(gallinas_a_nidal, _MAX_GALLINAS_ECOLOGICO)
+            # Recalcular densidad con gallinas capeadas (evita mostrar 4.0 cuando hay cap)
+            if sup_disp_nidal > 0:
+                dens_nidal = round(max_gal_nidal / sup_disp_nidal, 2)
 
         opciones.append(OpcionCapacidad(
             sistema="nidal_colectivo",
@@ -653,6 +660,8 @@ def calcular_capacidad(datos: DatosBasicos) -> ResultadoCapacidad:
             parque_invierno_m2=parque_m2_nidal,
             modulos_opcion_a=modulos_a_nidal,
             gallinas_opcion_a=gallinas_a_nidal,
+            sup_disponible_opcion_a_m2=round(sup_disp, 2) if parque_m2_nidal > 0 else None,
+            sup_yacija_opcion_b_m2=sup_yacija_parque,
         ))
 
     # ── Aviario (por niveles disponibles) ──
