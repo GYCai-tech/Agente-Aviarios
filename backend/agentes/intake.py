@@ -15,8 +15,8 @@ TipoZona = Literal["nidal_colectivo", "aviario"]
 # Para campero/ecológico la zona exterior computa en la base de densidad.
 _DENSIDAD_MAX: dict[str, float] = {
     "suelo":     9.0,   # RD 3/2002 Anexo II
-    "campero":   6.0,   # Regl. CE 589/2008
-    "ecologico": 4.0,   # Regl. UE 2018/848
+    "campero":   9.0,   # Directiva 1999/74/CE — sistemas alternativos: máx. 9 gal/m² utilizable
+    "ecologico": 4.0,   # Regl. UE 2018/848 (acto de ejecución; referencia interna)
     "jaulas":    9.0,
 }
 

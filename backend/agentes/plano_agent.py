@@ -22,7 +22,7 @@ _AVI_CLEAR_LAT   = 4.00   # m zona equipos lateral
 _FOSA_ANCHO      = 1.50   # m fosa purín
 
 # Densidad máxima legal por sistema (gal/m²) — debe coincidir con intake._DENSIDAD_MAX
-_DENSIDAD_MAX = {"suelo": 9.0, "campero": 6.0, "ecologico": 4.0, "jaulas": 9.0}
+_DENSIDAD_MAX = {"suelo": 9.0, "campero": 9.0, "ecologico": 4.0, "jaulas": 9.0}
 # Límite legal: máx. 3000 gallinas por gallinero en producción ecológica (Regl. UE 2018/848)
 _MAX_GALLINAS_ECOLOGICO = 3_000
 
