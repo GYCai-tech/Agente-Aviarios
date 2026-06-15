@@ -23,6 +23,8 @@ _FOSA_ANCHO      = 1.50   # m fosa purín
 
 # Densidad máxima legal por sistema (gal/m²) — debe coincidir con intake._DENSIDAD_MAX
 _DENSIDAD_MAX = {"suelo": 9.0, "campero": 6.0, "ecologico": 4.0, "jaulas": 9.0}
+# Límite legal: máx. 3000 gallinas por gallinero en producción ecológica (Regl. UE 2018/848)
+_MAX_GALLINAS_ECOLOGICO = 3_000
 
 
 def _densidad_max_sistema(sistema: str) -> float:
@@ -916,8 +918,10 @@ def _metricas_aviario(
     # Yacija = suelo útil de la nave (+ exterior); debe ser ≥ 1/3 de la superficie total
     yacija     = suelo_util + sup_ext
     gal_max          = int(densidad_max * sup_disp) if total > 0 else 0
+    if sistema == "ecologico":
+        gal_max = min(gal_max, _MAX_GALLINAS_ECOLOGICO)
 
-    aves_proyecto = gallinas_override if gallinas_override > 0 else gal_max
+    aves_proyecto = min(gallinas_override, gal_max) if gallinas_override > 0 else gal_max
     densidad      = aves_proyecto / sup_disp if sup_disp > 0 else 0.0
 
     used_y  = 2 * clearance_pared + num_filas * _AVI_PROF_MOD + (num_filas - 1) * pasillo
@@ -951,9 +955,12 @@ def _metricas_nidal(
     sup_ext     = ancho_alero_m * largo if ancho_alero_m > 0 else 0.0
     yacija      = max(0.0, nave_m2 - huella - sup_slot + sup_ext)
     sup_efect   = nave_m2 - huella + sup_ext
-    densidad    = gallinas / sup_efect if sup_efect > 0 and gallinas > 0 else 0.0
     densidad_max = _densidad_max_sistema(sistema)
     gal_max      = min(num_modulos * 144, int(densidad_max * sup_efect)) if sup_efect > 0 else num_modulos * 144
+    if sistema == "ecologico":
+        gal_max = min(gal_max, _MAX_GALLINAS_ECOLOGICO)
+    gallinas_efect = min(gallinas, gal_max) if gallinas > 0 else 0
+    densidad    = gallinas_efect / sup_efect if sup_efect > 0 and gallinas_efect > 0 else 0.0
     return MetricasPlano(
         num_filas=1,
         mods_por_fila=num_modulos,
