@@ -411,6 +411,7 @@ export default function ChatInterface() {
   const [planoAnalyzing, setPlanoAnalyzing] = useState(false);
   const [planoError, setPlanoError]         = useState<string | null>(null);
   const [planoDetected, setPlanoDetected]   = useState<{ ancho_m: number; largo_m: number; altura_cm?: number; confianza: number; notas?: string } | null>(null);
+  const [analisisExpanded, setAnalisisExpanded] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const planoTarget  = useRef<"compliance" | "capacidad">("compliance");
 
@@ -1346,6 +1347,9 @@ export default function ChatInterface() {
                         : v.tipo_limite === "minimo"
                           ? `−${Math.abs(v.valor_limite - v.valor_real).toLocaleString("es-ES", { maximumFractionDigits: 1 })} falta`
                           : `+${Math.abs(v.valor_real - v.valor_limite).toLocaleString("es-ES", { maximumFractionDigits: 1 })} exceso`;
+                      const parts = v.parametro.split(/\s*—\s*/);
+                      const checkLabel  = parts[0];
+                      const checkDetail = parts[1];
                       return (
                         <div key={v.parametro} className="check-row">
                           <div className={`check-icon ${ok ? "is-ok" : "is-fail"}`}>
@@ -1354,13 +1358,20 @@ export default function ChatInterface() {
                               : <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="M2 2l8 8M10 2L2 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                             }
                           </div>
-                          <span className="check-name">{v.parametro}</span>
-                          <div className="check-vals">
-                            <span className="check-real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })}</span>
-                            <span className="check-sep">/</span>
-                            <span className="check-ref">{sym} {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 1 })} {v.unidad}</span>
+                          <div className="check-body">
+                            <span className="check-name">{checkLabel}</span>
+                            {checkDetail && <span className="check-detail">{checkDetail}</span>}
                           </div>
-                          <span className={`check-diff ${ok ? "is-ok" : "is-fail"}`}>{diff}</span>
+                          <div className="check-metric">
+                            <div className="check-value-row">
+                              <span className="check-real">{v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })}</span>
+                              <span className="check-unit">{v.unidad}</span>
+                            </div>
+                            <div className="check-limit-row">
+                              <span className="check-ref">{sym} {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 1 })}</span>
+                              <span className={`check-diff ${ok ? "is-ok" : "is-fail"}`}>{diff}</span>
+                            </div>
+                          </div>
                         </div>
                       );
                     })}
@@ -1372,19 +1383,15 @@ export default function ChatInterface() {
                     <div className="vrd-section-head">
                       <span className="vrd-section-label">Equipamiento mínimo requerido</span>
                     </div>
-                    <div className="vrd-section-body">
+                    <div className="req-grid">
                     {informe.requisitos.map((r) => (
-                      <div key={r.nombre} className="req-row">
-                        <div className="req-icon" aria-hidden="true">
-                          <svg width="10" height="10" viewBox="0 0 10 10" fill="none"><circle cx="5" cy="5" r="3" stroke="currentColor" strokeWidth="1.5"/></svg>
+                      <div key={r.nombre} className="req-card">
+                        <div className="req-card-name">{r.nombre}</div>
+                        <div className="req-card-val">
+                          {r.valor_minimo.toLocaleString("es-ES")}
+                          <span className="req-card-unit"> {r.unidad}</span>
                         </div>
-                        <div className="req-body">
-                          <div className="req-name">{r.nombre}</div>
-                          <div className="req-formula">{r.formula}</div>
-                        </div>
-                        <div className="req-value">
-                          {r.valor_minimo.toLocaleString("es-ES")} <span className="req-unit">{r.unidad}</span>
-                        </div>
+                        {r.formula && <div className="req-card-formula">{r.formula}</div>}
                       </div>
                     ))}
                     </div>
@@ -1406,10 +1413,18 @@ export default function ChatInterface() {
 
                   {/* Análisis legal */}
                   <div className="analysis-block">
-                    <div className="analysis-head">
+                    <button className="analysis-head analysis-head--btn" onClick={() => setAnalisisExpanded(x => !x)}>
                       <span className="analysis-label">Análisis normativo</span>
-                    </div>
-                    <div className="analysis-body" dangerouslySetInnerHTML={{ __html: renderMd(analisis_legal) }} />
+                      <span className="analysis-toggle">
+                        {analisisExpanded ? "Cerrar" : "Ver análisis completo"}
+                        <svg width="10" height="6" viewBox="0 0 10 6" fill="none" aria-hidden="true" style={{ marginLeft: 5, transition: "transform .2s", transform: analisisExpanded ? "rotate(180deg)" : "none" }}>
+                          <path d="M1 1l4 4 4-4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
+                        </svg>
+                      </span>
+                    </button>
+                    {analisisExpanded && (
+                      <div className="analysis-body" dangerouslySetInnerHTML={{ __html: renderMd(analisis_legal) }} />
+                    )}
                   </div>
 
                   <div className="result-footer">
@@ -1788,28 +1803,48 @@ const CHAT_CSS = `
   .result-stat.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .result-stat.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
-  .check-row { display: flex; align-items: center; padding: 0.7rem 0; border-bottom: 1px solid #e5e7eb; gap: 0.75rem; }
+  /* Check rows — nombre limpio + métrica prominente */
+  .check-row { display: flex; align-items: flex-start; padding: 0.85rem 0; border-bottom: 1px solid #e5e7eb; gap: 0.75rem; }
   .check-row:last-child { border-bottom: none; }
-  .check-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .check-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; }
   .check-icon.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-icon); }
   .check-icon.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
-  .check-name { flex: 1; font-size: 0.9rem; color: #374151; font-weight: 400; }
-  .check-vals { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; flex-shrink: 0; }
-  .check-real { font-family: var(--font-mono), monospace; color: #111827; font-weight: 700; }
-  .check-sep  { color: #d1d5db; }
-  .check-ref  { font-family: var(--font-mono), monospace; color: #6b7280; }
-  .check-diff { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
+  .check-body { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 0.2rem; }
+  .check-name { font-size: 0.9rem; color: #111827; font-weight: 600; line-height: 1.3; }
+  .check-detail { font-size: 0.73rem; color: #9ca3af; font-style: italic; line-height: 1.45; }
+  .check-metric { flex-shrink: 0; display: flex; flex-direction: column; align-items: flex-end; gap: 0.25rem; min-width: 110px; }
+  .check-value-row { display: flex; align-items: baseline; gap: 0.2rem; }
+  .check-real { font-family: var(--font-mono), monospace; font-size: 1.25rem; font-weight: 700; color: #111827; line-height: 1; }
+  .check-unit { font-size: 0.7rem; color: #6b7280; font-weight: 400; }
+  .check-limit-row { display: flex; align-items: center; gap: 0.35rem; }
+  .check-ref { font-size: 0.75rem; color: #9ca3af; font-family: var(--font-mono), monospace; }
+  .check-diff { font-family: var(--font-display), sans-serif; font-size: 0.65rem; font-weight: 700; padding: 0.12rem 0.5rem; border-radius: 30px; white-space: nowrap; }
   .check-diff.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .check-diff.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
-  .req-row { display: flex; align-items: flex-start; padding: 0.7rem 0; border-bottom: 1px solid #e5e7eb; gap: 0.75rem; }
-  .req-row:last-child { border-bottom: none; }
-  .req-icon { width: 22px; height: 22px; border-radius: 50%; background: var(--c-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; color: var(--c-body); }
-  .req-body { flex: 1; min-width: 0; }
-  .req-name { font-size: 0.9rem; color: #374151; font-weight: 400; }
-  .req-formula { font-size: 0.78rem; color: #9ca3af; margin-top: 0.1rem; font-style: italic; }
-  .req-value { font-family: var(--font-mono), monospace; font-size: 0.95rem; font-weight: 700; color: #111827; flex-shrink: 0; white-space: nowrap; }
-  .req-unit { font-weight: 400; font-size: 0.78rem; color: #6b7280; }
+  /* Requisitos — cuadrícula de tarjetas métricas */
+  .req-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(175px, 1fr));
+    gap: 1px;
+    background: #e5e7eb;
+    border-top: 1px solid #e5e7eb;
+  }
+  .req-card {
+    background: #fff;
+    padding: 0.85rem 1rem;
+    display: flex; flex-direction: column; gap: 0.25rem;
+  }
+  .req-card-name {
+    font-size: 0.75rem; color: #6b7280; font-weight: 500; line-height: 1.35;
+  }
+  .req-card-val {
+    font-family: var(--font-mono), monospace;
+    font-size: 1.3rem; font-weight: 700; color: #111827; line-height: 1;
+    margin-top: 0.15rem;
+  }
+  .req-card-unit { font-size: 0.72rem; font-weight: 400; color: #6b7280; }
+  .req-card-formula { font-size: 0.7rem; color: #bbb; font-style: italic; line-height: 1.4; margin-top: 0.3rem; }
 
   .warn-block { background: #fffdf0; border: 1.5px solid #f5e580; border-radius: 8px; overflow: hidden; margin-bottom: 1.25rem; }
   .warn-head  { padding: 0.8rem 1.1rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
@@ -1818,9 +1853,17 @@ const CHAT_CSS = `
   .warn-row:last-child { border-bottom: none; }
   .warn-text  { font-size: 0.88rem; color: #5a4a00; line-height: 1.65; }
 
+  /* Análisis normativo colapsable */
   .analysis-block { background: #ffffff; border: 1.5px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 1.25rem; }
   .analysis-head  { padding: 0.8rem 1.1rem; background: var(--c-bg-alt); border-bottom: 1px solid #e5e7eb; }
+  .analysis-head--btn {
+    width: 100%; display: flex; align-items: center; justify-content: space-between;
+    border: none; cursor: pointer; text-align: left;
+    font-family: inherit; transition: background 0.15s;
+  }
+  .analysis-head--btn:hover { background: #eaebe8; }
   .analysis-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .analysis-toggle { font-size: 0.75rem; font-weight: 600; color: var(--c-primary); display: flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
   .analysis-body  { padding: 1.4rem 1.1rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
   .analysis-body strong { font-weight: 700; color: var(--c-title); }
   .analysis-body em { font-style: italic; }
