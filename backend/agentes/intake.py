@@ -1040,11 +1040,11 @@ def _informe_jaulas(n, datos, verificaciones, requisitos, advertencias):
 
 
 def _informe_alternativo(n, datos, tipo_zona, verificaciones, requisitos, advertencias):
-    densidad_max = 6.0 if datos.sistema == "ecologico" else 9.0
+    densidad_max = _densidad_max_para(datos.sistema)
 
     if tipo_zona == "aviario":
         niveles = _niveles_aviario(datos.altura_nave_cm)
-        densidad_max_avi = 6.0 if datos.sistema == "ecologico" else 9.0
+        densidad_max_avi = _densidad_max_para(datos.sistema)
         num_modulos_caben, _, _, suelo_util = _sup_util_aviario(
             datos.superficie_nave_m2, niveles,
             getattr(datos, "largo_nave_m", None), getattr(datos, "ancho_nave_m", None),
