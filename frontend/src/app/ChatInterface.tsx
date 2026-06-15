@@ -1293,38 +1293,51 @@ export default function ChatInterface() {
 
             return (
               <div key={`result-${animKey}`} className="step-anim">
+                <button className="btn-back" onClick={() => go("recomendacion")}>
+                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true"><path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                  Volver
+                </button>
+                <div className="rec-badge">{informe.num_gallinas.toLocaleString("es-ES")} gallinas · {informe.sistema} · RD 3/2002</div>
+                <h2 className="form-title">Verificación de la instalación</h2>
+                <p className="form-subtitle">Comprobación de tu nave frente a los parámetros mínimos exigidos por la normativa de bienestar animal.</p>
+
                 <div className="result-wrap">
 
-                  {/* Banner */}
-                  <div className={`result-banner ${cumple ? "is-ok" : "is-fail"}`} role="alert">
-                    <div className={`result-banner-icon ${cumple ? "is-ok" : "is-fail"}`}>
-                      {cumple
-                        ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                        : <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
-                      }
+                  {/* Veredicto */}
+                  <div className={`vrd-card ${cumple ? "is-ok" : "is-fail"}`} role="alert">
+                    <div className="vrd-card-head">
+                      <span className="vrd-card-label">Veredicto</span>
+                      <span className={`vrd-card-badge ${cumple ? "is-ok" : "is-fail"}`}>{cumple ? "Cumple" : "No cumple"}</span>
                     </div>
-                    <div className="result-banner-text">
-                      <strong className="result-banner-supra">Verificación de la instalación</strong>
-                      <span className="result-banner-main">
-                        {cumple ? "La nave cumple los parámetros básicos" : `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}
-                      </span>
+                    <div className="vrd-card-body">
+                      <div className={`vrd-icon ${cumple ? "is-ok" : "is-fail"}`}>
+                        {cumple
+                          ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                          : <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
+                        }
+                      </div>
+                      <div className="vrd-text">
+                        <div className="vrd-main">
+                          {cumple ? "La nave cumple los parámetros básicos" : `${failCount} parámetro${failCount > 1 ? "s" : ""} no cumple${failCount > 1 ? "n" : ""}`}
+                        </div>
+                        <div className="vrd-stats">
+                          <span className="vrd-stat is-ok">{okCount} correcto{okCount !== 1 ? "s" : ""}</span>
+                          {failCount > 0 && <span className="vrd-stat is-fail">{failCount} a revisar</span>}
+                        </div>
+                      </div>
                     </div>
-                  </div>
-                  <div className={`result-meta-strip ${cumple ? "is-ok" : "is-fail"}`}>
-                    {[`${informe.num_gallinas} gallinas`, informe.sistema, "RD 3/2002"].map((p) => (
-                      <span key={p} className="result-meta-pill">{p}</span>
-                    ))}
                   </div>
 
                   {/* Verificaciones nave */}
-                  <div className="result-block">
-                    <div className="result-block-head">
-                      <span className="result-block-label">Verificación de la nave</span>
+                  <div className="vrd-section">
+                    <div className="vrd-section-head">
+                      <span className="vrd-section-label">Verificación de la nave</span>
                       <div className="result-stats">
                         <span className="result-stat is-ok">{okCount} OK</span>
                         {failCount > 0 && <span className="result-stat is-fail">{failCount} fallo{failCount > 1 ? "s" : ""}</span>}
                       </div>
                     </div>
+                    <div className="vrd-section-body">
                     {informe.verificaciones_nave.map((v) => {
                       const ok  = v.cumple;
                       const sym = v.tipo_limite === "minimo" ? "≥" : "≤";
@@ -1351,13 +1364,15 @@ export default function ChatInterface() {
                         </div>
                       );
                     })}
+                    </div>
                   </div>
 
                   {/* Requisitos calculados */}
-                  <div className="result-block result-block--sep">
-                    <div className="result-block-head">
-                      <span className="result-block-label">Equipamiento mínimo requerido</span>
+                  <div className="vrd-section">
+                    <div className="vrd-section-head">
+                      <span className="vrd-section-label">Equipamiento mínimo requerido</span>
                     </div>
+                    <div className="vrd-section-body">
                     {informe.requisitos.map((r) => (
                       <div key={r.nombre} className="req-row">
                         <div className="req-icon" aria-hidden="true">
@@ -1372,6 +1387,7 @@ export default function ChatInterface() {
                         </div>
                       </div>
                     ))}
+                    </div>
                   </div>
 
                   {/* Advertencias */}
@@ -1698,67 +1714,114 @@ const CHAT_CSS = `
   .rec-card-choose:hover { border-color: var(--c-primary); color: var(--c-primary); }
   .rec-card-unavailable { margin-top: 0.75rem; font-size: 0.75rem; color: #bbb; font-style: italic; }
 
-  /* ── RESULT ── */
-  .result-wrap { border: 1px solid var(--c-border); margin-bottom: 1.5rem; overflow: hidden; box-shadow: 0 2px 16px rgba(0,0,0,0.07); }
-  .result-banner { padding: 1.4rem 1.75rem; display: flex; align-items: center; gap: 1.25rem; }
-  .result-banner.is-ok   { background: #1E4D2B; }
-  .result-banner.is-fail { background: #4D1E1E; }
-  .result-banner-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
-  .result-banner.is-ok   .result-banner-icon { background: #2E7D4F; }
-  .result-banner.is-fail .result-banner-icon { background: #C0392B; }
-  .result-banner-text { color: #fff; display: flex; flex-direction: column; gap: 0.2rem; }
-  .result-banner-supra { font-family: var(--font-display), sans-serif; font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; display: block; font-weight: 700; }
-  .result-banner.is-ok   .result-banner-supra { color: #A8F0BC; }
-  .result-banner.is-fail .result-banner-supra { color: #F5B8B8; }
-  .result-banner-main { font-family: var(--font-display), sans-serif; font-size: 1.1rem; font-weight: 700; line-height: 1.2; }
-  .result-meta-strip { display: flex; flex-wrap: wrap; gap: 0.5rem; padding: 0.75rem 1.75rem; }
-  .result-meta-strip.is-ok   { background: rgba(30,77,43,0.85); }
-  .result-meta-strip.is-fail { background: rgba(77,30,30,0.85); }
-  .result-meta-pill { font-size: 0.74rem; font-weight: 500; padding: 0.2rem 0.65rem; background: rgba(255,255,255,0.14); color: rgba(255,255,255,0.85); letter-spacing: 0.03em; border-radius: 30px; }
+  /* ── RESULT (verificar instalación · mismo lenguaje que capacidad) ── */
+  .result-wrap { margin-bottom: 0.5rem; }
 
-  .result-block { background: var(--c-bg); }
-  .result-block--sep { border-top: 2px solid var(--c-bg-alt); }
-  .result-block-head { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); display: flex; align-items: center; justify-content: space-between; }
-  .result-block-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  /* Veredicto — card hero, cabecera verde/roja como cap-card */
+  .vrd-card {
+    background: #ffffff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+  }
+  .vrd-card-head {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: 0.75rem; padding: 0.7rem 1.1rem;
+  }
+  .vrd-card.is-ok   .vrd-card-head { background: #1e3d1b; }
+  .vrd-card.is-fail .vrd-card-head { background: #4d1e1e; }
+  .vrd-card-label {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.12em; text-transform: uppercase;
+    color: rgba(255,255,255,0.7);
+  }
+  .vrd-card-badge {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.6rem; font-weight: 700;
+    letter-spacing: 0.1em; text-transform: uppercase;
+  }
+  .vrd-card-badge.is-ok   { color: #a7d9a2; }
+  .vrd-card-badge.is-fail { color: #f0a09a; }
+  .vrd-card-body {
+    display: flex; align-items: center; gap: 1.1rem;
+    padding: 1.25rem 1.1rem;
+  }
+  .vrd-icon { width: 48px; height: 48px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .vrd-icon.is-ok   { background: #2E7D4F; }
+  .vrd-icon.is-fail { background: #C0392B; }
+  .vrd-text { display: flex; flex-direction: column; gap: 0.55rem; min-width: 0; }
+  .vrd-main {
+    font-family: var(--font-display), sans-serif;
+    font-size: clamp(1.05rem, 2vw, 1.3rem); font-weight: 800;
+    color: #111827; line-height: 1.2; letter-spacing: -0.01em;
+  }
+  .vrd-stats { display: flex; gap: 0.5rem; flex-wrap: wrap; }
+  .vrd-stat {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.7rem; font-weight: 700;
+    padding: 0.18rem 0.65rem; border-radius: 30px; letter-spacing: 0.04em;
+  }
+  .vrd-stat.is-ok   { background: var(--c-ok-bg);  color: var(--c-ok-text); }
+  .vrd-stat.is-fail { background: var(--c-fail-bg); color: var(--c-fail-text); }
+
+  /* Secciones — tarjetas claras con cabecera, como los paneles de capacidad */
+  .vrd-section {
+    background: #ffffff;
+    border: 1.5px solid #e5e7eb;
+    border-radius: 8px;
+    overflow: hidden;
+    margin-bottom: 1.25rem;
+  }
+  .vrd-section-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0.8rem 1.1rem;
+    background: var(--c-bg-alt);
+    border-bottom: 1px solid #e5e7eb;
+  }
+  .vrd-section-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
+  .vrd-section-body { padding: 0 1.1rem; }
+
   .result-stats { display: flex; gap: 0.5rem; }
   .result-stat { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.15rem 0.6rem; border-radius: 30px; letter-spacing: 0.04em; }
   .result-stat.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .result-stat.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
-  .check-row { display: flex; align-items: center; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--c-border); gap: 0.75rem; }
+  .check-row { display: flex; align-items: center; padding: 0.7rem 0; border-bottom: 1px solid #e5e7eb; gap: 0.75rem; }
   .check-row:last-child { border-bottom: none; }
-  .check-icon { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
+  .check-icon { width: 22px; height: 22px; border-radius: 50%; display: flex; align-items: center; justify-content: center; flex-shrink: 0; }
   .check-icon.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-icon); }
   .check-icon.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
-  .check-name { flex: 1; font-size: 0.9rem; color: var(--c-title); font-weight: 400; }
+  .check-name { flex: 1; font-size: 0.9rem; color: #374151; font-weight: 400; }
   .check-vals { display: flex; align-items: center; gap: 0.35rem; font-size: 0.82rem; flex-shrink: 0; }
-  .check-real { color: var(--c-title); font-weight: 600; }
-  .check-sep  { color: var(--c-border); }
-  .check-ref  { color: var(--c-body); }
-  .check-diff { font-family: var(--font-display), sans-serif; font-size: 0.7rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
+  .check-real { font-family: var(--font-mono), monospace; color: #111827; font-weight: 700; }
+  .check-sep  { color: #d1d5db; }
+  .check-ref  { font-family: var(--font-mono), monospace; color: #6b7280; }
+  .check-diff { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; padding: 0.13rem 0.55rem; border-radius: 30px; flex-shrink: 0; white-space: nowrap; }
   .check-diff.is-ok   { background: var(--c-ok-bg);   color: var(--c-ok-text); }
   .check-diff.is-fail { background: var(--c-fail-bg);  color: var(--c-fail-text); }
 
-  .req-row { display: flex; align-items: flex-start; padding: 0.75rem 1.75rem; border-bottom: 1px solid var(--c-border); gap: 0.75rem; }
+  .req-row { display: flex; align-items: flex-start; padding: 0.7rem 0; border-bottom: 1px solid #e5e7eb; gap: 0.75rem; }
   .req-row:last-child { border-bottom: none; }
   .req-icon { width: 22px; height: 22px; border-radius: 50%; background: var(--c-bg-alt); display: flex; align-items: center; justify-content: center; flex-shrink: 0; margin-top: 2px; color: var(--c-body); }
   .req-body { flex: 1; min-width: 0; }
-  .req-name { font-size: 0.9rem; color: var(--c-title); font-weight: 400; }
-  .req-formula { font-size: 0.78rem; color: #bbb; margin-top: 0.1rem; font-style: italic; }
-  .req-value { font-family: var(--font-mono), monospace; font-size: 0.95rem; font-weight: 700; color: var(--c-title); flex-shrink: 0; white-space: nowrap; }
-  .req-unit { font-weight: 400; font-size: 0.78rem; color: var(--c-body); }
+  .req-name { font-size: 0.9rem; color: #374151; font-weight: 400; }
+  .req-formula { font-size: 0.78rem; color: #9ca3af; margin-top: 0.1rem; font-style: italic; }
+  .req-value { font-family: var(--font-mono), monospace; font-size: 0.95rem; font-weight: 700; color: #111827; flex-shrink: 0; white-space: nowrap; }
+  .req-unit { font-weight: 400; font-size: 0.78rem; color: #6b7280; }
 
-  .warn-block { background: #fffdf0; border-top: 2px solid #f5e580; }
-  .warn-head  { padding: 0.8rem 1.75rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
+  .warn-block { background: #fffdf0; border: 1.5px solid #f5e580; border-radius: 8px; overflow: hidden; margin-bottom: 1.25rem; }
+  .warn-head  { padding: 0.8rem 1.1rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
   .warn-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: #7a6500; }
-  .warn-row   { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.75rem; border-bottom: 1px solid #f0e070; }
+  .warn-row   { display: flex; align-items: flex-start; gap: 0.75rem; padding: 0.85rem 1.1rem; border-bottom: 1px solid #f0e070; }
   .warn-row:last-child { border-bottom: none; }
   .warn-text  { font-size: 0.88rem; color: #5a4a00; line-height: 1.65; }
 
-  .analysis-block { background: var(--c-bg); border-top: 1px solid var(--c-border); }
-  .analysis-head  { padding: 0.8rem 1.75rem; background: var(--c-bg-alt); border-bottom: 1px solid var(--c-border); }
+  .analysis-block { background: #ffffff; border: 1.5px solid #e5e7eb; border-radius: 8px; overflow: hidden; margin-bottom: 1.25rem; }
+  .analysis-head  { padding: 0.8rem 1.1rem; background: var(--c-bg-alt); border-bottom: 1px solid #e5e7eb; }
   .analysis-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
-  .analysis-body  { padding: 1.4rem 1.75rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
+  .analysis-body  { padding: 1.4rem 1.1rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
   .analysis-body strong { font-weight: 700; color: var(--c-title); }
   .analysis-body em { font-style: italic; }
   .md-section-label {
@@ -1768,8 +1831,8 @@ const CHAT_CSS = `
     margin-top: 1.4rem; margin-bottom: 0.35rem;
   }
 
-  .result-footer { font-size: 0.72rem; color: #bbb; font-style: italic; padding: 0.85rem 1.75rem; background: var(--c-bg-alt); border-top: 1px solid var(--c-border); }
-  .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 2px; }
+  .result-footer { font-size: 0.72rem; color: #9ca3af; font-style: italic; padding: 0.1rem 0.2rem; margin-bottom: 0.5rem; }
+  .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 8px; }
 
   /* ── MODE SELECTOR ── */
   .mode-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-top: 0.5rem; }
