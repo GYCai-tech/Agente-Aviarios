@@ -129,9 +129,19 @@ function PlanoEmbed({
 
 // ── Contenido editorial por producto ──────────────────────────────────────────
 
+// ── Fotos por producto ────────────────────────────────────────────────────────
+// Sustituir las rutas cuando estén disponibles las imágenes definitivas.
 const FOTOS = {
-  aviario: { cover: "/IMG_9878.JPG", sistema: "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg", materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg" },
-  nidal_colectivo: { cover: "/hero-nidal.jpg", sistema: "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg", materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg" },
+  aviario: {
+    cover:      "/IMG_9878.JPG",                          // portada aviario
+    sistema:    "/aviario-sistema.jpg",                   // spread "El sistema"
+    materiales: "/aviario-materiales.jpg",                // spread "Materiales"
+  },
+  nidal_colectivo: {
+    cover:      "/hero-nidal.jpg",                        // portada nidal
+    sistema:    "/nidal-sistema.jpg",                     // spread "El sistema"
+    materiales: "/nidal-materiales.jpg",                  // spread "Materiales"
+  },
 } as const;
 
 const CHIPS = {
@@ -352,8 +362,17 @@ export default function PropuestaPage() {
         {/* ═══════ EN UN VISTAZO ═══════ */}
         <section className="section cream">
           <div className="sec-head"><span className="kicker">En un vistazo</span><span className="rule" /><span className="num-mark">01 / 06</span></div>
-          <h2 className="glance-lede">Una explotación de {gallinasInt.toLocaleString("es-ES")} ponedoras, resuelta en una sola nave.</h2>
-          <p className="lede">Multiplica la capacidad de tu nave sobre la misma superficie. Automatización estructural con materiales de alta resistencia, diseñados a medida para maximizar tu producción y garantizar una puesta en marcha eficiente.</p>
+          {isAviario ? (
+            <>
+              <h2 className="glance-lede">Una nave, {gallinasInt.toLocaleString("es-ES")} ponedoras, {nivelesEfectivos} niveles de producción.</h2>
+              <p className="lede">El Aviario Industrial convierte tu nave en una planta de producción de alto rendimiento. Aprovecha cada metro cúbico disponible para multiplicar tu capacidad sin ampliar la huella —sin obras de construcción, sin coste adicional de suelo. Recolección automática en cinta, estructura de acero galvanizado y diseño testado en miles de instalaciones durante más de 50 años.</p>
+            </>
+          ) : (
+            <>
+              <h2 className="glance-lede">Bienestar certificado para {gallinasInt.toLocaleString("es-ES")} ponedoras con la instalación más sencilla.</h2>
+              <p className="lede">El sistema de nidales A-Nida está diseñado para explotaciones de suelo, campero y ecológico donde el bienestar animal y la calidad del huevo son la prioridad. Sin obras de construcción, sin grúas: instalación modular en días. La inversión mínima que maximiza el huevo limpio, intacto y clasificable desde el primer ciclo.</p>
+            </>
+          )}
           <div className="glance-grid">
             <div className="glance-cell"><div className="glance-v">{gallinasInt.toLocaleString("es-ES")}</div><div className="glance-l">Ponedoras · {sistemaLabel.toLowerCase()}</div></div>
             <div className="glance-cell"><div className="glance-v">{supRound.toLocaleString("es-ES")} <small>m²</small></div><div className="glance-l">Superficie de nave</div></div>
@@ -365,16 +384,22 @@ export default function PropuestaPage() {
         <section className="spread">
           <div className="spread-media" style={{ backgroundImage: `url('${encodeURI(fotos.sistema)}')` }} />
           <div className="spread-text">
-            <div className="spread-num">02 — El sistema</div>
-            <h2 className="spread-h">{isAviario ? "Maximiza tu producción con un entorno de puesta eficiente" : "El nidal que guía a la gallina a poner donde debe"}</h2>
             {isAviario ? (
-              <p className="spread-p">
-                El aviario industrial de {nivelesEfectivos} niveles aprovecha la altura de la nave para alojar <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong>, multiplicando la densidad y la producción en la misma superficie. Gracias a su diseño altamente eficiente, optimiza cada metro cúbico disponible garantizando un flujo continuo de huevos limpios mediante recolección automática en cinta, minimizando el trabajo operativo.
-              </p>
+              <>
+                <div className="spread-num">02 — Aviario Industrial</div>
+                <h2 className="spread-h">Más producción por metro cuadrado de suelo, sin ampliar tu nave</h2>
+                <p className="spread-p">
+                  El aviario de <strong>{nivelesEfectivos} niveles</strong> multiplica la superficie útil disponible por el número de pisos: alojas <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> sobre la misma huella que ocuparías en suelo con un tercio de las gallinas. La recolección automática de huevo en cinta reduce el trabajo operativo diario y garantiza un flujo continuo sin manipulación manual, con menor riesgo de rotura y suciedad.
+                </p>
+              </>
             ) : (
-              <p className="spread-p">
-                Cada módulo A-Nida aloja <strong>144 gallinas</strong>: optimiza el espacio de tu nave alojando <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> con la máxima eficiencia técnica. Su diseño inteligente reduce drásticamente el huevo en suelo, guiando a la gallina hacia un entorno óptimo de puesta que asegura un mayor porcentaje de huevo limpio, intacto y comercializable.
-              </p>
+              <>
+                <div className="spread-num">02 — A-Nida Colectivo</div>
+                <h2 className="spread-h">El nidal que convierte al ave en el aliado de tu producción</h2>
+                <p className="spread-p">
+                  El A-Nida no es un nidal pasivo: su geometría interior guía a la gallina hacia la zona de puesta en el momento óptimo, reduciendo el huevo en suelo a niveles mínimos. Cada módulo aloja <strong>144 gallinas</strong> en un entorno cómodo y limpio que mantiene el huevo fuera del riesgo de pisoteo y contaminación. Para <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong>, son <strong>{numModulos} módulos</strong> que se instalan sin obra ni maquinaria pesada.
+                </p>
+              </>
             )}
             <div className="chips">
               {chips.map(c => (
@@ -388,12 +413,18 @@ export default function PropuestaPage() {
         <section className="spread flip">
           <div className="spread-media" style={{ backgroundImage: `url('${encodeURI(fotos.materiales)}')`, backgroundPosition: "center bottom" }} />
           <div className="spread-text on-green">
-            <div className="spread-num">03 — Materiales</div>
-            <h2 className="spread-h">Calidad de materiales premium diseñada para durar</h2>
             {isAviario ? (
-              <p className="spread-p">Estructura de <strong>acero galvanizado con recubrimiento PosMAC®</strong>, con resistencia superior a la corrosión en ambiente intensivo y mantenimiento mínimo. Los nidos AstroTurf reducen el <strong>huevo sucio</strong>, mejorando la categoría del producto desde el primer ciclo.</p>
+              <>
+                <div className="spread-num">03 — Materiales</div>
+                <h2 className="spread-h">Estructura concebida para entornos intensivos de larga duración</h2>
+                <p className="spread-p">El aviario está fabricado en <strong>acero galvanizado con recubrimiento PosMAC®</strong>: mayor resistencia a la corrosión en ambiente de amoniaco y humedad que el galvanizado convencional, con vida útil superior a 20 años. Los nidos en AstroTurf reducen el huevo sucio y permiten limpiezas rápidas entre ciclos sin desmontar la estructura.</p>
+              </>
             ) : (
-              <p className="spread-p">Chapa <strong>DX51D+Z275</strong> con galvanizado de alta calidad: 20 micras de Zinc según ISO 9223 y EN 10346:2015. El diseño en chapa minimiza las zonas ocultas para <strong>evitar la proliferación del ácaro rojo</strong> y permite limpiar y desinfectar sin desmontar el nidal.</p>
+              <>
+                <div className="spread-num">03 — Materiales</div>
+                <h2 className="spread-h">Chapa de alta especificación. Sin rincones para el ácaro rojo.</h2>
+                <p className="spread-p">El A-Nida está fabricado en chapa <strong>DX51D+Z275</strong> con galvanizado de 20 micras de Zinc (ISO 9223 · EN 10346:2015). Todos los pliegues y juntas están diseñados para eliminar zonas ocultas donde el ácaro rojo pueda anidar, lo que reduce drásticamente el uso de acaricidas y los tiempos de limpieza y desinfección entre ciclos.</p>
+              </>
             )}
             <div className="detail-band">
               {detalles.map(d => (
@@ -557,8 +588,8 @@ export default function PropuestaPage() {
         {/* ═══════ CONTRAPORTADA · CTA ═══════ */}
         <section className="section green">
           <div className="closing">
-            <h2 className="closing-h">Hablemos de tu explotación</h2>
-            <p className="closing-p">Solicita tu presupuesto o agenda una visita.</p>
+            <h2 className="closing-h">{isAviario ? "Convierte tu nave en una planta de alto rendimiento" : "Instala el A-Nida y recupera la inversión desde el primer ciclo"}</h2>
+            <p className="closing-p">{isAviario ? "Solicita tu presupuesto personalizado o agenda una visita técnica a tu explotación." : "Pide tu propuesta de instalación o visítanos para ver el sistema en funcionamiento."}</p>
             <a href="mailto:info@gomezycrespo.com" className="btn">
               Solicitar presupuesto
               <svg width="15" height="11" viewBox="0 0 15 11" fill="none"><path d="M1 5.5h12M9 1l5 4.5L9 10" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" /></svg>
