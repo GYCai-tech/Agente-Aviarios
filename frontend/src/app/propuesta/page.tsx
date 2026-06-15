@@ -171,6 +171,7 @@ export default function PropuestaPage() {
   const [esCompartida, setEsCompartida] = useState(false);
   const [shareUrl, setShareUrl] = useState("");
   const [shareState, setShareState] = useState<"idle" | "saving" | "copied" | "error">("idle");
+  const [pdfState, setPdfState] = useState<"idle" | "saving" | "error">("idle");
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("id");
@@ -190,6 +191,41 @@ export default function PropuestaPage() {
     } catch { }
     setMounted(true);
   }, []);
+
+  async function exportarPdf() {
+    if (pdfState === "saving") return;
+    setPdfState("saving");
+    try {
+      let id: string | null = null;
+      if (esCompartida) {
+        id = new URLSearchParams(window.location.search).get("id");
+      }
+      if (!id && data) {
+        const res = await fetch("/api/propuestas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(data),
+        });
+        const j = await res.json();
+        if (!j.id) throw new Error("sin id");
+        id = j.id as string;
+      }
+      if (!id) throw new Error("sin id");
+      const pdfRes = await fetch(`/api/pdf?id=${encodeURIComponent(id)}`);
+      if (!pdfRes.ok) throw new Error("pdf error");
+      const blob = await pdfRes.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "propuesta-gyc.pdf";
+      a.click();
+      URL.revokeObjectURL(url);
+      setPdfState("idle");
+    } catch {
+      setPdfState("error");
+      setTimeout(() => setPdfState("idle"), 4000);
+    }
+  }
 
   async function compartir() {
     if (!data || shareState === "saving") return;
@@ -298,11 +334,11 @@ export default function PropuestaPage() {
       {esCompartida ? (
         <header className="share-topbar">
           <img src="/gyc-logo.png" alt="Gómez y Crespo" style={{ height: 34, width: "auto" }} />
-          <button className="topbar-btn" onClick={() => window.print()}>
+          <button className="topbar-btn" onClick={exportarPdf} disabled={pdfState === "saving"}>
             <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
               <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
-            Exportar PDF
+            {pdfState === "saving" ? "Generando PDF…" : pdfState === "error" ? "Error, reintenta" : "Exportar PDF"}
           </button>
         </header>
       ) : (
@@ -316,11 +352,11 @@ export default function PropuestaPage() {
                 </svg>
                 {shareState === "saving" ? "Generando enlace…" : shareState === "copied" ? "Enlace copiado ✓" : shareState === "error" ? "Error, reintenta" : "Compartir enlace"}
               </button>
-              <button className="topbar-btn" onClick={() => window.print()}>
+              <button className="topbar-btn" onClick={exportarPdf} disabled={pdfState === "saving"}>
                 <svg width="11" height="11" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                   <path d="M2 4V1h8v3M2 8H1V5h10v3h-1M3.5 8v3h5V8" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
                 </svg>
-                Exportar PDF
+                {pdfState === "saving" ? "Generando PDF…" : pdfState === "error" ? "Error, reintenta" : "Exportar PDF"}
               </button>
             </>
           }
@@ -466,7 +502,7 @@ export default function PropuestaPage() {
         </section>
 
         {/* ═══════ TU NAVE EN UN VISTAZO (plano) ═══════ */}
-        <section className="section">
+        <section className="section section--plano">
           <div className="sec-head"><span className="kicker">Tu nave en un vistazo</span><span className="rule" /><span className="num-mark">Plano de planta</span></div>
           <p className="nave-intro">Así queda distribuida tu explotación sobre los <strong>{supRound.toLocaleString("es-ES")} m² de nave</strong>: {numModulos} módulos {isAviario ? `de ${nivelesEfectivos} niveles` : "A-Nida"}, pasillos de servicio y yacija libre para el ave.</p>
           <div className="nave-grid">
@@ -868,6 +904,15 @@ const BASE_CSS = `
     .sheet,.glance-grid,.eq-grid,.titleblock,.compliance,.detail-band,.respaldo-row,.chips{break-inside:avoid;}
     .glance-cell,.data-row,.eq-cell,.clave,.detail,.respaldo-cell,.arg-point,.veri-row{break-inside:avoid;}
     h2,.sec-head,.veri-head,.nave-intro{break-after:avoid;}
+
+    /* plano: página completa */
+    .section--plano{padding:6mm 8mm !important;display:flex;flex-direction:column;min-height:297mm;box-sizing:border-box;}
+    .section--plano .sec-head,.section--plano .nave-intro{flex:0 0 auto;}
+    .section--plano .nave-grid{flex:1;display:flex;flex-direction:column;min-height:0;}
+    .section--plano .sheet{flex:1;display:flex;flex-direction:column;min-height:0;}
+    .section--plano .sheet-plano{flex:1;min-height:0;padding:4mm;align-items:stretch;}
+    .section--plano .sheet-plano svg{width:100% !important;height:100% !important;max-height:none !important;}
+    .section--plano .titleblock{flex:0 0 auto;}
   }
 
   @media (prefers-reduced-motion: reduce){

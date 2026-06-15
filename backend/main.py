@@ -287,6 +287,48 @@ def obtener_propuesta(propuesta_id: str):
         return _json.load(f)
 
 
+# ── PDF con Playwright ────────────────────────────────────────────────────────
+
+_FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:3000")
+
+@app.get("/pdf/{propuesta_id}")
+async def exportar_pdf(propuesta_id: str):
+    from fastapi.responses import Response as FastAPIResponse
+    if not _PROPUESTA_ID_RE.match(propuesta_id):
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+    ruta = os.path.join(_PROPUESTAS_DIR, f"{propuesta_id}.json")
+    if not os.path.isfile(ruta):
+        raise HTTPException(status_code=404, detail="Propuesta no encontrada")
+
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise HTTPException(status_code=500, detail="Playwright no instalado. Ejecuta: pip install playwright && playwright install chromium")
+
+    url = f"{_FRONTEND_URL}/propuesta?id={propuesta_id}"
+    async with async_playwright() as p:
+        browser = await p.chromium.launch()
+        page = await browser.new_page()
+        await page.goto(url, wait_until="networkidle", timeout=30000)
+        # Esperar a que el SVG del plano esté renderizado
+        try:
+            await page.wait_for_selector(".sheet-plano svg", timeout=10000)
+        except Exception:
+            pass
+        pdf_bytes = await page.pdf(
+            format="A4",
+            print_background=True,
+            margin={"top": "0mm", "right": "0mm", "bottom": "0mm", "left": "0mm"},
+        )
+        await browser.close()
+
+    return FastAPIResponse(
+        content=pdf_bytes,
+        media_type="application/pdf",
+        headers={"Content-Disposition": f"attachment; filename=propuesta-gyc.pdf"},
+    )
+
+
 class PlanoImagenResponse(BaseModel):
     ancho_m: float | None = None
     largo_m: float | None = None
