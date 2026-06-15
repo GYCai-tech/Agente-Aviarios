@@ -83,6 +83,9 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;backgrou
 .dims-row{display:flex;gap:6px;align-items:center;padding:10px 16px;background:#f7f7f5;border-bottom:1px solid #eee}
 .dims-badge{font-size:12px;font-family:monospace;color:#000823;font-weight:600}
 .dims-sep{color:#bbb;font-size:11px}
+.share-topbar{background:#000823;display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 24px}
+.share-back{display:inline-flex;align-items:center;gap:6px;color:rgba(255,255,255,.85);font-size:12px;font-weight:600;text-decoration:none;border:1px solid rgba(255,255,255,.2);border-radius:4px;padding:5px 12px}
+.share-back:hover{background:rgba(255,255,255,.1)}
 `;
 
 export default function PlanoPage() {
@@ -103,6 +106,7 @@ export default function PlanoPage() {
 
   const [svg, setSvg]           = useState<string>("");
   const [metricas, setMetricas] = useState<Metricas | null>(null);
+  const [idCompartida, setIdCompartida] = useState<string | null>(null);
   const [loading, setLoading]       = useState(false);
   const [error, setError]           = useState<string | null>(null);
   const [scale, setScale]           = useState(0.8);
@@ -145,24 +149,34 @@ export default function PlanoPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [svg]);
 
-  // Leer dims desde localStorage (propuesta previa)
+  // Leer dims desde la propuesta: compartida (?id=) o localStorage
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem("gc_propuesta");
-      if (!raw) return;
-      const data = JSON.parse(raw);
+    function aplicar(data: Record<string, string | number | undefined>) {
       setCfg(prev => ({
         ...prev,
-        ancho_nave_m:  parseFloat(data.ancho_nave) || prev.ancho_nave_m,
-        largo_nave_m:  parseFloat(data.largo_nave) || prev.largo_nave_m,
-        tipo_zona:     data.tipo_zona ?? prev.tipo_zona,
-        sistema:       data.sistema   ?? prev.sistema,
-        nombre_cliente: data.nombre_cliente ?? prev.nombre_cliente,
-        gallinas:      parseInt(data.gallinas) || prev.gallinas,
-        niveles:       parseInt(data.niveles) || 2,
+        ancho_nave_m:  parseFloat(String(data.ancho_nave)) || prev.ancho_nave_m,
+        largo_nave_m:  parseFloat(String(data.largo_nave)) || prev.largo_nave_m,
+        tipo_zona:     (data.tipo_zona as LayoutConfig["tipo_zona"]) ?? prev.tipo_zona,
+        sistema:       (data.sistema as string) ?? prev.sistema,
+        nombre_cliente: (data.nombre_cliente as string) ?? prev.nombre_cliente,
+        gallinas:      parseInt(String(data.gallinas)) || prev.gallinas,
+        niveles:       parseInt(String(data.niveles)) || 2,
       }));
       // Un valor de gallinas heredado de la propuesta se respeta (no se sobrescribe con el máximo)
-      if (parseInt(data.gallinas)) gallinasManual.current = true;
+      if (parseInt(String(data.gallinas))) gallinasManual.current = true;
+    }
+    const id = new URLSearchParams(window.location.search).get("id");
+    if (id) {
+      setIdCompartida(id);
+      fetch(`/api/propuestas?id=${encodeURIComponent(id)}`)
+        .then(r => (r.ok ? r.json() : null))
+        .then(d => { if (d && d.informe) aplicar(d); })
+        .catch(() => { /* noop */ });
+      return;
+    }
+    try {
+      const raw = localStorage.getItem("gc_propuesta");
+      if (raw) aplicar(JSON.parse(raw));
     } catch { /* noop */ }
   }, []);
 
@@ -292,7 +306,14 @@ export default function PlanoPage() {
       <style>{CSS}</style>
       <div className="layout">
 
-        <JourneyHeader activeStep={5} />
+        {idCompartida ? (
+          <header className="share-topbar">
+            <img src="/gyc-logo.png" alt="Gómez y Crespo" style={{ height: 30, width: "auto", display: "block" }} />
+            <a className="share-back" href={`/p/${idCompartida}`}>← Volver a la propuesta</a>
+          </header>
+        ) : (
+          <JourneyHeader activeStep={5} />
+        )}
 
         <div className="body">
 
