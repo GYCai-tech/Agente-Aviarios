@@ -896,8 +896,8 @@ const BASE_CSS = `
     .footer{break-inside:avoid;}
 
     .section{padding:14mm 12mm;}
-    .spread{min-height:297mm;}
-    .spread-media{min-height:0;}
+    .spread{height:297mm;}
+    .spread-media{height:100%;}
     .spread-text{padding:12mm 10mm;}
 
     /* nada se parte por la mitad */
