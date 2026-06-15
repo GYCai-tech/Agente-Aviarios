@@ -47,15 +47,31 @@ const SECTION_LABELS: Record<string, string> = {
   REQUISITOS: "Requisitos adicionales",
 };
 
-function renderMd(text: string): string {
-  return text
-    .replace(/##(\w+)##/g, (_, key) => {
-      const label = SECTION_LABELS[key] ?? key;
-      return `<span class="md-section-label">${label}</span>`;
-    })
+function fmtInline(t: string): string {
+  return t
     .replace(/\*\*(.+?)\*\*/g, "<strong>$1</strong>")
-    .replace(/\*(.+?)\*/g, "<em>$1</em>")
-    .replace(/\n/g, "<br/>");
+    .replace(/\*(.+?)\*/g, "<em>$1</em>");
+}
+
+function renderMd(text: string): string {
+  const lines = text.split('\n');
+  let html = '';
+  let listTag = '';
+  const closeList = () => { if (listTag) { html += `</${listTag}>`; listTag = ''; } };
+  for (const raw of lines) {
+    const line = raw.trim();
+    const secM = line.match(/^##(\w+)##$/);
+    if (secM) { closeList(); const label = SECTION_LABELS[secM[1]] ?? secM[1]; html += `<div class="md-section">${label}</div>`; continue; }
+    const olM = line.match(/^(\d+)\.\s+(.+)/);
+    if (olM) { if (listTag !== 'ol') { closeList(); html += '<ol class="md-ol">'; listTag = 'ol'; } html += `<li>${fmtInline(olM[2])}</li>`; continue; }
+    const ulM = line.match(/^\*\s+(.+)/);
+    if (ulM) { if (listTag !== 'ul') { closeList(); html += '<ul class="md-ul">'; listTag = 'ul'; } html += `<li>${fmtInline(ulM[1])}</li>`; continue; }
+    if (!line) { closeList(); continue; }
+    closeList();
+    html += `<p class="md-p">${fmtInline(line)}</p>`;
+  }
+  closeList();
+  return html;
 }
 
 interface ChatMsg { from: "user" | "bot"; text: string; }
@@ -1391,7 +1407,6 @@ export default function ChatInterface() {
                           {r.valor_minimo.toLocaleString("es-ES")}
                           <span className="req-card-unit"> {r.unidad}</span>
                         </div>
-                        {r.formula && <div className="req-card-formula">{r.formula}</div>}
                       </div>
                     ))}
                     </div>
@@ -1844,7 +1859,6 @@ const CHAT_CSS = `
     margin-top: 0.15rem;
   }
   .req-card-unit { font-size: 0.72rem; font-weight: 400; color: #6b7280; }
-  .req-card-formula { font-size: 0.7rem; color: #bbb; font-style: italic; line-height: 1.4; margin-top: 0.3rem; }
 
   .warn-block { background: #fffdf0; border: 1.5px solid #f5e580; border-radius: 8px; overflow: hidden; margin-bottom: 1.25rem; }
   .warn-head  { padding: 0.8rem 1.1rem; background: #fdf9d6; border-bottom: 1px solid #f0e070; }
@@ -1864,15 +1878,27 @@ const CHAT_CSS = `
   .analysis-head--btn:hover { background: #eaebe8; }
   .analysis-label { font-family: var(--font-display), sans-serif; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--c-body); }
   .analysis-toggle { font-size: 0.75rem; font-weight: 600; color: var(--c-primary); display: flex; align-items: center; white-space: nowrap; flex-shrink: 0; }
-  .analysis-body  { padding: 1.4rem 1.1rem; font-size: 0.95rem; line-height: 1.75; color: var(--c-body); }
-  .analysis-body strong { font-weight: 700; color: var(--c-title); }
+  .analysis-body  { padding: 1.25rem 1.1rem 1.5rem; font-size: 0.88rem; line-height: 1.7; color: #374151; }
+  .analysis-body strong { font-weight: 700; color: #111827; }
   .analysis-body em { font-style: italic; }
-  .md-section-label {
-    display: block; font-family: var(--font-display), sans-serif;
-    font-size: 0.68rem; font-weight: 700; letter-spacing: 0.12em;
-    text-transform: uppercase; color: var(--c-primary);
-    margin-top: 1.4rem; margin-bottom: 0.35rem;
+
+  .md-section {
+    font-family: var(--font-display), sans-serif;
+    font-size: 0.65rem; font-weight: 700; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--c-primary);
+    margin-top: 1.5rem; margin-bottom: 0.6rem;
+    padding-bottom: 0.4rem; border-bottom: 1px solid #e5e7eb;
   }
+  .md-section:first-child { margin-top: 0; }
+  .md-p { margin-bottom: 0.7rem; }
+  .md-p:last-child { margin-bottom: 0; }
+  .md-ol { margin: 0.4rem 0 0.8rem 1rem; display: flex; flex-direction: column; gap: 0.5rem; padding-left: 0.5rem; }
+  .md-ul { margin: 0.3rem 0 0.6rem 0; display: flex; flex-direction: column; gap: 0.3rem; list-style: none; padding: 0; }
+  .md-ol li { font-size: 0.87rem; color: #374151; line-height: 1.6; }
+  .md-ol li::marker { color: var(--c-primary); font-weight: 700; font-size: 0.82rem; }
+  .md-ul li { font-size: 0.87rem; color: #374151; line-height: 1.6; padding-left: 1.1rem; position: relative; }
+  .md-ul li::before { content: "·"; position: absolute; left: 0.3rem; color: var(--c-primary); font-weight: 700; font-size: 1rem; line-height: 1.4; }
+  .md-section-label { display: none; }
 
   .result-footer { font-size: 0.72rem; color: #9ca3af; font-style: italic; padding: 0.1rem 0.2rem; margin-bottom: 0.5rem; }
   .error-box { padding: 1.5rem; background: var(--c-fail-bg); border: 1px solid #f5b8b8; color: var(--c-fail-text); font-size: 0.9rem; text-align: center; margin-bottom: 1.5rem; border-radius: 8px; }
