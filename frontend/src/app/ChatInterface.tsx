@@ -1091,46 +1091,58 @@ export default function ChatInterface() {
               </button>
 
               {/* Resultado factibilidad */}
-              <div className={`fact-box ${factResult.factibilidad.factible ? "is-ok" : "is-fail"}`}>
-                <div className="fact-box-inner">
-                  <div className={`fact-icon ${factResult.factibilidad.factible ? "is-ok" : "is-fail"}`}>
+              <div className={`vrd-card is-${factResult.factibilidad.factible ? "ok" : "fail"}`} role="alert">
+                <div className="vrd-card-head">
+                  <span className="vrd-card-label">Factibilidad</span>
+                  <span className={`vrd-card-badge is-${factResult.factibilidad.factible ? "ok" : "fail"}`}>
+                    {factResult.factibilidad.factible ? "Viable" : "No viable"}
+                  </span>
+                </div>
+                <div className="vrd-card-body">
+                  <div className={`vrd-icon is-${factResult.factibilidad.factible ? "ok" : "fail"}`}>
                     {factResult.factibilidad.factible
-                      ? <svg width="16" height="14" viewBox="0 0 16 14" fill="none" aria-hidden="true"><path d="M1 7l5 5 9-9" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-                      : <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true"><path d="M2 2l10 10M12 2L2 12" stroke="white" strokeWidth="2" strokeLinecap="round"/></svg>
+                      ? <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M4 11l5 5 9-9" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+                      : <svg width="22" height="22" viewBox="0 0 22 22" fill="none" aria-hidden="true"><path d="M5 5l12 12M17 5L5 17" stroke="white" strokeWidth="2.5" strokeLinecap="round"/></svg>
                     }
                   </div>
-                  <div className="fact-text">
-                    <div className="fact-heading">
+                  <div className="vrd-text">
+                    <div className="vrd-main">
                       {factResult.factibilidad.factible ? "Instalación viable" : "Instalación no viable"}
                     </div>
                     <p className="fact-msg">{factResult.factibilidad.mensaje}</p>
                   </div>
                 </div>
+              </div>
 
-                {/* Densidades */}
-                {(() => {
-                  const f = factResult.factibilidad;
-                  const aviarioViable = f.niveles_posibles >= 2;
-                  const cards = [
-                    { label: "Densidad con nidal",   value: f.densidad_actual.toFixed(1),       unit: "gal/m²", warn: f.densidad_actual > f.densidad_max, na: false },
-                    aviarioViable
-                      ? { label: "Densidad con aviario", value: f.densidad_min_aviario.toFixed(1), unit: "gal/m²", warn: f.densidad_min_aviario > f.densidad_max, na: false }
-                      : { label: "Densidad con aviario", value: "N/A", unit: "altura insuficiente", warn: false, na: true },
-                    { label: "Límite normativo",      value: f.densidad_max.toFixed(0),          unit: "gal/m²", warn: false, na: false },
-                  ];
-                  return (
-                    <div className="density-grid">
+              {/* Densidades */}
+              {(() => {
+                const f = factResult.factibilidad;
+                const aviarioViable = f.niveles_posibles >= 2;
+                const cards = [
+                  { label: "Densidad con nidal",   value: f.densidad_actual.toFixed(1),       unit: "gal/m²", warn: f.densidad_actual > f.densidad_max, na: false },
+                  aviarioViable
+                    ? { label: "Densidad con aviario", value: f.densidad_min_aviario.toFixed(1), unit: "gal/m²", warn: f.densidad_min_aviario > f.densidad_max, na: false }
+                    : { label: "Densidad con aviario", value: "N/A", unit: "altura insuficiente", warn: false, na: true },
+                  { label: "Límite normativo",      value: f.densidad_max.toFixed(0),          unit: "gal/m²", warn: false, na: false },
+                ];
+                return (
+                  <div className="vrd-section">
+                    <div className="vrd-section-head">
+                      <span className="vrd-section-label">Densidad de ocupación</span>
+                    </div>
+                    <div className="req-grid">
                       {cards.map(s => (
-                        <div key={s.label} className={`density-card${s.warn ? " is-warn" : ""}${s.na ? " is-na" : ""}`}>
-                          <div className="density-label">{s.label}</div>
-                          <div className={`density-val${s.warn ? " is-warn" : ""}${s.na ? " is-na" : ""}`}>{s.value}</div>
-                          <div className="density-unit">{s.unit}</div>
+                        <div key={s.label} className={`req-card${s.warn ? " is-warn" : ""}${s.na ? " is-na" : ""}`}>
+                          <div className="req-card-name">{s.label}</div>
+                          <div className={`req-card-val${s.warn ? " is-warn" : ""}${s.na ? " is-na" : ""}`}>
+                            {s.value}<span className="req-card-unit"> {s.unit}</span>
+                          </div>
                         </div>
                       ))}
                     </div>
-                  );
-                })()}
-              </div>
+                  </div>
+                );
+              })()}
 
               {/* Recomendaciones de ajuste */}
               {(() => {
@@ -1142,51 +1154,53 @@ export default function ChatInterface() {
                 const gallinasInput = parseInt(mainV.gallinas ?? "0");
                 const superficieInput = parseFloat(mainV.superficie_nave_m2 ?? "0");
                 return (
-                  <div className="adjust-box">
-                    <div className="adjust-box-title">Para cumplir la normativa necesitarías:</div>
+                  <div className="warn-block">
+                    <div className="warn-head">
+                      <span className="warn-label">Para cumplir la normativa necesitarías</span>
+                    </div>
                     {nidal_excede && (
-                      <div className="adjust-section">
-                        <div className="adjust-section-label">Con nidal colectivo</div>
-                        <div className="adjust-grid">
+                      <div className="warn-section">
+                        <div className="warn-section-label">Con nidal colectivo</div>
+                        <div className="req-grid">
                           {f.sup_minima_nidal != null && (
-                            <div className="adjust-card">
-                              <div className="adjust-card-eyebrow">Ampliar la nave a</div>
-                              <div className="adjust-card-val">{f.sup_minima_nidal.toLocaleString("es-ES", { maximumFractionDigits: 1 })}<span className="adjust-card-unit"> m²</span></div>
-                              <div className="adjust-card-sub">+{(f.sup_minima_nidal - superficieInput).toLocaleString("es-ES", { maximumFractionDigits: 1 })} m² sobre los actuales</div>
+                            <div className="req-card">
+                              <div className="req-card-name">Ampliar la nave a</div>
+                              <div className="req-card-val">{f.sup_minima_nidal.toLocaleString("es-ES", { maximumFractionDigits: 1 })}<span className="req-card-unit"> m²</span></div>
+                              <div className="req-card-sub">+{(f.sup_minima_nidal - superficieInput).toLocaleString("es-ES", { maximumFractionDigits: 1 })} m² sobre los actuales</div>
                             </div>
                           )}
                           {f.gallinas_max_nidal != null && f.gallinas_max_nidal > 0 && (
-                            <div className="adjust-card">
-                              <div className="adjust-card-eyebrow">Reducir gallinas a</div>
-                              <div className="adjust-card-val">{f.gallinas_max_nidal.toLocaleString("es-ES")}<span className="adjust-card-unit"> aves</span></div>
-                              <div className="adjust-card-sub">−{(gallinasInput - f.gallinas_max_nidal).toLocaleString("es-ES")} respecto al plan</div>
+                            <div className="req-card">
+                              <div className="req-card-name">Reducir gallinas a</div>
+                              <div className="req-card-val">{f.gallinas_max_nidal.toLocaleString("es-ES")}<span className="req-card-unit"> aves</span></div>
+                              <div className="req-card-sub">−{(gallinasInput - f.gallinas_max_nidal).toLocaleString("es-ES")} respecto al plan</div>
                             </div>
                           )}
                         </div>
                       </div>
                     )}
                     {(avi_excede || avi_no_cabe) && (
-                      <div className="adjust-section">
-                        <div className="adjust-section-label">Con aviario</div>
+                      <div className="warn-section">
+                        <div className="warn-section-label">Con aviario</div>
                         {avi_no_cabe ? (
-                          <p className="adjust-prose">
+                          <p className="warn-text">
                             Para instalar un aviario de 2 niveles necesitas al menos <strong>300 cm</strong> de altura libre.
                             Tu nave tiene <strong>{parseFloat(mainV.altura_nave_cm ?? "0").toLocaleString("es-ES")} cm</strong> — te faltan <strong>{(300 - parseFloat(mainV.altura_nave_cm ?? "0")).toLocaleString("es-ES")} cm</strong>.
                           </p>
                         ) : (
-                          <div className="adjust-grid">
+                          <div className="req-grid">
                             {f.sup_minima_avi != null && (
-                              <div className="adjust-card">
-                                <div className="adjust-card-eyebrow">Ampliar la nave a</div>
-                                <div className="adjust-card-val">{f.sup_minima_avi.toLocaleString("es-ES", { maximumFractionDigits: 1 })}<span className="adjust-card-unit"> m²</span></div>
-                                <div className="adjust-card-sub">+{(f.sup_minima_avi - superficieInput).toLocaleString("es-ES", { maximumFractionDigits: 1 })} m² sobre los actuales</div>
+                              <div className="req-card">
+                                <div className="req-card-name">Ampliar la nave a</div>
+                                <div className="req-card-val">{f.sup_minima_avi.toLocaleString("es-ES", { maximumFractionDigits: 1 })}<span className="req-card-unit"> m²</span></div>
+                                <div className="req-card-sub">+{(f.sup_minima_avi - superficieInput).toLocaleString("es-ES", { maximumFractionDigits: 1 })} m² sobre los actuales</div>
                               </div>
                             )}
                             {f.gallinas_max_avi != null && f.gallinas_max_avi > 0 && (
-                              <div className="adjust-card">
-                                <div className="adjust-card-eyebrow">Reducir gallinas a</div>
-                                <div className="adjust-card-val">{f.gallinas_max_avi.toLocaleString("es-ES")}<span className="adjust-card-unit"> aves</span></div>
-                                <div className="adjust-card-sub">−{(gallinasInput - f.gallinas_max_avi).toLocaleString("es-ES")} respecto al plan</div>
+                              <div className="req-card">
+                                <div className="req-card-name">Reducir gallinas a</div>
+                                <div className="req-card-val">{f.gallinas_max_avi.toLocaleString("es-ES")}<span className="req-card-unit"> aves</span></div>
+                                <div className="req-card-sub">−{(gallinasInput - f.gallinas_max_avi).toLocaleString("es-ES")} respecto al plan</div>
                               </div>
                             )}
                           </div>
@@ -1712,65 +1726,20 @@ const CHAT_CSS = `
   .loading-text { font-size: 0.9rem; color: var(--c-body); font-style: italic; }
 
   /* ── FACTIBILIDAD ── */
-  .fact-box {
-    border: 2px solid; border-radius: 2px;
-    padding: 1.25rem 1.5rem; margin-bottom: 1.5rem;
-  }
-  .fact-box.is-ok   { border-color: var(--c-primary); background: var(--c-ok-bg); }
-  .fact-box.is-fail { border-color: var(--c-fail-text); background: var(--c-fail-bg); }
-  .fact-box-inner { display: flex; align-items: flex-start; gap: 1rem; margin-bottom: 1rem; }
-  .fact-icon {
-    width: 38px; height: 38px; border-radius: 50%; flex-shrink: 0;
-    display: flex; align-items: center; justify-content: center;
-  }
-  .fact-icon.is-ok   { background: var(--c-primary); }
-  .fact-icon.is-fail { background: var(--c-fail-text); }
-  .fact-heading { font-family: var(--font-display), sans-serif; font-weight: 800; font-size: 1rem; color: var(--c-title); margin-bottom: 0.35rem; }
-  .fact-msg { font-size: 0.9rem; color: var(--c-body); line-height: 1.65; margin: 0; }
-  .density-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 0.5rem; margin-top: 0.25rem; }
-  .density-card { background: var(--c-bg); padding: 0.75rem 1rem; border: 1px solid var(--c-border); }
-  .density-card.is-warn { border-color: #f5b8b8; }
-  .density-label { font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700; letter-spacing: 0.08em; text-transform: uppercase; color: var(--c-body); margin-bottom: 0.3rem; }
-  .density-val { font-family: var(--font-mono), monospace; font-weight: 700; font-size: 1.4rem; color: var(--c-title); line-height: 1; }
-  .density-val.is-warn { color: var(--c-fail-text); }
-  .density-val.is-na { font-size: 1rem; color: var(--c-body); }
-  .density-card.is-na { opacity: 0.5; }
-  .density-unit { font-size: 0.72rem; color: var(--c-body); margin-top: 0.15rem; }
+  .fact-msg { font-size: 0.9rem; color: var(--c-body); line-height: 1.65; margin: 0.4rem 0 0; }
+  .req-card.is-warn { background: var(--c-fail-bg); }
+  .req-card-val.is-warn { color: var(--c-fail-text); }
+  .req-card.is-na { opacity: 0.5; }
+  .req-card-val.is-na { font-size: 1rem; color: var(--c-body); }
+  .req-card-sub { font-size: 0.68rem; color: #6b7280; margin-top: 0.3rem; }
 
   /* ── AJUSTE RECOMENDADO ── */
-  .adjust-box {
-    margin-bottom: 1.5rem; padding: 1.1rem 1.25rem;
-    background: #fffbeb; border: 1.5px solid #d4a017; border-radius: 2px;
-  }
-  .adjust-box-title {
-    font-family: var(--font-display), sans-serif; font-size: 0.65rem; font-weight: 700;
-    letter-spacing: 0.1em; text-transform: uppercase; color: #7a5c00; margin-bottom: 0.9rem;
-  }
-  .adjust-section { margin-bottom: 0.85rem; }
-  .adjust-section:last-child { margin-bottom: 0; }
-  .adjust-section-label {
+  .warn-section { padding: 0.85rem 1.1rem; border-bottom: 1px solid #f0e070; }
+  .warn-section:last-child { border-bottom: none; }
+  .warn-section-label {
     font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase; color: #9a7200;
-    margin-bottom: 0.5rem; padding-bottom: 0.3rem; border-bottom: 1px solid #f0d080;
+    letter-spacing: 0.08em; text-transform: uppercase; color: #7a6500; margin-bottom: 0.6rem;
   }
-  .adjust-section-note {
-    font-family: var(--font-display), sans-serif; font-size: 0.6rem; font-weight: 400;
-    letter-spacing: 0; text-transform: none; color: #b08000;
-  }
-  .adjust-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0.6rem; }
-  .adjust-grid--single { grid-template-columns: 1fr; max-width: 50%; }
-  .adjust-card { background: #fff; border: 1px solid #f0d080; padding: 0.75rem 0.9rem; }
-  .adjust-card-eyebrow {
-    font-family: var(--font-display), sans-serif; font-size: 0.55rem; font-weight: 700;
-    letter-spacing: 0.08em; text-transform: uppercase; color: #7a5c00; margin-bottom: 0.3rem;
-  }
-  .adjust-card-val {
-    font-family: var(--font-mono), monospace; font-size: 1.25rem; font-weight: 700;
-    color: var(--c-title); line-height: 1;
-  }
-  .adjust-card-unit { font-size: 0.75rem; font-weight: 400; color: var(--c-body); }
-  .adjust-card-sub { font-size: 0.68rem; color: var(--c-body); margin-top: 0.3rem; }
-  .adjust-prose { font-size: 0.9rem; color: var(--c-body); line-height: 1.65; margin: 0; }
 
   /* ── PREGUNTAS ── */
   .questions-wrap { margin-bottom: 1.5rem; display: flex; flex-direction: column; gap: 0.5rem; }
@@ -2494,11 +2463,9 @@ const CHAT_CSS = `
     .chat-title { font-size: 2.2rem; }
     .mode-grid { grid-template-columns: 1fr; }
     .field-row { grid-template-columns: 1fr; }
-    .adjust-grid--single { max-width: 100%; grid-template-columns: 1fr 1fr; }
   }
   @media (max-width: 420px) {
     .chat-title { font-size: 1.9rem; }
-    .density-grid { grid-template-columns: 1fr 1fr; }
     .check-row { flex-wrap: wrap; }
     .check-vals, .check-diff { font-size: 0.75rem; }
   }
