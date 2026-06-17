@@ -133,13 +133,13 @@ function PlanoEmbed({
 // Sustituir las rutas cuando estén disponibles las imágenes definitivas.
 const FOTOS = {
   aviario: {
-    cover:      "/IMG_9878.JPG",
-    sistema:    "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg",
+    cover: "/IMG_9878.JPG",
+    sistema: "/WhatsApp Image 2026-06-12 at 09.21.11 (9).jpeg",
     materiales: "/WhatsApp Image 2026-06-12 at 09.21.11 (5).jpeg",
   },
   nidal_colectivo: {
-    cover:      "/hero-nidal.jpg",                        // portada nidal
-    sistema:    "/nidal-sistema.jpg",                     // spread "El sistema"
+    cover: "/hero-nidal.jpg",                        // portada nidal
+    sistema: "/nidal-sistema.jpg",                     // spread "El sistema"
     materiales: "/nidal-materiales.jpg",                  // spread "Materiales"
   },
 } as const;
@@ -423,7 +423,7 @@ export default function PropuestaPage() {
             {isAviario ? (
               <>
                 <div className="spread-num">02 — Aviario Industrial</div>
-                <h2 className="spread-h">Más producción por metro cuadrado de suelo, sin ampliar tu nave</h2>
+                <h2 className="spread-h">Maximiza la producción de tu nave.</h2>
                 <p className="spread-p">
                   El aviario de <strong>{nivelesEfectivos} niveles</strong> multiplica la superficie útil disponible por el número de pisos: alojas <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> sobre la misma huella que ocuparías en suelo con un tercio de las gallinas. La recolección automática de huevo en cinta reduce el trabajo operativo diario y garantiza un flujo continuo sin manipulación manual, con menor riesgo de rotura y suciedad.
                 </p>
