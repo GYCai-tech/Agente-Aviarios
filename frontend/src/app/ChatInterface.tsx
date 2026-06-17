@@ -805,14 +805,46 @@ export default function ChatInterface() {
                 </div>
                 <div className="field-row">
                   <div className="field">
-                    <label className="field-label" htmlFor="f-superficie">Superficie útil de la nave</label>
+                    <label className="field-label" htmlFor="f-ancho-c">Ancho de la nave</label>
                     <div className="field-input-wrap">
-                      <input id="f-superficie" type="number" className="field-input field-input--unit" placeholder="200" min={1} step="0.1" required
-                        value={mainV.superficie_nave_m2 ?? ""}
-                        onChange={(e) => setMain((v) => ({ ...v, superficie_nave_m2: e.target.value }))} />
-                      <span className="field-unit">m²</span>
+                      <input id="f-ancho-c" type="number" className="field-input field-input--unit" placeholder="12" min={1} step="0.1" required
+                        value={mainV.ancho_nave_m ?? ""}
+                        onChange={(e) => {
+                          const ancho = e.target.value;
+                          const largo = mainV.largo_nave_m ?? "";
+                          setMain((v) => ({
+                            ...v,
+                            ancho_nave_m: ancho,
+                            superficie_nave_m2: ancho && largo ? String(Math.round(parseFloat(ancho) * parseFloat(largo) * 10) / 10) : v.superficie_nave_m2,
+                          }));
+                        }} />
+                      <span className="field-unit">m</span>
                     </div>
                   </div>
+                  <div className="field">
+                    <label className="field-label" htmlFor="f-largo-c">Largo de la nave</label>
+                    <div className="field-input-wrap">
+                      <input id="f-largo-c" type="number" className="field-input field-input--unit" placeholder="100" min={1} step="0.1" required
+                        value={mainV.largo_nave_m ?? ""}
+                        onChange={(e) => {
+                          const largo = e.target.value;
+                          const ancho = mainV.ancho_nave_m ?? "";
+                          setMain((v) => ({
+                            ...v,
+                            largo_nave_m: largo,
+                            superficie_nave_m2: ancho && largo ? String(Math.round(parseFloat(ancho) * parseFloat(largo) * 10) / 10) : v.superficie_nave_m2,
+                          }));
+                        }} />
+                      <span className="field-unit">m</span>
+                    </div>
+                  </div>
+                </div>
+                {mainV.ancho_nave_m && mainV.largo_nave_m && (
+                  <p className="field-computed">
+                    Superficie: {(parseFloat(mainV.ancho_nave_m) * parseFloat(mainV.largo_nave_m)).toLocaleString("es-ES", { maximumFractionDigits: 0 })} m²
+                  </p>
+                )}
+                <div className="field-row">
                   <div className="field">
                     <label className="field-label" htmlFor="f-altura">Altura libre de la nave</label>
                     <div className="field-input-wrap">
@@ -846,7 +878,7 @@ export default function ChatInterface() {
                 </div>
                 <div className="btn-row">
                   <button type="submit" className="btn-pill"
-                    disabled={!mainV.gallinas || !mainV.sistema || !mainV.superficie_nave_m2 || !mainV.altura_nave_cm}>
+                    disabled={!mainV.gallinas || !mainV.sistema || !mainV.ancho_nave_m || !mainV.largo_nave_m || !mainV.altura_nave_cm}>
                     Calcular
                     <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true"><path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
                   </button>

@@ -388,7 +388,7 @@ export default function PropuestaPage() {
           <div className="cover-foot">
             <div className="cover-eyebrow">Propuesta comercial</div>
             <h1 className="cover-title">
-              {isAviario ? <>Aviario<br /><em>Industrial</em></> : <>A-Nida<br /><em>Colectivo</em></>}
+              {isAviario ? <>Aviario<br /><em></em></> : <>A-Nida<br /><em>Colectivo</em></>}
             </h1>
             <div className="cover-rule" />
             <p className="cover-sub">{coverSub}</p>
@@ -401,7 +401,7 @@ export default function PropuestaPage() {
           {isAviario ? (
             <>
               <h2 className="glance-lede">Una nave, {gallinasInt.toLocaleString("es-ES")} ponedoras, {nivelesEfectivos} niveles de producción.</h2>
-              <p className="lede">El Aviario Industrial convierte tu nave en una planta de producción de alto rendimiento. Aprovecha cada metro cúbico disponible para multiplicar tu capacidad sin ampliar la huella —sin obras de construcción, sin coste adicional de suelo. Recolección automática en cinta, estructura de acero galvanizado y diseño testado en miles de instalaciones durante más de 50 años.</p>
+              <p className="lede">El Aviario convierte tu nave en una planta de producción de alto rendimiento. Aprovecha cada metro cúbico disponible para multiplicar tu capacidad .Recolección automática en cinta, estructura de acero galvanizado y diseño testado en miles de instalaciones durante más de 50 años.</p>
             </>
           ) : (
             <>
@@ -422,7 +422,7 @@ export default function PropuestaPage() {
           <div className="spread-text">
             {isAviario ? (
               <>
-                <div className="spread-num">02 — Aviario Industrial</div>
+                <div className="spread-num">02 — Aviario </div>
                 <h2 className="spread-h">Maximiza la producción de tu nave.</h2>
                 <p className="spread-p">
                   El aviario de <strong>{nivelesEfectivos} niveles</strong> multiplica la superficie útil disponible por el número de pisos: alojas <strong>{gallinasInt.toLocaleString("es-ES")} aves</strong> sobre la misma huella que ocuparías en suelo con un tercio de las gallinas. La recolección automática de huevo en cinta reduce el trabajo operativo diario y garantiza un flujo continuo sin manipulación manual, con menor riesgo de rotura y suciedad.
@@ -453,7 +453,7 @@ export default function PropuestaPage() {
               <>
                 <div className="spread-num">03 — Materiales</div>
                 <h2 className="spread-h">Estructura concebida para entornos intensivos de larga duración</h2>
-                <p className="spread-p">El aviario está fabricado en <strong>acero galvanizado con recubrimiento PosMAC®</strong>: mayor resistencia a la corrosión en ambiente de amoniaco y humedad que el galvanizado convencional, con vida útil superior a 20 años. Los nidos en AstroTurf reducen el huevo sucio y permiten limpiezas rápidas entre ciclos sin desmontar la estructura.</p>
+                <p className="spread-p">El aviario está fabricado en <strong>acero galvanizado con recubrimiento PosMAC®</strong>: mayor resistencia a la corrosión en ambiente de amoniaco y humedad que el galvanizado convencional. Los nidos en AstroTurf reducen el huevo sucio y permiten limpiezas rápidas entre ciclos sin desmontar la estructura.</p>
               </>
             ) : (
               <>
