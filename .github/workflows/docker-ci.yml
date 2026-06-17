@@ -1,0 +1,35 @@
+name: Integración y Despliegue Continuo (Agente Aviario)
+
+on:
+  push:
+    branches: [ "master" ]
+
+jobs:
+  # 🧪 TRABAJO 1: Verificar que el código y el Docker compilan bien en GitHub
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Configurar Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Construir imagen del backend
+        run: docker build -t agente-aviario-backend:ci-test ./backend
+
+      - name: Construir imagen del frontend
+        run: docker build -t agente-aviario-frontend:ci-test ./frontend
+
+  # 🚀 TRABAJO 2: Desplegar directamente en el servidor (self-hosted runner)
+  deploy:
+    runs-on: self-hosted
+    needs: build-and-test # Solo se ejecuta si el build de arriba dio verde ✅
+
+    steps:
+      - name: Actualizar código y relanzar contenedores
+        working-directory: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          git pull origin master
+
+          docker compose up -d --build
