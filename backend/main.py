@@ -393,7 +393,6 @@ class ConsultaLibreResponse(BaseModel):
 @app.post("/consulta-libre", response_model=ConsultaLibreResponse)
 async def consulta_libre(request: ConsultaLibreRequest):
     from agentes.retriever import retriever_context
-    from agentes.reranker import reranking
 
     sistema_label = {
         "suelo": "en suelo", "campero": "campero",
@@ -415,7 +414,6 @@ async def consulta_libre(request: ConsultaLibreRequest):
         api=os.getenv("GOOGLE_API_KEY"),
         collection_name=os.getenv("COLLECTION_NAME", "normativa_aviario"),
     )
-    chunks = reranking(query=query_enriquecida, chunks=chunks)
     contexto = "\n\n".join(c["contenido"] for c in chunks[:6])
 
     system_prompt = (

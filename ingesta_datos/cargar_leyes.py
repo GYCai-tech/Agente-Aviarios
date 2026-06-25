@@ -9,10 +9,11 @@ import uuid
 import logging
 from datetime import date
 
-load_dotenv(dotenv_path=r"C:\Users\santiago.arce\Desktop\Proyectos\Agente Aviario\.env")
+BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+load_dotenv(dotenv_path=os.path.join(BASE_DIR, ".env"))
 
 api = os.getenv("GOOGLE_API_KEY")
-path = r"C:\Users\santiago.arce\Desktop\Proyectos\Agente Aviario\ingesta_datos\documentos_base"
+path = os.path.join(BASE_DIR, "ingesta_datos", "documentos_base")
 
 logging.basicConfig(
     level=logging.INFO,
