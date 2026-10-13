@@ -1,70 +1,30 @@
-# CLAUDE.md — Agente de Ventas Aviario
+# CLAUDE.md — Estudio de nave (Gómez y Crespo)
 
 ## Propósito del Proyecto
 
-Sistema conversacional de ventas para dos productos de avicultura de **Gómez y Crespo**, ambos orientados a la producción de huevos:
+Herramienta **interna** de Gómez y Crespo para preparar propuestas comerciales. El comercial
+introduce los datos de la nave del cliente y obtiene **cálculos de capacidad y cumplimiento
+normativo + plano** de la instalación. No hay IA, RAG ni chat: todo es cálculo determinista.
 
 | Producto | Descripción |
 |---|---|
 | **Nidal Colectivo (A-Nida)** | Sistema de nidales colectivos para alojamiento en suelo/campero/ecológico |
 | **Aviario Industrial** | Sistema de aviario multicuerpo para producción intensiva en altura |
 
-El sistema guía al cliente a través de un cuestionario de intake, determina qué producto es óptimo para su explotación y genera una **propuesta comercial personalizada** con argumentario de ventas.
-
 ---
 
-## Flujo del Algoritmo de Ventas
+## Flujo
 
 ```
-1. INTAKE (preguntas al cliente)
-        ↓
-2. DECISIÓN (Nidal vs Aviario + niveles + módulos)
-        ↓
-3. DIMENSIONAMIENTO (capacidad, superficie, densidad)
-        ↓
-4. ARGUMENTARIO + PROPUESTA COMERCIAL
+1. MÓDULO   → el comercial elige Nidal A-Nida o Aviario
+2. NAVE     → sistema, ancho, largo, altura, parque/pasto, slots, niveles, equipamiento medido
+3. ESTUDIO  → capacidad, densidad, yacija, verificaciones normativas, escenarios
+4. PLANO    → SVG en pantalla · DXF editable (nidal) · exportación a PDF (imprimir)
 ```
 
 ---
 
-## Fase 1 — Preguntas de Intake
-
-El sistema recoge estos datos del cliente en orden lógico:
-
-| # | Variable | Tipo | Por qué se necesita |
-|---|---|---|---|
-| 1 | Número de gallinas | Número | Base de todo el dimensionamiento |
-| 2 | Sistema de producción | Enum: `suelo`, `campero`, `ecologico`, `jaulas` | Determina normativa aplicable y tipo de producto |
-| 3 | Superficie de nave (m²) | Número | Calcula densidad y número de módulos que caben |
-| 4 | Altura libre de nave (cm) | Número | Decide si el aviario es viable (requiere altura mínima) |
-| 5 | ¿Tiene zona exterior? | Booleano | Relevante para campero/ecológico |
-| 6 | Superficie exterior (m²) | Número (opcional) | Solo si tiene exterior |
-
----
-
-## Fase 2 — Lógica de Decisión: Nidal vs Aviario
-
-### Criterios para recomendar **Aviario**
-
-- Sistema `suelo`, `campero` o `ecologico`
-- Altura libre ≥ **300 cm** (mínimo para instalar 2 niveles)
-- Densidad requerida > umbral sin aviario (más gallinas por m² de suelo)
-- Cuando el cliente necesita maximizar capacidad sin ampliar nave
-
-### Criterios para recomendar **Nidal Colectivo**
-
-- Sistema `suelo`, `campero` o `ecologico`
-- Altura libre < 290 cm (no cabe el aviario)
-- Granja de tamaño medio donde la prioridad es el bienestar y acceso al nidal
-- Como complemento al aviario cuando la nave ya tiene aviarios instalados
-
-### Criterios de exclusión de Jaulas
-
-- Sistema `jaulas` → aplicar normativa específica; los productos actuales no aplican directamente.
-
----
-
-## Fase 3 — Dimensionamiento
+## Dimensionamiento
 
 ### Nidal Colectivo A-Nida
 
@@ -129,49 +89,22 @@ densidad_real      = num_gallinas / sup_disp_total
 
 ---
 
-## Fase 4 — Argumentario y Propuesta Comercial
-
-La propuesta generada incluye:
-
-1. **Resumen ejecutivo** — situación del cliente en 2-3 líneas
-2. **Producto recomendado** — con justificación basada en los datos del intake
-3. **Dimensionamiento detallado** — número de módulos, superficie ocupada, densidad resultante
-4. **Cumplimiento normativo** — verificación de densidades según bienestar animal (RD 3/2023 o aplicable)
-5. **Argumentos de venta personalizados** — basados en las restricciones específicas del cliente (altura, superficie, sistema)
-6. **Posibles objeciones y respuestas** — anticipadas según el perfil del cliente
-
-### Argumentos clave por producto
-
-**Nidal A-Nida:**
-- Máximo bienestar animal → cumplimiento normativo asegurado
-- Instalación modular → escalable sin obras
-- Fácil mantenimiento y limpieza
-- Reducción de huevos sucios/rotos en suelo
-
-**Aviario Industrial:**
-- Triplicar/cuadruplicar capacidad sin ampliar la nave
-- Retorno de inversión rápido por densidad
-- Cumple normativas de producción libre de jaulas (campero/ecológico)
-- Estructura de acero galvanizado → vida útil > 20 años
-
----
-
 ## Stack Técnico
 
 | Capa | Tecnología | Función |
 |---|---|---|
-| Frontend | Next.js 14+ (App Router, TypeScript) | Chat conversacional + visualización de propuesta |
-| Backend | FastAPI (Python) | Lógica de negocio: intake, decisión, dimensionamiento |
-| IA | Google Gemini (AI Studio) | Generación del argumentario y propuesta comercial |
-| Vector DB | Qdrant | RAG sobre normativa (bienestar animal, densidades) |
+| Frontend | Next.js 16 (App Router, TypeScript) | Formulario por pasos + resultado del estudio + plano |
+| Backend | FastAPI (Python) | Cálculo de capacidad, aforo, plano SVG y DXF |
 
-### Endpoints principales
+### Endpoints
 
 | Endpoint | Método | Descripción |
 |---|---|---|
-| `/recomendar` | POST | Recibe datos básicos → devuelve Nidal o Aviario + niveles |
-| `/intake` | POST | Dimensionamiento completo + argumentario |
-| `/calcular` | POST | Verificación normativa de la nave |
+| `/estudio` | POST | Estudio técnico de la nave con el módulo elegido |
+| `/aforo-medido` | POST | Aforo a partir de equipamiento medido |
+| `/plano-config` | POST | Plano SVG + métricas a partir de una configuración |
+| `/plano-nidal-dxf` | POST | DXF editable del nidal centrado |
+| `/health` | GET | Health check |
 
 ---
 
@@ -179,38 +112,34 @@ La propuesta generada incluye:
 
 ```
 frontend/src/app/
-├── page.tsx              # Página principal con chat de intake
-├── propuesta/page.tsx    # Visualización de la propuesta comercial
-├── actions.ts            # Server actions: calcularGranja, solicitarIntake, pedirRecomendacion
-└── ChatInterface.tsx     # Componente conversacional
+├── page.tsx                  # Estudio de nave (única pantalla)
+├── estudio-styles.ts         # CSS de la pantalla (incluye estilos de impresión/PDF)
+├── actions.ts                # Server action pedirEstudio + tipos
+└── api/
+    ├── plano-config/         # Proxy a /plano-config
+    └── plano-nidal-dxf/      # Proxy a /plano-nidal-dxf
 
 backend/
-├── main.py               # Endpoints FastAPI
-├── agentes/              # Lógica de agentes LangGraph
-└── schemas/              # Modelos Pydantic
+├── main.py                   # Endpoints FastAPI
+└── agentes/
+    ├── estudio.py            # Fuente de verdad: constantes físicas, límites normativos, capacidad
+    ├── aforo.py              # Aforo por equipamiento medido
+    ├── plano_agent.py        # Generación del plano SVG
+    └── dxf_nidal.py          # Exportación DXF del nidal
 
-ingesta_datos/
-├── cargar_leyes.py       # Carga normativa en Qdrant
-└── ingestar_brief_aviario.py  # Carga brief de productos
+test_calculos_capacidad.py    # Regresión de aforo y coherencia estudio ↔ plano
+test_nidal_calculo_modelo.py  # Modelo de cálculo del nidal
 ```
 
----
-
-## Variables de Entorno
-
-Archivo `.env` en `backend/`:
-
-```env
-GOOGLE_API_KEY=tu_clave_google_ai_studio
-QDRANT_URL=http://localhost:6333
-COLLECTION_NAME=aviario_docs
-```
+Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py`
 
 ---
 
 ## Reglas de Desarrollo
 
-- **Los cálculos de dimensionamiento son fuente de verdad** — no redondear dimensiones de módulos. Usar los valores exactos de la sección de dimensionamiento arriba.
-- **El argumentario lo genera Gemini** — no hardcodear textos de venta en el frontend.
-- **El intake es conversacional** — el frontend no muestra un formulario plano; guía al usuario pregunta a pregunta.
-- **La propuesta es un documento exportable** — el componente de propuesta debe poder imprimirse / exportarse a PDF.
+- **Los cálculos de dimensionamiento son fuente de verdad** — no redondear dimensiones de módulos.
+  Las constantes viven en `backend/agentes/estudio.py`; el resto de módulos las importan de ahí.
+- **Estudio y plano deben coincidir** — módulos, gallinas, yacija y densidad del `/estudio`
+  tienen que ser idénticos a las métricas de `/plano-config` (lo comprueban los tests).
+- **El estudio es un documento exportable** — la pantalla debe poder imprimirse / exportarse a PDF.
+- **Sin dependencias de IA** — no reintroducir Gemini, Qdrant ni LangChain en esta rama.
