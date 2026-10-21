@@ -1,9 +1,10 @@
 name: Despliegue herramienta interna
 
 # Convive con la app de master (docker-ci.yml), que se despliega en DEPLOY_PATH.
-# La herramienta usa su propia copia del repo en una carpeta hermana
-# (<padre de DEPLOY_PATH>/herramienta-interna) y su propio proyecto de compose,
-# así que nunca toca la carpeta ni los contenedores de master.
+# La herramienta usa su propia copia del repo en la carpeta de la variable de
+# Actions HERRAMIENTA_PATH (Settings → Secrets and variables → Actions → Variables)
+# y su propio proyecto de compose, así que nunca toca la carpeta ni los
+# contenedores de master.
 
 on:
   push:
@@ -36,12 +37,15 @@ jobs:
       - name: Actualizar código y relanzar contenedores
         shell: bash
         env:
-          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          DIR: ${{ vars.HERRAMIENTA_PATH }}
         run: |
           set -e
-          DIR="$(dirname "$DEPLOY_PATH")/herramienta-interna"
+          if [ -z "$DIR" ]; then
+            echo "Falta la variable HERRAMIENTA_PATH (carpeta del servidor donde vive la herramienta)" >&2
+            exit 1
+          fi
           if [ ! -d "$DIR/.git" ]; then
-            git clone --branch feat/herramienta-interna "$(git -C "$DEPLOY_PATH" remote get-url origin)" "$DIR"
+            git clone --branch feat/herramienta-interna "https://github.com/${{ github.repository }}.git" "$DIR"
           fi
           cd "$DIR"
           git fetch origin feat/herramienta-interna
