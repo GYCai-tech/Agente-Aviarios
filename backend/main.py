@@ -16,6 +16,8 @@ from agentes.aforo import AforoRequest, AforoResultado, calcular_aforo
 from agentes.estudio import EstudioRequest, EstudioResponse, estudiar_nave
 from agentes.plano_agent import LayoutConfig, LayoutConfigResponse, generar_desde_config
 from agentes.dxf_nidal import generar_dxf_nidal
+from agentes.ficha import (FichaRespuesta, FichaTecnica, aplicar_ficha, cargar_ficha,
+                           guardar_ficha, respuesta as respuesta_ficha, restablecer_ficha)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -23,6 +25,9 @@ logging.basicConfig(
 )
 
 app = FastAPI(title="Gómez y Crespo — Cálculo de naves")
+
+# Medidas y equipamiento de los módulos: la ficha guardada manda sobre los valores por defecto
+aplicar_ficha(cargar_ficha())
 
 app.add_middleware(
     CORSMiddleware,
@@ -64,6 +69,24 @@ def plano_nidal_dxf(request: LayoutConfig):
     nombre = f"nidal_centrado_{request.largo_nave_m:.2f}x{request.ancho_nave_m:.2f}m.dxf"
     return Response(content=contenido, media_type="application/dxf",
                     headers={"Content-Disposition": f'attachment; filename="{nombre}"'})
+
+
+@app.get("/ficha", response_model=FichaRespuesta)
+def ficha():
+    """Ficha técnica vigente, la de fábrica y los límites normativos (solo lectura)."""
+    return respuesta_ficha()
+
+
+@app.put("/ficha", response_model=FichaRespuesta)
+def ficha_guardar(request: FichaTecnica):
+    guardar_ficha(request)
+    return respuesta_ficha()
+
+
+@app.post("/ficha/restablecer", response_model=FichaRespuesta)
+def ficha_restablecer():
+    restablecer_ficha()
+    return respuesta_ficha()
 
 
 @app.get("/health")

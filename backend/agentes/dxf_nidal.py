@@ -6,7 +6,7 @@ from io import StringIO
 import ezdxf
 from ezdxf import units
 
-from agentes.estudio import NIDAL_ANCHO, NIDAL_EQUIP, NIDAL_LARGO, NIDAL_TENSOR
+import agentes.estudio as _E   # medidas del nidal según la ficha técnica vigente
 from agentes.plano_agent import LayoutConfig, generar_desde_config
 
 
@@ -15,7 +15,7 @@ _LAYERS = {
     "NIDAL": (1, "CONTINUOUS"),
     "SLAT_IZQ": (6, "CONTINUOUS"),
     "SLAT_DER": (6, "CONTINUOUS"),
-    "RESERVA_TENSOR": (2, "DASHED"),
+    "TENSOR": (2, "CONTINUOUS"),
     "LOCAL_PROPUESTO": (8, "DASHED"),
     "COTAS": (3, "CONTINUOUS"),
     "ROTULOS": (7, "CONTINUOUS"),
@@ -68,12 +68,11 @@ def generar_dxf_nidal(config: LayoutConfig) -> bytes:
 
     largo, ancho = config.largo_nave_m, config.ancho_nave_m
     n = resultado.metricas.total_modulos
-    # En el SVG el eje incluye primero la habitación exterior (offset de 4 m).
-    # En el DXF el origen queda en la esquina interior de la nave: la cadena
-    # empieza en X=0 y el local ocupa de -4 a 0 m.
-    x_cadena = 0.0
+    # En el DXF el origen queda en la esquina interior de la nave. Con el local
+    # exterior la cadena empieza en X=0 y el local ocupa de -4 a 0 m; con el
+    # local dentro, el local ocupa la cabecera y la cadena empieza tras él.
+    x_cadena = geo.cadena_inicio_x_m
     x_fin_cadena = x_cadena + geo.cadena_largo_m
-    x_fin_tensor = x_fin_cadena + NIDAL_TENSOR
 
     doc = ezdxf.new("R2010", setup=True, units=units.M)
     doc.header["$MEASUREMENT"] = 1
@@ -94,30 +93,38 @@ def generar_dxf_nidal(config: LayoutConfig) -> bytes:
         _rect(msp, layer, x0, y0, x1, y0 + depth)
 
     for i in range(n):
-        x0 = x_cadena + i * NIDAL_LARGO
-        x1 = x0 + NIDAL_LARGO
+        x0 = x_cadena + i * _E.NIDAL_LARGO
+        x1 = x0 + _E.NIDAL_LARGO
         cad_rect("SLAT_IZQ", x0, x1, geo.slat_izq_y_m, config.slot_izq_m)
-        cad_rect("NIDAL", x0, x1, geo.cuerpo_y_m, NIDAL_ANCHO)
+        cad_rect("NIDAL", x0, x1, geo.cuerpo_y_m, _E.NIDAL_ANCHO)
         cad_rect("SLAT_DER", x0, x1, geo.slat_der_y_m, config.slot_der_m)
 
-    # Reserva rectangular de 3 m para el tensor, dibujada como esquema de posición.
-    cad_rect("RESERVA_TENSOR", x_fin_cadena, x_fin_tensor,
-             geo.slat_izq_y_m, geo.conjunto_fin_y_m - geo.slat_izq_y_m)
+    # Rodillo tensor al final de la cadena, como en el SVG: diámetro igual a la
+    # profundidad del cuerpo. Hasta la pared del fondo el suelo queda libre.
+    radio_tensor = _E.NIDAL_ANCHO / 2
+    msp.add_circle((x_fin_cadena + radio_tensor, ancho - geo.cuerpo_y_m - radio_tensor),
+                   radio_tensor, dxfattribs={"layer": "TENSOR"})
 
-    # Habitación exterior de 4 × 4 m que ya aparece en el plano; se identifica
-    # como propuesta porque su dimensión debe cotejarse con el proyecto de obra.
-    cy = ancho - (geo.cuerpo_y_m + 0.7)
-    _rect(msp, "LOCAL_PROPUESTO", -4, cy - 2, 0, cy + 2)
+    # Local técnico cuadrado que ya aparece en el plano; se identifica como
+    # propuesta porque su dimensión debe cotejarse con el proyecto de obra.
+    lado = _E.NIDAL_EQUIP
+    cy = ancho - (geo.cuerpo_y_m + _E.NIDAL_ANCHO / 2)
+    x_local = 0.0 if config.local_dentro else -lado
+    if config.local_dentro:
+        # Dentro de la nave el local se cierra de pared a pared
+        _rect(msp, "LOCAL_PROPUESTO", x_local, 0, x_local + lado, ancho)
+    else:
+        _rect(msp, "LOCAL_PROPUESTO", x_local, cy - lado / 2, x_local + lado, cy + lado / 2)
 
     # Cotas DXF editables; valores medidos por geometría, no textos aproximados.
     _dimension(msp, (0, ancho), (largo, ancho), (largo / 2, ancho + 2.2), angle=0)
+    if x_cadena > 0:
+        _dimension(msp, (0, ancho), (x_cadena, ancho), (x_cadena / 2, ancho + 1.2), angle=0)
     _dimension(msp, (x_cadena, ancho), (x_fin_cadena, ancho),
-               (x_fin_cadena / 2, ancho + 1.2), angle=0)
-    _dimension(msp, (x_fin_cadena, ancho), (x_fin_tensor, ancho),
-               ((x_fin_cadena + x_fin_tensor) / 2, ancho + 1.2), angle=0)
-    if geo.libre_fondo_m > 0.005:
-        _dimension(msp, (x_fin_tensor, 0), (largo, 0),
-                   ((x_fin_tensor + largo) / 2, -1.2), angle=0)
+               ((x_cadena + x_fin_cadena) / 2, ancho + 1.2), angle=0)
+    if largo - x_fin_cadena > 0.005:
+        _dimension(msp, (x_fin_cadena, ancho), (largo, ancho),
+                   ((x_fin_cadena + largo) / 2, ancho + 1.2), angle=0)
     _dimension(msp, (0, 0), (0, ancho), (-2.0, ancho / 2), angle=90)
 
     # Desglose transversal que deja visible que el conjunto está centrado.
@@ -137,8 +144,10 @@ def generar_dxf_nidal(config: LayoutConfig) -> bytes:
         dxfattribs={"layer": "ROTULOS", "height": 0.16, "insert": (0, ancho + 3.1)},
     )
     msp.add_text(
-        "LOCAL 4x4 m PROPUESTO | RESERVA TENSOR 3 m ESQUEMATICA",
-        dxfattribs={"layer": "ROTULOS", "height": 0.15, "insert": (-4, cy - 2.35)},
+        (f"LOCAL TECNICO {lado:g}x{ancho:g} m DENTRO DE LA NAVE" if config.local_dentro
+         else f"LOCAL {lado:g}x{lado:g} m PROPUESTO (ANEXO EXTERIOR)") + " | TENSOR AL FINAL DE LA CADENA",
+        dxfattribs={"layer": "ROTULOS", "height": 0.15,
+                    "insert": (x_local, -0.6 if config.local_dentro else cy - lado / 2 - 0.35)},
     )
     msp.add_text(
         "ORIGEN (0,0) EN ESQUINA INTERIOR | X: LARGO | Y: ANCHO | UNIDADES: METROS",

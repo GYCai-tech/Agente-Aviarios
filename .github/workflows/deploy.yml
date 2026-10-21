@@ -1,0 +1,22 @@
+name: Deploy a servidor
+
+on:
+  push:
+    branches:
+      - master
+
+jobs:
+  deploy:
+    # Corre en el runner self-hosted instalado en el propio servidor (red interna 10.0.0.0/24).
+    # No usa SSH ni actions/checkout: el código ya vive en el servidor, solo se actualiza.
+    runs-on: self-hosted
+    steps:
+      - name: Actualizar código y reconstruir contenedores
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -e
+          cd "$DEPLOY_PATH"
+          git fetch origin master
+          git reset --hard origin/master
+          docker compose up -d --build

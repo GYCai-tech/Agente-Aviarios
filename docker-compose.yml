@@ -8,6 +8,9 @@ services:
       - "8080:8000"
     environment:
       - FRONTEND_URL=http://frontend:3000
+    volumes:
+      # Ficha técnica editada desde la app (persiste entre despliegues)
+      - ./backend/datos:/app/datos
     restart: unless-stopped
 
   frontend:

@@ -104,6 +104,8 @@ densidad_real      = num_gallinas / sup_disp_total
 | `/aforo-medido` | POST | Aforo a partir de equipamiento medido |
 | `/plano-config` | POST | Plano SVG + métricas a partir de una configuración |
 | `/plano-nidal-dxf` | POST | DXF editable del nidal centrado |
+| `/ficha` | GET / PUT | Ficha técnica (medidas y equipamiento por módulo) + normativa en solo lectura |
+| `/ficha/restablecer` | POST | Vuelve a los valores de fábrica |
 | `/health` | GET | Health check |
 
 ---
@@ -112,7 +114,9 @@ densidad_real      = num_gallinas / sup_disp_total
 
 ```
 frontend/src/app/
-├── page.tsx                  # Estudio de nave (única pantalla)
+├── page.tsx                  # Estudio de nave
+├── ficha/page.tsx            # Ficha técnica editable
+├── Cabecera.tsx              # Cabecera con pestañas Estudio / Ficha técnica
 ├── estudio-styles.ts         # CSS de la pantalla (incluye estilos de impresión/PDF)
 ├── actions.ts                # Server action pedirEstudio + tipos
 └── api/
@@ -122,24 +126,63 @@ frontend/src/app/
 backend/
 ├── main.py                   # Endpoints FastAPI
 └── agentes/
-    ├── estudio.py            # Fuente de verdad: constantes físicas, límites normativos, capacidad
+    ├── estudio.py            # Motor de cálculo; constantes de producto = valores de fábrica de la ficha
+    ├── ficha.py              # Ficha técnica: carga/guarda backend/datos/ficha_tecnica.json y la aplica
     ├── aforo.py              # Aforo por equipamiento medido
     ├── plano_agent.py        # Generación del plano SVG
     └── dxf_nidal.py          # Exportación DXF del nidal
 
 test_calculos_capacidad.py    # Regresión de aforo y coherencia estudio ↔ plano
 test_nidal_calculo_modelo.py  # Modelo de cálculo del nidal
+test_ficha_tecnica.py         # La ficha editada gobierna estudio y plano
 ```
 
-Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py`
+Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py`
 
 ---
 
 ## Reglas de Desarrollo
 
 - **Los cálculos de dimensionamiento son fuente de verdad** — no redondear dimensiones de módulos.
-  Las constantes viven en `backend/agentes/estudio.py`; el resto de módulos las importan de ahí.
+  Los valores de fábrica viven en `backend/agentes/estudio.py`; la ficha técnica editada
+  (`/ficha`, guardada en `backend/datos/`) los sobrescribe en tiempo de ejecución. Por eso
+  plano y DXF leen `agentes.estudio.X` en tiempo de llamada: nunca copiar esas constantes al
+  importar ni usarlas como valor por defecto de un argumento o campo Pydantic.
+- **Nada de medidas escritas a mano en el frontend** — lo que dependa del módulo se lee de la ficha.
 - **Estudio y plano deben coincidir** — módulos, gallinas, yacija y densidad del `/estudio`
   tienen que ser idénticos a las métricas de `/plano-config` (lo comprueban los tests).
 - **El estudio es un documento exportable** — la pantalla debe poder imprimirse / exportarse a PDF.
 - **Sin dependencias de IA** — no reintroducir Gemini, Qdrant ni LangChain en esta rama.
+- **Diseño** — sigue `design-system/estudio-de-nave/MASTER.md` (generado con el plugin ui-ux-pro-max):
+  paleta navy + emerald, Outfit / Work Sans, iconos Lucide. Los tokens viven en `estudio-styles.ts`.
+
+---
+
+## Estética del frontend
+
+Estas pautas **complementan** la regla de diseño anterior: el sistema de
+`design-system/estudio-de-nave/MASTER.md` (paleta, tipografías, tokens, iconos Lucide,
+contraste ≥ 4,5:1) sigue siendo la base y manda en caso de conflicto. Las pautas de abajo
+se aplican en lo que el sistema no fija: fondos con atmósfera y profundidad, una carga de
+página bien orquestada, micro-interacciones y evitar patrones genéricos. Toda animación
+respeta `prefers-reduced-motion` y nada decorativo debe salir en la exportación a PDF.
+
+<frontend_aesthetics>
+You tend to converge toward generic, "on distribution" outputs. In frontend design, this creates what users call the "AI slop" aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight. Focus on:
+
+Typography: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics.
+
+Color & Theme: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. Draw from IDE themes and cultural aesthetics for inspiration.
+
+Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions.
+
+Backgrounds: Create atmosphere and depth rather than defaulting to solid colors. Layer CSS gradients, use geometric patterns, or add contextual effects that match the overall aesthetic.
+
+Avoid generic AI-generated aesthetics:
+- Overused font families (Inter, Roboto, Arial, system fonts)
+- Clichéd color schemes (particularly purple gradients on white backgrounds)
+- Predictable layouts and component patterns
+- Cookie-cutter design that lacks context-specific character
+
+Interpret creatively and make unexpected choices that feel genuinely designed for the context. Vary between light and dark themes, different fonts, different aesthetics. You still tend to converge on common choices (Space Grotesk, for example) across generations. Avoid this: it is critical that you think outside the box!
+</frontend_aesthetics>

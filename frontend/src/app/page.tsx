@@ -1,8 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { flushSync } from "react-dom";
+import { ArrowLeft, ArrowRight, Check, Download, Layers, Minus, Printer, Rows3, X } from "lucide-react";
+import Link from "next/link";
+import gsap from "gsap";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   pedirEstudio,
+  obtenerFicha,
+  type FichaTecnica,
   type EstudioResponse,
   type EstudioRequest,
   type EquipamientoMedido,
@@ -10,8 +17,12 @@ import {
   type TipoZona,
 } from "./actions";
 import { ESTUDIO_CSS } from "./estudio-styles";
+import Cabecera from "./Cabecera";
 
 type Paso = "modulo" | "nave" | "estudio";
+// Versión del estudio: la del cliente resume capacidad, cumplimiento, plano y
+// equipamiento; la técnica añade límites, escenarios y parámetros de cálculo.
+type Version = "cliente" | "tecnica";
 
 const SISTEMAS: { value: Sistema; label: string }[] = [
   { value: "suelo",     label: "Suelo (indoor)" },
@@ -32,6 +43,8 @@ interface FormState {
   slotDer: number;
   pasoIzq: string;
   pasoDer: string;
+  localDentro: boolean;
+  libreFondo: string;
   niveles: "auto" | "2" | "3";
 }
 
@@ -46,20 +59,129 @@ const FORM_INICIAL: FormState = {
   slotDer: 3,
   pasoIzq: "1",
   pasoDer: "1",
+  localDentro: false,
+  libreFondo: "",
   niveles: "auto",
 };
 
-const CUERPO_PROF = 1.4;   // m — profundidad del cuerpo del módulo A-Nida
+const ICON_SM = 16;     // icono en línea con texto
+const ICON_LG = 24;     // icono destacado
+const ICON_STROKE = 1.75;
+
 const PASO_PARED_DEF = 1.0;   // m — paso libre por defecto entre el slat y cada pared
+
+// Nombres legibles de los criterios que devuelve el backend como `limitante`
+const LIMITANTES: Record<string, string> = {
+  densidad:                    "Densidad máxima",
+  modulos_instalados:          "Capacidad de los módulos",
+  capacidad_modulos:           "Capacidad de los módulos",
+  perchas:                     "Metros de percha",
+  nidales:                     "Superficie de nidal",
+  comederos_lineales:          "Comedero lineal",
+  bebederos:                   "Bebederos",
+  yacija_por_ave:              "Yacija por ave",
+  yacija_suelo:                "Yacija ≥ 1/3 del suelo",
+  pasto:                       "Superficie de pasto",
+  salidas:                     "Salidas / trampillas al exterior",
+  tope_gallinas_por_gallinero: "Tope ecológico por compartimento",
+  limite_ecologico:            "Tope ecológico por compartimento",
+};
+
+// Color de la etiqueta de origen en "Parámetros de cálculo"
+const ORIGEN_TAG: Record<string, string> = {
+  "Ficha técnica": "is-info",
+  "Medido": "is-ok",
+  "Pendiente de medir": "is-warn",
+  "Datos de la nave": "is-neutral",
+  "Normativa": "is-neutral",
+};
+
+function nombreLimitante(codigo: string): string {
+  return codigo
+    .split(",")
+    .map((c) => c.trim())
+    .filter(Boolean)
+    .map((c) => LIMITANTES[c] ?? c.replaceAll("_", " "))
+    .join(" + ");
+}
+
+interface FilaCumplimiento {
+  nombre: string;
+  detalle?: string;
+  pie: string;
+  valor: string;
+  limite: string;
+  cumple: boolean;
+}
+
+const num = (v: number) => v.toLocaleString("es-ES", { maximumFractionDigits: 2 });
+
+// Tabla de cumplimiento: la técnica muestra todas las verificaciones; la del
+// cliente se queda en yacija, densidad, módulos y el equipamiento de la instalación.
+function filasCumplimiento(r: EstudioResponse, cliente: boolean): FilaCumplimiento[] {
+  const verif = (cliente
+    ? r.verificaciones.filter((v) => v.parametro === "Superficie de yacija" || v.parametro === "Densidad de alojamiento")
+    : r.verificaciones
+  ).map((v) => ({
+    nombre: v.parametro,
+    detalle: cliente ? undefined : v.detalle,
+    pie: v.articulo,
+    valor: `${num(v.valor_real)} ${v.unidad}`,
+    limite: `${v.tipo_limite === "maximo" ? "≤ " : "≥ "}${num(v.valor_limite)} ${v.unidad}`,
+    cumple: v.cumple,
+  }));
+  if (!cliente) return verif;
+  const modulos: FilaCumplimiento[] = r.max_modulos_fisicos > 0 ? [{
+    nombre: "Módulos instalados",
+    pie: r.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal colectivo A-Nida",
+    valor: `${r.num_modulos} módulos`,
+    limite: "",
+    cumple: r.num_modulos <= r.max_modulos_fisicos,
+  }] : [];
+  const equipo = r.equipamiento.map((e) => ({
+    nombre: e.nombre,
+    pie: e.origen,
+    valor: `${num(e.previsto)} ${e.unidad}`,
+    limite: `≥ ${num(e.minimo)} ${e.unidad}`,
+    cumple: e.cumple,
+  }));
+  return [...verif, ...modulos, ...equipo];
+}
 
 export default function EstudioPage() {
   const [paso, setPaso]       = useState<Paso>("modulo");
   const [zona, setZona]       = useState<TipoZona | null>(null);
   const [form, setForm]       = useState<FormState>(FORM_INICIAL);
   const [res, setRes]         = useState<EstudioResponse | null>(null);
+  const [ficha, setFicha]     = useState<FichaTecnica | null>(null);
   const [svg, setSvg]         = useState<string>("");
   const [descargandoDxf, setDescargandoDxf] = useState(false);
   const [cargando, setCarga]  = useState(false);
+  const [version, setVersion] = useState<Version>("cliente");
+  const esCliente = version === "cliente";
+  const resultadoRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    obtenerFicha().then((r) => { if (r.ok) setFicha(r.data.ficha); });
+  }, []);
+
+  // Motion del design system: scroll reveal sutil (opacity 0 → 1, y 12 px, 350 ms, power1.out).
+  // Con prefers-reduced-motion no se anima y el contenido aparece en su estado final.
+  useEffect(() => {
+    const raiz = resultadoRef.current;
+    if (!raiz || !res) return;
+    gsap.registerPlugin(ScrollTrigger);
+    const mm = gsap.matchMedia();
+    mm.add("(prefers-reduced-motion: no-preference)", () => {
+      raiz.querySelectorAll<HTMLElement>(".est-kpis, .est-limit, .est-block, .est-panel, .est-footer-bar").forEach((el) => {
+        gsap.from(el, {
+          opacity: 0, y: 12, duration: 0.35, ease: "power1.out",
+          scrollTrigger: { trigger: el, start: "top 90%", toggleActions: "play none none reverse" },
+        });
+      });
+    });
+    return () => mm.revert();
+  }, [res]);
   const [error, setError]     = useState<string | null>(null);
   const [mediciones, setMediciones] = useState<Record<string, string>>({});
   const equipamiento: EquipamientoMedido = form.sistema === "ecologico" ? {} : Object.fromEntries(
@@ -72,7 +194,8 @@ export default function EstudioPage() {
   const altura  = parseFloat(form.altura);
   const superficie = ancho > 0 && largo > 0 ? ancho * largo : 0;
 
-  const profTotal = CUERPO_PROF + form.slotIzq + form.slotDer;
+  const cuerpoProf = ficha?.nidal.fondo_cuerpo_m ?? 1.4;   // m — fondo del cuerpo A-Nida (ficha técnica)
+  const profTotal = cuerpoProf + form.slotIzq + form.slotDer;
   // Paso libre mínimo en cada lado; la distribución mantiene el nidal centrado.
   const leerPaso = (v: string) => (v === "" ? PASO_PARED_DEF : Math.max(0, parseFloat(v) || 0));
   const pasoIzqM    = leerPaso(form.pasoIzq);
@@ -80,6 +203,17 @@ export default function EstudioPage() {
   const pasoMinimo = Math.max(pasoIzqM, pasoDerM);
   const anchoMinimo = profTotal + 2 * pasoMinimo;
   const slotsInvalidos = esNidal && form.slotIzq + form.slotDer === 0;
+
+  // Reparto a lo largo: [local técnico si va dentro] + módulos + libre al fondo (tensor incluido)
+  const moduloLargo = ficha?.nidal.largo_modulo_m ?? 1.2;
+  const localLargo  = ficha?.nidal.local_tecnico_m ?? 4;
+  const tensorLargo = ficha?.nidal.tensor_m ?? 3;
+  const libreFondoM = form.libreFondo === "" ? tensorLargo : Math.max(0, parseFloat(form.libreFondo) || 0);
+  const libreCorto  = esNidal && libreFondoM < tensorLargo - 1e-6;
+  const largoCadena = largo - (form.localDentro ? localLargo : 0) - libreFondoM;
+  const modulosLargo = largo > 0 && largoCadena >= moduloLargo - 1e-9
+    ? Math.floor(largoCadena / moduloLargo + 1e-9) : 0;
+  const sobranteLargo = largo > 0 ? largoCadena - modulosLargo * moduloLargo : 0;
   const profExcedida   = esNidal && ancho > 0 && anchoMinimo > ancho;
 
   // Esquema de sección: el dibujo se escala sobre el mayor entre el ancho de nave
@@ -98,13 +232,13 @@ export default function EstudioPage() {
   const segmentos: { k: string; cls: string; m: number; label: string }[] = [
     ...(pasoGraf > 0 ? [{ k: "pi", cls: "is-paso", m: pasoGraf, label: "paso" }] : []),
     ...(form.slotIzq > 0 ? [{ k: "si", cls: "is-slot", m: form.slotIzq, label: "slot" }] : []),
-    { k: "cu", cls: "is-cuerpo", m: CUERPO_PROF, label: "nidal" },
+    { k: "cu", cls: "is-cuerpo", m: cuerpoProf, label: "nidal" },
     ...(form.slotDer > 0 ? [{ k: "sd", cls: "is-slot", m: form.slotDer, label: "slot" }] : []),
     ...(pasoGraf > 0 ? [{ k: "pd", cls: "is-paso", m: pasoGraf, label: "paso" }] : []),
   ];
 
   const formListo =
-    ancho > 0 && largo > 0 && altura > 0 && !slotsInvalidos && !profExcedida;
+    ancho > 0 && largo > 0 && altura > 0 && !slotsInvalidos && !profExcedida && !libreCorto;
 
   function set<K extends keyof FormState>(k: K, v: FormState[K]) {
     setForm((f) => ({ ...f, [k]: v }));
@@ -124,6 +258,8 @@ export default function EstudioPage() {
       slot_der_m: form.slotDer,
       paso_izq_m: pasoIzqM,
       paso_der_m: pasoDerM,
+      local_dentro: esNidal && form.localDentro,
+      libre_fondo_m: esNidal && form.libreFondo !== "" ? libreFondoM : null,
       niveles: !esNidal && form.niveles !== "auto" ? parseInt(form.niveles) : null,
       ...overrides,
     };
@@ -143,6 +279,8 @@ export default function EstudioPage() {
       sup_pasto_m2: form.pasto !== "" ? Number(form.pasto) : undefined,
       paso_izq_m: r.paso_izq_m,
       paso_der_m: r.paso_der_m,
+      local_dentro: r.local_dentro,
+      libre_fondo_m: r.tipo_zona === "nidal_colectivo" ? r.libre_fondo_m : null,
       pasillo_m: 1.0,
       clearance_lateral_m: 4,
       gallinas: r.gallinas_max,
@@ -152,7 +290,7 @@ export default function EstudioPage() {
         : 0,
       slot_izq_m: r.slot_izq_m,
       slot_der_m: r.slot_der_m,
-      nombre_cliente: "Estudio de nave — uso interno",
+      nombre_cliente: "Estudio de nave",
     };
   }
 
@@ -224,38 +362,48 @@ export default function EstudioPage() {
 
   const pasoIdx = paso === "modulo" ? 0 : paso === "nave" ? 1 : 2;
 
+  // Se renderiza la versión pedida antes de abrir el diálogo de impresión
+  function exportar(v: Version) {
+    flushSync(() => setVersion(v));
+    window.print();
+  }
+
+  const filas = res ? filasCumplimiento(res, esCliente) : [];
+  const codigosLimitante = (res?.limitante ?? "").split(",").map((c) => c.trim()).filter(Boolean);
+  const limitesOrdenados = [...(res?.aforo?.limites ?? [])].sort((a, b) => a.gallinas - b.gallinas);
+  const limitesActivos = limitesOrdenados.filter((l) => codigosLimitante.includes(l.criterio));
+  const siguienteLimite = limitesOrdenados.find((l) => res && l.gallinas > res.gallinas_max);
+
   return (
     <>
       <style>{ESTUDIO_CSS}</style>
 
-      <header className="est-top">
-        <div className="est-top-inner">
-          <img src="/gyc-logo.png" alt="Gómez y Crespo" className="est-logo" />
-          <span className="est-top-tag">Uso interno</span>
-          <span className="est-top-title">Estudio de nave</span>
-        </div>
-      </header>
-
-      <nav className="est-steps" aria-label="Progreso del estudio">
-        {["Módulo", "Nave", "Estudio"].map((label, i) => {
-          const clicable = i < pasoIdx;
-          const cls = i < pasoIdx ? "is-done is-link" : i === pasoIdx ? "is-active" : "";
-          return (
-            <span key={label} style={{ display: "inline-flex", alignItems: "center", gap: "0.6rem" }}>
-              {i > 0 && <span className="est-step-sep">/</span>}
-              <button
-                className={`est-step ${cls}`}
-                disabled={!clicable}
-                onClick={() => clicable && setPaso(i === 0 ? "modulo" : "nave")}
-                aria-current={i === pasoIdx ? "step" : undefined}
-              >
-                <span className="est-step-num">{i + 1}</span>
-                {label}
-              </button>
-            </span>
-          );
-        })}
-      </nav>
+      <Cabecera activa="estudio">
+          <nav className="est-steps" aria-label="Progreso del estudio">
+            {["Módulo", "Nave", "Estudio"].map((label, i) => {
+              const clicable = i < pasoIdx;
+              const cls = i < pasoIdx ? "is-done is-link" : i === pasoIdx ? "is-active" : "";
+              return (
+                <span key={label} className="est-step-item">
+                  {i > 0 && <span className="est-step-sep" aria-hidden="true" />}
+                  <button
+                    className={`est-step ${cls}`}
+                    disabled={!clicable}
+                    onClick={() => clicable && setPaso(i === 0 ? "modulo" : "nave")}
+                    aria-current={i === pasoIdx ? "step" : undefined}
+                  >
+                    <span className="est-step-num">
+                      {i < pasoIdx ? (
+                        <Check size={12} strokeWidth={2.25} aria-hidden="true" />
+                      ) : i + 1}
+                    </span>
+                    <span className="est-step-label">{label}</span>
+                  </button>
+                </span>
+              );
+            })}
+          </nav>
+      </Cabecera>
 
       <main className="est-main">
         {/* ── Paso 1 — elección de módulo ── */}
@@ -265,43 +413,39 @@ export default function EstudioPage() {
             <h1 className="est-h">¿Qué módulo quieres estudiar?</h1>
             <p className="est-sub">
               El estudio parte del producto ya elegido y calcula qué da de sí la nave:
-              módulos, capacidad, densidad, yacija y cumplimiento normativo. Sin argumentario de venta.
+              módulos, capacidad, densidad, yacija y cumplimiento normativo.
             </p>
             <div className="est-mod-grid">
               <button className="est-mod-card" onClick={() => { setZona("aviario"); setPaso("nave"); }}>
                 <span className="est-mod-icon">
-                  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-                    <rect x="4" y="5" width="22" height="6" rx="1" stroke="currentColor" strokeWidth="1.7" />
-                    <rect x="4" y="13" width="22" height="6" rx="1" stroke="currentColor" strokeWidth="1.7" />
-                    <rect x="4" y="21" width="22" height="6" rx="1" stroke="currentColor" strokeWidth="1.7" />
-                  </svg>
+                  <Layers size={ICON_LG} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 </span>
                 <span className="est-mod-title">Aviario industrial</span>
                 <span className="est-mod-desc">
                   Multinivel en altura. Maximiza capacidad por m² de nave; requiere altura libre.
                 </span>
                 <span className="est-mod-specs">
-                  <span className="est-chip">1,20 × 3,30 m</span>
-                  <span className="est-chip">144 gal/módulo</span>
-                  <span className="est-chip">≥ 300 cm altura</span>
+                  {ficha && <>
+                    <span className="est-chip">{fmtM(ficha.aviario.largo_modulo_m)} × {fmtM(ficha.aviario.fondo_modulo_m)} m</span>
+                    <span className="est-chip">{ficha.aviario.capacidad_gallinas} gallinas/módulo</span>
+                    <span className="est-chip">≥ {ficha.aviario.nivel_2.altura_min_cm} cm altura</span>
+                  </>}
                 </span>
               </button>
 
               <button className="est-mod-card" onClick={() => { setZona("nidal_colectivo"); setPaso("nave"); }}>
                 <span className="est-mod-icon">
-                  <svg width="30" height="30" viewBox="0 0 30 30" fill="none" aria-hidden="true">
-                    <rect x="3" y="5" width="24" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
-                    <rect x="3" y="12" width="24" height="6" rx="1" stroke="currentColor" strokeWidth="1.9" />
-                    <rect x="3" y="20" width="24" height="5" rx="1" stroke="currentColor" strokeWidth="1.5" strokeDasharray="3 2" />
-                  </svg>
+                  <Rows3 size={ICON_LG} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 </span>
                 <span className="est-mod-title">Nidal colectivo A-Nida</span>
                 <span className="est-mod-desc">
                   Cadena de módulos en una fila con slots laterales configurables. Sin requisito de altura.
                 </span>
                 <span className="est-mod-specs">
-                  <span className="est-chip">cuerpo 1,20 × 1,40 m</span>
-                  <span className="est-chip">144 gal/módulo</span>
+                  {ficha && <>
+                    <span className="est-chip">cuerpo {fmtM(ficha.nidal.largo_modulo_m)} × {fmtM(ficha.nidal.fondo_cuerpo_m)} m</span>
+                    <span className="est-chip">{ficha.nidal.capacidad_gallinas} gallinas/módulo</span>
+                  </>}
                   <span className="est-chip">slot 0–3 m/lado</span>
                 </span>
               </button>
@@ -313,9 +457,7 @@ export default function EstudioPage() {
         {paso === "nave" && (
           <div className="est-anim">
             <button className="est-back" onClick={() => setPaso("modulo")}>
-              <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true">
-                <path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
+              <ArrowLeft size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
               Cambiar módulo
             </button>
             <div className="est-eyebrow">
@@ -336,7 +478,7 @@ export default function EstudioPage() {
                     {SISTEMAS.map((s) => <option key={s.value} value={s.value}>{s.label}</option>)}
                   </select>
                   <span className="est-hint">
-                    Define la densidad máxima legal ({form.sistema === "ecologico" ? "6" : "9"} gal/m²).
+                    Define la densidad máxima legal ({form.sistema === "ecologico" ? "6" : "9"} gallinas/m²).
                   </span>
                 </div>
 
@@ -418,14 +560,20 @@ export default function EstudioPage() {
 
               <div className="est-panel">
                   <div className="est-panel-title">Equipamiento instalado o previsto</div>
-                  <p className="est-hint">Introduce cantidades útiles y accesibles totales de la nave. Vacío significa pendiente de medir; cero significa que no existe.</p>
+                  <p className="est-hint">
+                    {esNidal
+                      ? "Cada módulo A-Nida integra perchas, comedero, bebederos y nidal dimensionados para su capacidad. Rellena solo si la instalación real difiere; cero significa que no existe."
+                      : "Introduce cantidades útiles y accesibles totales de la nave. Vacío significa pendiente de medir; cero significa que no existe."}
+                  </p>
                   <div className="est-form-grid">
                     {([
                       ["perchas_m", "Perchas útiles (m)"],
                       ["nidal_util_m2", "Interior útil de nidales (m²)"],
                       ["comedero_lineal_accesible_m", "Comedero lineal accesible (m)"],
                       ["bebederos_pezon_copa", "Bebederos de pezón o copa (unidades)"],
-                      ...(form.sistema === "campero" ? [["salidas_ancho_util_m", "Anchura útil total de salidas (m)"]] : []),
+                      ...(form.sistema === "campero" ? [["salidas_ancho_util_m", "Anchura útil total de salidas (m)"]]
+                        : form.sistema === "ecologico" ? [["salidas_ancho_util_m", "Longitud total de trampillas al exterior (m)"]]
+                        : []),
                     ]).map(([key, label]) => (
                       <div className="est-field" key={key}>
                         <label className="est-label" htmlFor={`med-${key}`}>{label}</label>
@@ -488,19 +636,11 @@ export default function EstudioPage() {
                     <div className="est-fit-head" role="status">
                       <span className="est-fit-mark" aria-hidden="true">
                         {encaje === "ok" ? (
-                          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                            <path d="M3 8.5l3.2 3.2L13 5" stroke="currentColor" strokeWidth="2.2"
-                              strokeLinecap="round" strokeLinejoin="round" />
-                          </svg>
+                          <Check size={ICON_SM} strokeWidth={2.25} />
                         ) : encaje === "no" ? (
-                          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                            <path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" strokeWidth="2.2"
-                              strokeLinecap="round" />
-                          </svg>
+                          <X size={ICON_SM} strokeWidth={2.25} />
                         ) : (
-                          <svg width="15" height="15" viewBox="0 0 16 16" fill="none">
-                            <path d="M4 8h8" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-                          </svg>
+                          <Minus size={ICON_SM} strokeWidth={2.25} />
                         )}
                       </span>
 
@@ -568,12 +708,60 @@ export default function EstudioPage() {
                 </div>
               )}
 
+              {/* ── Distribución a lo largo (solo nidal) ── */}
+              {esNidal && (
+                <div className="est-panel">
+                  <div className="est-panel-title">Distribución a lo largo</div>
+                  <div className="est-form-grid">
+                    <div className="est-field">
+                      <span className="est-label">Local técnico (motor y mesa de recogida)</span>
+                      <div className="est-seg" role="group" aria-label="Posición del local técnico">
+                        {([[false, "Anexo exterior"], [true, "Dentro de la nave"]] as const).map(([v, label]) => (
+                          <button key={label} type="button" aria-pressed={form.localDentro === v}
+                            className={`est-seg-btn${form.localDentro === v ? " is-on" : ""}`}
+                            onClick={() => set("localDentro", v)}>
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      <span className="est-hint">
+                        {form.localDentro
+                          ? `Ocupa los primeros ${fmtM(localLargo)} m de la nave de pared a pared; ese suelo no cuenta para densidad ni yacija.`
+                          : "Habitación adosada fuera de la nave: no resta largo."}
+                      </span>
+                    </div>
+                    <div className="est-field">
+                      <label className="est-label" htmlFor="e-libre-fondo">Espacio libre al fondo</label>
+                      <div className="est-input-wrap">
+                        <input id="e-libre-fondo" type="number" className="est-input est-input--unit"
+                          min={tensorLargo} step="0.1" placeholder={fmtM(tensorLargo)}
+                          value={form.libreFondo} onChange={(e) => set("libreFondo", e.target.value)} />
+                        <span className="est-unit">m</span>
+                      </div>
+                      <span className="est-hint">
+                        {libreCorto
+                          ? `El tensor necesita al menos ${fmtM(tensorLargo)} m tras el último módulo.`
+                          : `Desde el último módulo hasta la pared, tensor incluido (mínimo ${fmtM(tensorLargo)} m).`}
+                      </span>
+                    </div>
+                  </div>
+                  {largo > 0 && !libreCorto && (
+                    <p className="est-hint">
+                      {modulosLargo > 0
+                        ? <>Caben <strong>{modulosLargo} módulos</strong>:{" "}
+                            {form.localDentro && `${fmtM(localLargo)} m de local + `}
+                            {modulosLargo} × {fmtM(moduloLargo)} m + {fmtM(libreFondoM + sobranteLargo)} m libres
+                            = {fmtM(largo)} m.</>
+                        : `No cabe ningún módulo en ${fmtM(largo)} m de largo con este reparto.`}
+                    </p>
+                  )}
+                </div>
+              )}
+
               <div className="est-actions">
                 <button type="submit" className="est-btn est-btn--primary" disabled={!formListo}>
                   Calcular estudio
-                  <svg width="14" height="10" viewBox="0 0 14 10" fill="none" aria-hidden="true">
-                    <path d="M1 5h12M8 1l5 4-5 4" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <ArrowRight size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
                 </button>
                 <button type="button" className="est-btn est-btn--ghost" onClick={reiniciar}>
                   Empezar de nuevo
@@ -585,7 +773,7 @@ export default function EstudioPage() {
 
         {/* ── Paso 3 — ficha del estudio ── */}
         {paso === "estudio" && (
-          <div className="est-anim">
+          <div className="est-anim" ref={resultadoRef}>
             {cargando && (
               <div className="est-loading" role="status" aria-live="polite">
                 <div className="est-dots"><span /><span /><span /></div>
@@ -598,19 +786,36 @@ export default function EstudioPage() {
             {!cargando && res && (
               <>
                 <button className="est-back" onClick={() => setPaso("nave")}>
-                  <svg width="12" height="10" viewBox="0 0 12 10" fill="none" aria-hidden="true">
-                    <path d="M5 1L1 5m0 0l4 4M1 5h10" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
+                  <ArrowLeft size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
                   Ajustar parámetros
                 </button>
 
+                <div className="est-version">
+                  <div className="est-seg" role="group" aria-label="Versión del estudio">
+                    {([["cliente", "Versión cliente"], ["tecnica", "Versión técnica"]] as const).map(([v, label]) => (
+                      <button key={v} type="button" aria-pressed={version === v}
+                        className={`est-seg-btn${version === v ? " is-on" : ""}`}
+                        onClick={() => setVersion(v)}>
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                  <span className="est-hint">
+                    {esCliente
+                      ? "Resumen para adjuntar a la propuesta: capacidad, cumplimiento, plano y equipamiento."
+                      : "Detalle de cálculo para uso interno: límites, escenarios y parámetros."}
+                  </span>
+                </div>
+
                 <div className="est-print-head">
-                  <img src="/gyc-logo.png" alt="Gómez y Crespo" className="est-print-logo" />
+                  <img src="/gyc-logo-recortado.png" alt="Gómez y Crespo"
+                    className={`est-print-logo${esCliente ? " est-print-logo--cliente" : ""}`} />
                   <div className="est-print-meta">
                     <strong>Estudio de nave</strong>
                     {res.ancho_nave_m} × {res.largo_nave_m} m · {res.superficie_nave_m2.toLocaleString("es-ES")} m²<br />
-                    {res.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal colectivo A-Nida"} · {res.sistema}<br />
-                    {new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })} · Documento interno
+                    {res.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal colectivo A-Nida"} · {SISTEMAS.find((s) => s.value === res.sistema)?.label ?? res.sistema}<br />
+                    {new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}
+                    {esCliente ? " · Estudio de capacidad" : " · Documento interno"}
                   </div>
                 </div>
 
@@ -618,14 +823,14 @@ export default function EstudioPage() {
                   <span className="est-badge">
                     {res.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal A-Nida"}
                   </span>
-                  <span className="est-badge">{res.sistema}</span>
+                  <span className="est-badge">{SISTEMAS.find((s) => s.value === res.sistema)?.label ?? res.sistema}</span>
                   <span className="est-badge">
                     {res.ancho_nave_m} × {res.largo_nave_m} m · {res.superficie_nave_m2.toLocaleString("es-ES")} m²
                   </span>
                   <span className="est-badge">{res.altura_nave_cm} cm de altura</span>
                   {res.tipo_zona === "aviario"
                     ? <span className="est-badge">{res.niveles} niveles</span>
-                    : <>
+                    : !esCliente && <>
                         <span className="est-badge">slots {res.slot_izq_m} + {res.slot_der_m} m</span>
                         <span className="est-badge">
                           paso real {fmtM(res.geometria_nidal?.paso_lateral_m ?? pasoReal)} m a cada lado
@@ -636,20 +841,22 @@ export default function EstudioPage() {
                       </>}
                 </div>
 
-                <h1 className="est-h">Estudio de la nave</h1>
+                <h1 className="est-h">{esCliente ? "Estudio de capacidad de la nave" : "Estudio de la nave"}</h1>
                 <p className="est-sub">{res.descripcion_layout || "Sin distribución viable"}</p>
 
+                {/* La versión cliente no lleva frase de veredicto: los indicadores lo resumen */}
+                {!(res.viable && esCliente) && (
                 <div className={`est-verdict${res.viable ? " is-ok" : " is-no"}`}>
-                  <span aria-hidden="true">{res.viable ? "✓" : "✕"}</span>
+                  {res.viable
+                    ? <Check size={ICON_SM + 2} strokeWidth={2.25} aria-hidden="true" className="est-verdict-icon" />
+                    : <X size={ICON_SM + 2} strokeWidth={2.25} aria-hidden="true" className="est-verdict-icon" />}
                   <span>
                     {res.viable ? (
                       <>
                         <strong>Configuración conforme.</strong>{" "}
                         La nave admite {res.gallinas_max.toLocaleString("es-ES")} gallinas con{" "}
                         {res.num_modulos} módulos cumpliendo densidad y yacija.
-                        {res.limitante === "densidad" && " El límite lo marca la densidad legal, no los módulos."}
-                        {res.limitante === "capacidad_modulos" && " El límite lo marcan los módulos que caben, no la densidad."}
-                        {res.limitante === "limite_ecologico" && " El límite lo marca el tope de 3.000 gallinas por gallinero ecológico."}
+                        {res.limitante && <> Factor limitante: <strong>{nombreLimitante(res.limitante)}</strong>.</>}
                       </>
                     ) : (
                       <>
@@ -658,6 +865,7 @@ export default function EstudioPage() {
                     )}
                   </span>
                 </div>
+                )}
 
                 {res.viable && (
                   <div className="est-kpis">
@@ -673,13 +881,13 @@ export default function EstudioPage() {
                       </div>
                       <div className="est-kpi-lbl">Módulos instalados</div>
                       <div className="est-kpi-sub">
-                        {res.max_modulos_fisicos > 0 && `${res.max_modulos_fisicos} caben físicamente`}
+                        {!esCliente && res.max_modulos_fisicos > 0 && `${res.max_modulos_fisicos} caben físicamente`}
                       </div>
                     </div>
                     <div className="est-kpi">
                       <div className="est-kpi-val">
                         {res.densidad_real.toFixed(1)}
-                        <span className="est-kpi-unit">/ {res.densidad_max.toFixed(0)} gal/m²</span>
+                        <span className="est-kpi-unit">/ {res.densidad_max.toFixed(0)} gallinas/m²</span>
                       </div>
                       <div className="est-kpi-lbl">Densidad</div>
                       <div className="est-bar">
@@ -705,12 +913,43 @@ export default function EstudioPage() {
                   </div>
                 )}
 
+                {!esCliente && res.viable && res.limitante && (
+                  <div className="est-limit">
+                    <div className="est-limit-main">
+                      <div className="est-kpi-lbl">Factor limitante</div>
+                      <div className="est-limit-name">{nombreLimitante(res.limitante)}</div>
+                      {limitesActivos.map((l) => (
+                        <div key={l.criterio} className="est-limit-calc">
+                          {l.formula} = {l.gallinas.toLocaleString("es-ES")} gallinas
+                          <span className="est-art"> · {l.fuente}</span>
+                        </div>
+                      ))}
+                    </div>
+                    {siguienteLimite && (
+                      <div className="est-limit-next">
+                        <div className="est-kpi-lbl">Siguiente límite</div>
+                        <div className="est-limit-next-name">{nombreLimitante(siguienteLimite.criterio)}</div>
+                        <div className="est-kpi-sub">
+                          {siguienteLimite.gallinas.toLocaleString("es-ES")} gallinas
+                          {" "}(+{(siguienteLimite.gallinas - res.gallinas_max).toLocaleString("es-ES")} si se resuelve el limitante)
+                        </div>
+                      </div>
+                    )}
+                    {res.aforo && res.aforo.pendientes.length > 0 && (
+                      <p className="est-hint est-limit-pend">
+                        Sin medir: {res.aforo.pendientes.map(nombreLimitante).join(", ")}.
+                        Pueden resultar más restrictivos que el limitante actual.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 {/* ── Verificaciones ── */}
-                {res.verificaciones.length > 0 && (
+                {filas.length > 0 && (
                   <section className="est-block">
                     <h2 className="est-block-h">
-                      Verificación normativa
-                      <span>{res.verificaciones.filter((v) => v.cumple).length} de {res.verificaciones.length} cumplen</span>
+                      {esCliente ? "Cumplimiento normativo" : "Verificación normativa"}
+                      <span>{filas.filter((f) => f.cumple).length} de {filas.length} cumplen</span>
                     </h2>
                     <div className="est-table-wrap">
                       <table className="est-table">
@@ -723,23 +962,18 @@ export default function EstudioPage() {
                           </tr>
                         </thead>
                         <tbody>
-                          {res.verificaciones.map((v) => (
-                            <tr key={v.parametro}>
+                          {filas.map((f) => (
+                            <tr key={f.nombre}>
                               <td>
-                                <div className="est-param">{v.parametro}</div>
-                                {v.detalle && <div className="est-detalle">{v.detalle}</div>}
-                                <div className="est-art">{v.articulo}</div>
+                                <div className="est-param">{f.nombre}</div>
+                                {f.detalle && <div className="est-detalle">{f.detalle}</div>}
+                                <div className="est-art">{f.pie}</div>
                               </td>
-                              <td className="num">
-                                {v.valor_real.toLocaleString("es-ES", { maximumFractionDigits: 2 })} {v.unidad}
-                              </td>
-                              <td className="num">
-                                {v.tipo_limite === "maximo" ? "≤ " : "≥ "}
-                                {v.valor_limite.toLocaleString("es-ES", { maximumFractionDigits: 2 })} {v.unidad}
-                              </td>
+                              <td className="num">{f.valor}</td>
+                              <td className="num">{f.limite}</td>
                               <td>
-                                <span className={`est-tag${v.cumple ? " is-ok" : " is-no"}`}>
-                                  {v.cumple ? "Cumple" : "No cumple"}
+                                <span className={`est-tag${f.cumple ? " is-ok" : " is-no"}`}>
+                                  {f.cumple ? "Cumple" : "No cumple"}
                                 </span>
                               </td>
                             </tr>
@@ -750,12 +984,13 @@ export default function EstudioPage() {
                   </section>
                 )}
 
-                {/* ── Escenarios ── */}
-                {res.escenarios.length > 1 && (
-                  <section className="est-block">
+                {/* ── Escenarios (en el PDF técnico sale la tabla completa) ── */}
+                {!esCliente && res.escenarios.length > 1 && (
+                  <section className="est-block est-escenarios">
                     <h2 className="est-block-h">
                       Comparativa de escenarios
-                      <span>pulsa una fila para recalcular el estudio con esa configuración</span>
+                      <span className="est-solo-pantalla">pulsa una fila para recalcular el estudio con esa configuración</span>
+                      <span className="est-solo-papel">configuración del estudio resaltada</span>
                     </h2>
                     <div className={`est-table-wrap${res.escenarios.length > 12 ? " is-tall" : ""}`}>
                       <table className="est-table">
@@ -766,6 +1001,7 @@ export default function EstudioPage() {
                             <th>Gallinas</th>
                             <th>Densidad</th>
                             <th>Yacija</th>
+                            <th>Limitante</th>
                             <th>Estado</th>
                           </tr>
                         </thead>
@@ -787,10 +1023,11 @@ export default function EstudioPage() {
                                 </td>
                                 {res.tipo_zona === "aviario" && <td className="num">{e.num_modulos}</td>}
                                 <td className="num">{e.gallinas.toLocaleString("es-ES")}</td>
-                                <td className="num">{e.densidad.toFixed(1)} gal/m²</td>
+                                <td className="num">{e.densidad.toFixed(1)} gallinas/m²</td>
                                 <td className="num">
                                   {e.sup_yacija_m2.toLocaleString("es-ES", { maximumFractionDigits: 0 })} m² ({e.yacija_pct}%)
                                 </td>
+                                <td>{nombreLimitante(e.limitante)}</td>
                                 <td>
                                   <span className={`est-tag${e.cumple ? " is-ok" : " is-no"}`}>
                                     {e.cumple ? "Conforme" : "Yacija insuficiente"}
@@ -816,8 +1053,36 @@ export default function EstudioPage() {
                   </section>
                 )}
 
+                {/* ── Condiciones del régimen ecológico (ambas versiones) ── */}
+                {res.condiciones.length > 0 && (
+                  <section className="est-block">
+                    <h2 className="est-block-h">
+                      Requisitos de la producción ecológica
+                      <span>a cumplir en la explotación</span>
+                    </h2>
+                    <div className="est-table-wrap">
+                      <table className="est-table">
+                        <thead>
+                          <tr><th>Requisito</th><th>Condición</th></tr>
+                        </thead>
+                        <tbody>
+                          {res.condiciones.map((c) => (
+                            <tr key={c.nombre}>
+                              <td>
+                                <div className="est-param">{c.nombre}</div>
+                                <div className="est-art">{c.fuente}</div>
+                              </td>
+                              <td>{c.detalle}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </section>
+                )}
+
                 {/* ── Requisitos de equipamiento ── */}
-                {res.requisitos.length > 0 && (
+                {!esCliente && res.requisitos.length > 0 && (
                   <section className="est-block">
                     <h2 className="est-block-h">
                       Equipamiento mínimo
@@ -845,48 +1110,72 @@ export default function EstudioPage() {
                   </section>
                 )}
 
-                {/* ── Notas ── */}
-                {res.aforo && (
+                {/* ── Límites por medición ── */}
+                {!esCliente && res.aforo && (
                   <div className="est-panel">
                     <div className="est-panel-title">Límites por medición</div>
-                    <p className="est-hint">Factor limitante del cálculo: {res.limitante}. La capacidad también está limitada por los módulos instalados.</p>
-                    <table><thead><tr><th>Criterio</th><th>Cálculo</th><th>Gallinas</th></tr></thead>
-                      <tbody>{res.aforo.limites.map((l) => (
-                        <tr key={l.criterio}><td>{l.criterio.replaceAll("_", " ")}</td><td>{l.formula}</td><td>{l.gallinas.toLocaleString("es-ES")}</td></tr>
-                      ))}</tbody>
-                    </table>
-                    {res.aforo.pendientes.length > 0 && <p className="est-hint">Pendiente de medir: {res.aforo.pendientes.join(", ")}. El resultado es provisional.</p>}
+                    <p className="est-hint">Cada criterio fija un máximo de gallinas; la capacidad es el menor de todos.</p>
+                    <div className="est-table-wrap">
+                      <table className="est-table">
+                        <thead><tr><th>Criterio</th><th>Cálculo</th><th>Gallinas</th><th></th></tr></thead>
+                        <tbody>{limitesOrdenados.map((l) => (
+                          <tr key={l.criterio} className={codigosLimitante.includes(l.criterio) ? "is-limit" : undefined}>
+                            <td className="est-param">{nombreLimitante(l.criterio)}</td>
+                            <td className="num">{l.formula}</td>
+                            <td className="num">{l.gallinas.toLocaleString("es-ES")}</td>
+                            <td>{codigosLimitante.includes(l.criterio) && <span className="est-tag is-warn">Limitante</span>}</td>
+                          </tr>
+                        ))}</tbody>
+                      </table>
+                    </div>
+                    {res.aforo.pendientes.length > 0 && <p className="est-hint">Pendiente de medir: {res.aforo.pendientes.map(nombreLimitante).join(", ")}. El resultado es provisional.</p>}
                   </div>
                 )}
 
-                {res.notas.length > 0 && (
+                {!esCliente && res.parametros.length > 0 && (
                   <section className="est-block">
-                    <h2 className="est-block-h">Notas de cálculo</h2>
-                    <ul className="est-notas">
-                      {res.notas.map((n) => <li key={n}>{n}</li>)}
-                    </ul>
+                    <h2 className="est-block-h">
+                      Parámetros de cálculo
+                      <span>valores aplicados y su origen<span className="est-solo-pantalla"> · <Link href="/ficha" className="est-link">editar ficha técnica</Link></span></span>
+                    </h2>
+                    <div className="est-table-wrap">
+                      <table className="est-table">
+                        <thead><tr><th>Grupo</th><th>Parámetro</th><th>Valor</th><th>Origen</th></tr></thead>
+                        <tbody>
+                          {res.parametros.map((p, i) => (
+                            <tr key={`${p.grupo}-${p.nombre}`}>
+                              <td className="est-art">{i === 0 || res.parametros[i - 1].grupo !== p.grupo ? p.grupo : ""}</td>
+                              <td className="est-param">{p.nombre}</td>
+                              <td className="num">{p.valor}</td>
+                              <td><span className={`est-tag ${ORIGEN_TAG[p.origen] ?? ""}`}>{p.origen}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
                   </section>
                 )}
 
                 <div className="est-footer-bar">
                   <p className="est-footer-note">
-                    Documento técnico de trabajo. Exporta el PDF para adjuntarlo a la propuesta
-                    comercial del cliente.
+                    La versión cliente es la que se adjunta a la propuesta comercial; la técnica
+                    queda como documento interno de trabajo.
                   </p>
                   <button className="est-btn est-btn--ghost" onClick={() => setPaso("nave")}>
                     Ajustar parámetros
                   </button>
-                  <button className="est-btn est-btn--primary" onClick={() => window.print()}>
-                    <svg width="13" height="13" viewBox="0 0 13 13" fill="none" aria-hidden="true">
-                      <path d="M3.5 5V1.5h6V5" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" />
-                      <rect x="1.5" y="5" width="10" height="4.5" rx="1" stroke="currentColor" strokeWidth="1.2" />
-                      <path d="M3.5 8.5h6v3h-6z" stroke="currentColor" strokeWidth="1.2" strokeLinejoin="round" />
-                    </svg>
-                    Exportar PDF
+                  <button className="est-btn est-btn--ghost" onClick={() => exportar("tecnica")}>
+                    <Printer size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                    PDF técnico
+                  </button>
+                  <button className="est-btn est-btn--primary" onClick={() => exportar("cliente")}>
+                    <Printer size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                    PDF cliente
                   </button>
                   {res.tipo_zona === "nidal_colectivo" && (
                     <button className="est-btn est-btn--ghost" onClick={descargarDxf}
                       disabled={!res.viable || descargandoDxf}>
+                      <Download size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
                       {descargandoDxf ? "Preparando DXF…" : "Descargar DXF"}
                     </button>
                   )}

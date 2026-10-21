@@ -80,12 +80,12 @@ def calcular_aforo(req: AforoRequest) -> AforoResultado:
     densidad_max = 6 if req.sistema == "ecologico" else 9
     limites.append(LimiteAforo(criterio="densidad", gallinas=int(superficie * densidad_max),
         formula=f"{superficie} × {densidad_max}",
-        fuente="Reglamento (UE) 2018/848, anexo II, parte II, 1.6.3" if req.sistema == "ecologico"
+        fuente="Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if req.sistema == "ecologico"
         else "RD 3/2002, anexo IV.4"))
     e = req.equipamiento
     perch_cm = 0.18 if req.sistema == "ecologico" else 0.15
     agregar("perchas", e.perchas_m, perch_cm,
-            "Reglamento (UE) 2018/848 y Reglamento (UE) 2020/464, anexo IV" if req.sistema == "ecologico"
+            "Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if req.sistema == "ecologico"
             else "RD 3/2002, anexo IV")
     # Nidal colectivo: 1 m²/120 aves (RD). En ecológico, 120 cm²/ave
     # (Reglamento 2020/464), requisito más estricto que el estándar general.
@@ -97,15 +97,25 @@ def calcular_aforo(req: AforoRequest) -> AforoResultado:
                           if divisor_nidal else int(Decimal(str(e.nidal_util_m2)) * 120))
         limites.append(LimiteAforo(criterio="nidales", gallinas=gallinas_nidal,
             formula=(f"{e.nidal_util_m2:g} / 0,012" if divisor_nidal else f"{e.nidal_util_m2:g} × 120"),
-            fuente=("Reglamento (UE) 2020/464, anexo IV" if divisor_nidal else "RD 3/2002, anexo IV.1.c")))
+            fuente=("Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if divisor_nidal else "RD 3/2002, anexo IV.1.c")))
     agregar("comederos_lineales", e.comedero_lineal_accesible_m, 0.10)
     agregar("bebederos", e.bebederos_pezon_copa, 0.1)
     agregar("yacija_por_ave", req.yacija_m2, 0.025)
     if req.sistema in ("campero", "ecologico"):
-        agregar("pasto", req.pasto_m2, 4, "Reglamento delegado (UE) 2023/2465, anexo II")
+        agregar("pasto", req.pasto_m2, 4,
+                "Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if req.sistema == "ecologico"
+                else "Reglamento Delegado (UE) 2023/2465, anexo II, punto 1.c")
     if req.sistema == "campero":
         agregar("salidas", e.salidas_ancho_util_m, 0.002)
     if req.sistema == "ecologico":
+        # 4 m de trampilla por 100 m² de superficie cubierta mínima (6 gallinas/m²) = 150 gallinas/m
+        if e.salidas_ancho_util_m is None:
+            pendientes.append("salidas")
+        else:
+            limites.append(LimiteAforo(criterio="salidas",
+                gallinas=int(Decimal(str(e.salidas_ancho_util_m)) * 150),
+                formula=f"{e.salidas_ancho_util_m:g} × 150",
+                fuente="Reglamento de Ejecución (UE) 2020/464, art. 15.1.d"))
         limites.append(LimiteAforo(criterio="tope_gallinas_por_gallinero", gallinas=3000,
             formula="3000 gallinas como máximo por gallinero",
             fuente="Reglamento (UE) 2018/848, anexo II, parte II, 1.9.4.4(n)"))

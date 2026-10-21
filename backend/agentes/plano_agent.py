@@ -14,40 +14,30 @@ from pydantic import BaseModel, Field, ConfigDict
 
 # Constantes y reglas canónicas — ver agentes/estudio.py
 from agentes.aforo import EquipamientoMedido, AforoResultado
+import agentes.estudio as _E   # constantes de producto: leer en tiempo de llamada (ficha técnica)
 from agentes.estudio import (
     GeometriaNidalCentrado, geometria_nidal_centrado,
-    EstudioRequest, estudiar_nave, AVI_PASILLO, AVI_CLEARANCE, AVI_CLEARANCE_FONDO,
+    EstudioRequest, estudiar_nave,
     DENSIDAD_MAX as _DENSIDAD_MAX,
     MAX_GALLINAS_ECOLOGICO as _MAX_GALLINAS_ECOLOGICO,
     densidad_max_para as _densidad_max_sistema,
     base_densidad,
     yacija_disponible,
     cap_ecologico,
-    AVI_MOD_A as _AVI_ANCHO_MOD_C,
-    AVI_MOD_B as _AVI_PROF_MOD_C,
-    NIDAL_LARGO as _NIDAL_ANCHO_MOD_C,
-    NIDAL_ANCHO as _NIDAL_PROF_MOD_C,
     NIDAL_SLOT_DEFAULT as _NIDAL_SLOT_C,
-    NIDAL_CAP as _NIDAL_CAP,
-    NIDAL_EQUIP as _NIDAL_EQUIP_C,
-    NIDAL_TENSOR as _NIDAL_TENSOR_C,
 )
 
 
 # ── Constantes — Aviario ───────────────────────────────────────────────────────
-_AVI_ANCHO_MOD   = _AVI_ANCHO_MOD_C   # m eje largo nave (X)
-_AVI_PROF_MOD    = _AVI_PROF_MOD_C    # m eje ancho nave (Y)
+# Medidas del módulo, pasillo y zonas de equipos: _E.AVI_MOD_A (eje X),
+# _E.AVI_MOD_B (eje Y), _E.AVI_PASILLO, _E.AVI_CLEARANCE, _E.AVI_CLEARANCE_FONDO
 _AVI_CLEAR_PARED = 0.0   # m margen superior/inferior
-_AVI_PASILLO     = AVI_PASILLO   # m pasillo entre filas
-_AVI_CLEAR_LAT   = AVI_CLEARANCE   # m zona equipos lateral
 _FOSA_ANCHO      = 1.50   # m fosa purín
 
 # ── Constantes — Nidal A-Nida ─────────────────────────────────────────────────
-_NIDAL_ANCHO_MOD = _NIDAL_ANCHO_MOD_C   # m ancho por módulo (X)
-_NIDAL_PROF_MOD  = _NIDAL_PROF_MOD_C    # m profundidad cuerpo (Y)
+# Medidas del módulo, local técnico y tensor: _E.NIDAL_LARGO (X),
+# _E.NIDAL_ANCHO (Y), _E.NIDAL_EQUIP, _E.NIDAL_TENSOR
 _NIDAL_MOD_SLOT  = _NIDAL_SLOT_C        # m profundidad slot cada lado (Y)
-_NIDAL_EQUIP_IZQ = _NIDAL_EQUIP_C       # m zona equipo izquierda (mesa recogida + motoreductor)
-_NIDAL_TENSOR_W  = _NIDAL_TENSOR_C      # m zona reservada al tensor (X)
 _NIDAL_TENSOR_D  = 1.40                 # m diámetro del rodillo tensor
 _NIDAL_SLAT_W    = 0.60   # m ancho slat (X)
 _NIDAL_SLAT_D    = 1.00   # m profundidad slat (Y)
@@ -97,7 +87,7 @@ class LayoutConfig(BaseModel):
     model_config = ConfigDict(allow_inf_nan=False)
     equipamiento: EquipamientoMedido = Field(default_factory=EquipamientoMedido)
     sup_pasto_m2: float | None = Field(default=None, ge=0)
-    clearance_fondo_m: float = Field(default=AVI_CLEARANCE_FONDO, ge=0)
+    clearance_fondo_m: float = Field(default_factory=lambda: _E.AVI_CLEARANCE_FONDO, ge=0)
     paso_izq_m: float = Field(default=1, ge=0)
     paso_der_m: float = Field(default=1, ge=0)
     ancho_nave_m: float
@@ -107,8 +97,8 @@ class LayoutConfig(BaseModel):
     num_filas: int = 0
     mods_por_fila: int = 0
     clearance_pared_m: float = _AVI_CLEAR_PARED
-    pasillo_m: float = _AVI_PASILLO
-    clearance_lateral_m: float = _AVI_CLEAR_LAT
+    pasillo_m: float = Field(default_factory=lambda: _E.AVI_PASILLO)
+    clearance_lateral_m: float = Field(default_factory=lambda: _E.AVI_CLEARANCE)
     nombre_cliente: Optional[str] = None
     gallinas: int = 0
     niveles: int = 2
@@ -116,13 +106,16 @@ class LayoutConfig(BaseModel):
     # Nidal: profundidad del slot a cada lado del cuerpo (0 = sin slot en ese lado)
     slot_izq_m: float = _NIDAL_MOD_SLOT
     slot_der_m: float = _NIDAL_MOD_SLOT
+    # Nidal: local técnico dentro de la nave y largo libre mínimo al fondo (None = tensor)
+    local_dentro: bool = False
+    libre_fondo_m: float | None = Field(default=None, ge=0)
 
 
 class MetricasPlano(BaseModel):
     geometria_nidal: GeometriaNidalCentrado | None = None
     aforo: AforoResultado | None = None
     calculo_provisional: bool = True
-    clearance_fondo_m: float = AVI_CLEARANCE_FONDO
+    clearance_fondo_m: float = Field(default_factory=lambda: _E.AVI_CLEARANCE_FONDO)
     num_filas: int
     mods_por_fila: int
     total_modulos: int
@@ -217,6 +210,7 @@ def _build_nidal_distribucion_svg(
     slot_sup_m: float = _NIDAL_MOD_SLOT,
     slot_inf_m: float = _NIDAL_MOD_SLOT,
     geometria: GeometriaNidalCentrado | None = None,
+    local_dentro: bool = False,
 ) -> list[str]:
     """
     Plano en planta del nidal A-Nida.
@@ -225,8 +219,10 @@ def _build_nidal_distribucion_svg(
     """
     # Si hay alero, la escala Y abarca nave + alero juntos
     total_y_m   = ancho_nave + (ancho_alero_m if ancho_alero_m > 0 else 0.0)
-    # El local técnico (4 m) es exterior a la nave: la escala X lo incluye aparte
-    total_x_m   = _NIDAL_EQUIP_IZQ + largo_nave
+    # Local técnico exterior: la escala X lo incluye aparte. Dentro de la nave
+    # ocupa su cabecera y el dibujo es solo la nave.
+    ext_m       = 0.0 if local_dentro else _E.NIDAL_EQUIP
+    total_x_m   = ext_m + largo_nave
     # Escala UNIFORME: la misma en X e Y, o el dibujo sale deformado y un módulo
     # de 1,20 × 1,40 m no se parece a un módulo de 1,20 × 1,40 m.
     sx = sy = min(dw / total_x_m, dh / total_y_m)
@@ -248,46 +244,54 @@ def _build_nidal_distribucion_svg(
     # Slots efectivamente dibujados: (y inicial, profundidad)
     slots = [(y, d) for y, d in ((y_slot_top, slot_sup_m), (y_slot_bot, slot_inf_m)) if d > 0]
 
-    # ── X-axis geometry (coords en espacio total: 0=inicio local, 4=pared izq nave) ─
-    x_nidal_start = _NIDAL_EQUIP_IZQ                          # 4 m — pared izq nave
+    # ── X-axis geometry (coords en espacio total: 0 = inicio del dibujo) ─
+    # Local exterior: 0-4 m es el local y la nave empieza en 4. Local dentro:
+    # la nave empieza en 0 y la cadena tras el local.
+    x_nidal_start = ext_m + geometria.cadena_inicio_x_m
     x_nidal_end   = x_nidal_start + geometria.cadena_largo_m
-    x_tensor_end  = x_nidal_start + geometria.tensor_fin_x_m
 
     def px(xm: float) -> float: return X0 + xm * sx
     def py(ym: float) -> float: return Y0 + ym * sy
 
     # ── Habitación anexa (local técnico: motorreductor + mesa) — 4×4 m ─
-    room_px   = _NIDAL_EQUIP_IZQ * sx        # 4 m en X (píxeles)
-    room_dim  = 4.0                           # local cuadrado 4×4 m
-    room_ph   = room_dim * sy                 # 4 m en Y (píxeles)
-    nave_x0   = X0 + room_px
-    nave_pw   = DW - room_px
+    room_px   = _E.NIDAL_EQUIP * sx        # largo del local en X (píxeles)
+    room_dim  = _E.NIDAL_EQUIP                # local cuadrado
+    room_ph   = room_dim * sy                 # mismo lado en Y (píxeles)
+    nave_x0   = X0 + ext_m * sx
+    nave_pw   = DW - ext_m * sx
 
     # Centrar el local en la altura del cuerpo del nidal
-    cuerpo_cy_m = y_cuerpo + _NIDAL_PROF_MOD / 2
+    cuerpo_cy_m = y_cuerpo + _E.NIDAL_ANCHO / 2
     room_top_m  = max(0.0, cuerpo_cy_m - room_dim / 2)
     room_y0     = Y0 + room_top_m * sy
     room_y1     = room_y0 + room_ph
+    if local_dentro:
+        # Dentro de la nave el local se cierra de pared a pared
+        room_y0, room_y1, room_ph = Y0, Y0 + nave_ph, nave_ph
+    # Zona de aves: toda la nave, o la nave tras el local si este va dentro
+    aves_x0 = X0 + room_px if local_dentro else nave_x0
+    aves_pw = X0 + DW - aves_x0
 
-    # Local técnico: solo 4×4 m
-    els.append(_rect(X0, room_y0, room_px, room_ph,
-                     fill="#f0f0f0", stroke="#000823", sw=2.5))
+    if not local_dentro:
+        # Local técnico exterior, adosado a la pared de cabecera
+        els.append(_rect(X0, room_y0, room_px, room_ph,
+                         fill="#f0f0f0", stroke="#000823", sw=2.5))
 
-    # Pared izquierda de la nave en los segmentos donde NO hay local
-    if room_y0 > Y0 + 2:
-        els.append(_line(nave_x0, Y0, nave_x0, room_y0, stroke="#000823", sw=2.5))
-    if room_y1 < Y0 + nave_ph - 2:
-        els.append(_line(nave_x0, room_y1, nave_x0, Y0 + nave_ph, stroke="#000823", sw=2.5))
+        # Pared izquierda de la nave en los segmentos donde NO hay local
+        if room_y0 > Y0 + 2:
+            els.append(_line(nave_x0, Y0, nave_x0, room_y0, stroke="#000823", sw=2.5))
+        if room_y1 < Y0 + nave_ph - 2:
+            els.append(_line(nave_x0, room_y1, nave_x0, Y0 + nave_ph, stroke="#000823", sw=2.5))
 
-    # Doble línea separadora solo en la zona donde está el local
-    els.append(_line(nave_x0,     room_y0, nave_x0,     room_y1, stroke="#000823", sw=3.0))
-    els.append(_line(nave_x0 + 3, room_y0, nave_x0 + 3, room_y1, stroke="#000823", sw=1.2))
+        # Doble línea separadora solo en la zona donde está el local
+        els.append(_line(nave_x0,     room_y0, nave_x0,     room_y1, stroke="#000823", sw=3.0))
+        els.append(_line(nave_x0 + 3, room_y0, nave_x0 + 3, room_y1, stroke="#000823", sw=1.2))
 
-    # Apertura para el paso de la cinta (brecha en la pared doble)
-    gap_y0 = py(y_cuerpo) + 4
-    gap_y1 = py(y_slot_bot) - 4
-    els.append(_rect(nave_x0 - 1, gap_y0, 7, gap_y1 - gap_y0,
-                     fill="#fafafa", stroke="none"))
+        # Apertura para el paso de la cinta (brecha en la pared doble)
+        gap_y0 = py(y_cuerpo) + 4
+        gap_y1 = py(y_slot_bot) - 4
+        els.append(_rect(nave_x0 - 1, gap_y0, 7, gap_y1 - gap_y0,
+                         fill="#fafafa", stroke="none"))
 
     # ── Nave ──────────────────────────────────────────────────────────
     els.append(_rect(nave_x0, Y0, nave_pw, nave_ph,
@@ -296,10 +300,15 @@ def _build_nidal_distribucion_svg(
     # ── Yacija bands (top and bottom) — solo dentro de la nave ────────
     if y_margin > 0.05:
         for y0 in (0.0, y_nidal_end):
-            els.append(_rect(nave_x0, py(y0), nave_pw, y_margin * sy,
+            els.append(_rect(aves_x0, py(y0), aves_pw, y_margin * sy,
                              fill="#e8ede8", stroke="#4f764d", sw=0.8))
-            els.append(_text(nave_x0 + nave_pw / 2, py(y0 + y_margin / 2) + 4,
+            els.append(_text(aves_x0 + aves_pw / 2, py(y0 + y_margin / 2) + 4,
                              f"YACIJA  {y_margin:.2f} m", size=9, fill="#234926"))
+
+    if local_dentro:
+        # Cabecera de la nave cerrada por el local técnico
+        els.append(_rect(X0, room_y0, room_px, room_ph, fill="#f0f0f0", stroke="#000823",
+                         sw=2.0, extra='data-element="local-tecnico"'))
 
     # ── Slot background (top and bottom of nidal body) ─────────────────
     slat_px0 = px(x_nidal_start)
@@ -311,13 +320,13 @@ def _build_nidal_distribucion_svg(
     # ── Slat grid (0.6 m × 1.0 m cells) in slot areas ────────────────
     # Vertical module boundary lines
     for j in range(num_modulos + 1):
-        lx = px(x_nidal_start + j * _NIDAL_ANCHO_MOD)
+        lx = px(x_nidal_start + j * _E.NIDAL_LARGO)
         for y0, depth in slots:
             els.append(_line(lx, py(y0), lx, py(y0 + depth),
                              stroke="#cc2200", sw=1.5))
     # Vertical mid-module lines (slat sub-division at 0.6 m)
     for j in range(num_modulos):
-        lx = px(x_nidal_start + (j + 0.5) * _NIDAL_ANCHO_MOD)
+        lx = px(x_nidal_start + (j + 0.5) * _E.NIDAL_LARGO)
         for y0, depth in slots:
             els.append(_line(lx, py(y0), lx, py(y0 + depth),
                              stroke="#cc2200", sw=0.5))
@@ -332,7 +341,7 @@ def _build_nidal_distribucion_svg(
     cx0 = slat_px0
     cy0 = py(y_cuerpo)
     cw  = slat_pw
-    ch  = _NIDAL_PROF_MOD * sy
+    ch  = _E.NIDAL_ANCHO * sy
     els.append(_rect(cx0, cy0, cw, ch, fill="#ffecec", stroke="#cc2200", sw=1.8,
                      extra='data-element="cuerpo-nidal"'))
 
@@ -343,18 +352,22 @@ def _build_nidal_distribucion_svg(
 
     # Vertical module separations on cuerpo
     for j in range(1, num_modulos):
-        lx = px(x_nidal_start + j * _NIDAL_ANCHO_MOD)
+        lx = px(x_nidal_start + j * _E.NIDAL_LARGO)
         els.append(_line(lx, cy0, lx, cy0 + ch, stroke="#cc2200", sw=0.6))
 
     # ── Contenido habitación anexa ────────────────────────────────────
     room_cx    = X0 + room_px / 2
-    room_mid_y = room_y0 + room_ph / 2    # centro real del local 4×4
+    # Motor y mesa a la altura de la cinta
+    room_mid_y = py(cuerpo_cy_m) if local_dentro else room_y0 + room_ph / 2
     # Etiqueta del local
-    els.append(_text(room_cx, room_y0 + 10, "LOCAL PROPUESTO 4 × 4 m",
+    els.append(_text(room_cx, room_y0 + 10,
+                     f"LOCAL TÉCNICO {_E.NIDAL_EQUIP:g} × {ancho_nave:.2f} m" if local_dentro
+                     else f"LOCAL PROPUESTO {_E.NIDAL_EQUIP:g} × {_E.NIDAL_EQUIP:g} m",
                      size=6, bold=True, fill="#444"))
     # Cinta saliendo del local hacia la nave (barra roja a través del hueco)
     els.append(_rect(X0, cy0 + ch / 2 - belt_h / 2,
-                     room_px + 4, belt_h, fill="#cc2200", stroke="none", sw=0))
+                     max(room_px + 4, px(x_nidal_start) - X0), belt_h,
+                     fill="#cc2200", stroke="none", sw=0))
     # Mesa de recogida (rectángulo con X) — en la mitad derecha del local
     sz  = min(room_px, room_ph) * 0.20
     mx  = X0 + room_px * 0.68
@@ -375,13 +388,10 @@ def _build_nidal_distribucion_svg(
 
     # ── Módulo tensor ──────────────────────────────────────────────────
     # El tensor es un rodillo: se dibuja como círculo a escala real, no como
-    # un bloque. El resto de su zona reservada es suelo libre (yacija).
-    t_x0 = px(x_nidal_end)
-    t_w  = (x_tensor_end - x_nidal_end) * sx
-
-    # Toda la zona reservada del tensor, incluida la franja del cuerpo, es yacija
-    els.append(_rect(t_x0, py(y_slot_top), t_w, (y_nidal_end - y_slot_top) * sy,
-                     fill="#e8ede8", stroke="#4f764d", sw=0.8))
+    # un bloque. Desde el final de la cadena hasta la pared del fondo todo es
+    # suelo libre (yacija), sin separar la zona del tensor.
+    els.append(_rect(px(x_nidal_end), py(y_slot_top), (X0 + DW) - px(x_nidal_end),
+                     (y_nidal_end - y_slot_top) * sy, fill="#e8ede8", stroke="none", sw=0))
 
     # Rodillo tensor: círculo de diámetro igual a la profundidad del cuerpo
     t_cx = px(x_nidal_end + _NIDAL_TENSOR_D / 2)
@@ -394,34 +404,25 @@ def _build_nidal_distribucion_svg(
                f'fill="#b08000" stroke="none"/>')
     els.append(_text(t_cx, t_cy + t_r + 11, "Tensor", size=7.5, fill="#5a3000", bold=True))
 
-    # Zona detrás del tensor (tensor end → pared derecha) → yacija completa
-    if geometria.libre_fondo_m > 0.05:
-        behind_x0 = px(x_tensor_end)
-        behind_w  = (X0 + DW) - behind_x0
-        els.append(_rect(behind_x0, Y0, behind_w, nave_ph,
-                         fill="#e8ede8", stroke="#4f764d", sw=0.8))
-
     # ── Cotas ─────────────────────────────────────────────────────────
     nave_bot_px = Y0 + nave_ph
-    # Local técnico (exterior)
-    els += _arrow_h(X0, nave_x0, Y0 - 22, f"{_NIDAL_EQUIP_IZQ:.0f} m")
+    # Local técnico: exterior (antes de la nave) o en la cabecera de la nave
+    els += _arrow_h(X0, X0 + room_px, Y0 - 22,
+                    f"{_E.NIDAL_EQUIP:g} m local" if local_dentro else f"{_E.NIDAL_EQUIP:g} m")
     # Nave (largo total real)
     els += _arrow_h(nave_x0, X0 + DW, Y0 - 38, f"{largo_nave:.2f} m")
     # Tramo módulos
     els += _arrow_h(px(x_nidal_start), px(x_nidal_end), Y0 - 22,
                     f"{geometria.cadena_largo_m:.2f} m")
-    # Tensor
-    if x_tensor_end > x_nidal_end + 0.1:
-        els += _arrow_h(px(x_nidal_end), px(x_tensor_end), Y0 - 22,
-                        f"{_NIDAL_TENSOR_W:.0f} m")
-    if geometria.libre_fondo_m > 0.005:
-        els += _arrow_h(px(x_tensor_end), X0 + DW, nave_bot_px + 22,
-                        f"{geometria.libre_fondo_m:.2f} m libres")
+    # Fin de la cadena → pared del fondo: tensor y suelo libre en una sola cota
+    libre_m = largo_nave - geometria.cadena_inicio_x_m - geometria.cadena_largo_m
+    if libre_m > 0.005:
+        els += _arrow_h(px(x_nidal_end), X0 + DW, Y0 - 22, f"{libre_m:.2f} m libres")
     # Un módulo (etiqueta pequeña)
     if num_modulos >= 1:
         els += _arrow_h(px(x_nidal_start),
-                        px(x_nidal_start + _NIDAL_ANCHO_MOD),
-                        cy0 - 6, f"{_NIDAL_ANCHO_MOD:.1f}")
+                        px(x_nidal_start + _E.NIDAL_LARGO),
+                        cy0 - 6, f"{_E.NIDAL_LARGO:.1f}")
 
     # Ancho nave
     if ancho_alero_m > 0:
@@ -432,17 +433,17 @@ def _build_nidal_distribucion_svg(
         els += _arrow_v(X0 - 26, Y0, py(y_slot_top), f"{y_margin:.2f} m", vertical_text=True)
     if slot_sup_m > 0:
         els += _arrow_v(X0 - 26, py(y_slot_top), py(y_cuerpo), f"{slot_sup_m:.0f} m", vertical_text=True)
-    els += _arrow_v(X0 - 26, py(y_cuerpo), py(y_slot_bot), f"{_NIDAL_PROF_MOD:.2f} m", vertical_text=True)
+    els += _arrow_v(X0 - 26, py(y_cuerpo), py(y_slot_bot), f"{_E.NIDAL_ANCHO:.2f} m", vertical_text=True)
     if slot_inf_m > 0:
         els += _arrow_v(X0 - 26, py(y_slot_bot), py(y_nidal_end), f"{slot_inf_m:.0f} m", vertical_text=True)
     if y_margin > 0.05:
         els += _arrow_v(X0 - 26, py(y_nidal_end), nave_bot_px, f"{y_margin:.2f} m", vertical_text=True)
 
-    rx_t = px(x_tensor_end) + 8 if geometria.libre_fondo_m > 0 else X0 + DW + 8
-    els += _arrow_v(rx_t, py(y_cuerpo), py(y_slot_bot), f"{_NIDAL_PROF_MOD:.2f}")
+    rx_t = X0 + DW + 8
+    els += _arrow_v(rx_t, py(y_cuerpo), py(y_slot_bot), f"{_E.NIDAL_ANCHO:.2f}")
 
     # Tick extensions
-    for xp in (X0, nave_x0, X0 + DW):
+    for xp in sorted({X0, nave_x0, X0 + room_px, X0 + DW}):
         els.append(_line(xp, Y0 - 50, xp, Y0, stroke="#aaa", sw=0.5, dash="3,2"))
     for yp in (Y0, nave_bot_px):
         els.append(_line(X0 - 50, yp, X0, yp, stroke="#aaa", sw=0.5, dash="3,2"))
@@ -528,18 +529,18 @@ def _build_nidal_cableado_svg(
     sx = dw / largo_nave
     sy = dh / ancho_nave
 
-    total_nidal_y = _NIDAL_MOD_SLOT * 2 + _NIDAL_PROF_MOD
+    total_nidal_y = _NIDAL_MOD_SLOT * 2 + _E.NIDAL_ANCHO
     y_margin      = max(0.0, (ancho_nave - total_nidal_y) / 2)
     y_cuerpo      = y_margin + _NIDAL_MOD_SLOT
-    y_slot_bot    = y_cuerpo + _NIDAL_PROF_MOD
+    y_slot_bot    = y_cuerpo + _E.NIDAL_ANCHO
 
-    x_nidal_start = _NIDAL_EQUIP_IZQ
-    x_nidal_end   = x_nidal_start + num_modulos * _NIDAL_ANCHO_MOD
+    x_nidal_start = _E.NIDAL_EQUIP
+    x_nidal_end   = x_nidal_start + num_modulos * _E.NIDAL_LARGO
 
     def px(xm: float) -> float: return PAD_L + xm * sx
     def py(ym: float) -> float: return PAD_T + ym * sy
 
-    ch   = _NIDAL_PROF_MOD * sy
+    ch   = _E.NIDAL_ANCHO * sy
     cy0  = py(y_cuerpo)
     belt_h = max(4.0, ch * 0.30)
 
@@ -550,7 +551,7 @@ def _build_nidal_cableado_svg(
 
     # ── Cuadro de control (left of exit, 1.2–1.5 m height) ────────────
     # Positioned on left wall, at cuerpo level
-    ctrl_w = _NIDAL_EQUIP_IZQ * sx * 0.30
+    ctrl_w = _E.NIDAL_EQUIP * sx * 0.30
     ctrl_h = ch * 0.55
     ctrl_x = PAD_L + 6
     ctrl_y = cy0 - ctrl_h - 4
@@ -569,7 +570,7 @@ def _build_nidal_cableado_svg(
                      "Entrada 4×2.5", size=7, anchor="start", fill="#0040b0"))
 
     # ── Motor elevanidos (5.40 m from left equipment start) ────────────
-    x_elev = _NIDAL_EQUIP_IZQ + 5.40
+    x_elev = _E.NIDAL_EQUIP + 5.40
     elev_px = px(x_elev)
     elev_py = PAD_T - 14
     # Dimension line showing 5.40 m position
@@ -607,7 +608,7 @@ def _build_nidal_cableado_svg(
                          stroke="#cc2200", sw=0.7, dash="5,3"))
 
     # ── Motor recogida huevo (0.11 kW) at mesa ────────────────────────
-    mx_r = PAD_L + _NIDAL_EQUIP_IZQ * sx * 0.70
+    mx_r = PAD_L + _E.NIDAL_EQUIP * sx * 0.70
     my_r = cy0 + ch / 2
     els.append(f'<circle cx="{_e(mx_r)}" cy="{_e(my_r)}" r="7" '
                f'fill="#e0ffe0" stroke="#005500" stroke-width="1.5"/>')
@@ -659,8 +660,10 @@ def _build_aviario_svg(
     dw: float,
     dh: float,
     ancho_alero_m: float = 0.0,
-    clearance_fondo: float = AVI_CLEARANCE_FONDO,
+    clearance_fondo: float | None = None,
 ) -> list[str]:
+    if clearance_fondo is None:
+        clearance_fondo = _E.AVI_CLEARANCE_FONDO
     total_y_m = ancho_nave + (ancho_alero_m if ancho_alero_m > 0 else 0.0)
     # Escala UNIFORME en X e Y: si no, el módulo de 1,20 × 3,30 m sale deformado.
     sx = sy = min(dw / largo_nave, dh / total_y_m)
@@ -705,9 +708,9 @@ def _build_aviario_svg(
     els.append('</g>')
 
     for i in range(num_filas):
-        y_m = clearance_pared + i * (_AVI_PROF_MOD + pasillo)
+        y_m = clearance_pared + i * (_E.AVI_MOD_B + pasillo)
         ry  = Y0 + y_m * sy
-        rh  = _AVI_PROF_MOD * sy
+        rh  = _E.AVI_MOD_B * sy
         els.append(_rect(X0, ry, zw, rh, fill=_COL_EQUIP_FILL, stroke=_COL_EQUIP_STR, sw=1.2))
         els.append(_text(X0 + zw / 2, ry + rh / 2 + 4,
                          "NORIA · COMIDA", size=7, fill=_COL_EQUIP_TXT))
@@ -722,38 +725,38 @@ def _build_aviario_svg(
                      f"EQUIPO {clearance_fondo:.1f} m →", size=7, fill=_COL_RASC_TXT, bold=True))
 
     for i in range(num_filas):
-        y_m = clearance_pared + i * (_AVI_PROF_MOD + pasillo)
+        y_m = clearance_pared + i * (_E.AVI_MOD_B + pasillo)
         rx  = X0 + clearance_lat * sx
         ry  = Y0 + y_m * sy
-        rw  = mods_por_fila * _AVI_ANCHO_MOD * sx
-        rh  = _AVI_PROF_MOD * sy
+        rw  = mods_por_fila * _E.AVI_MOD_A * sx
+        rh  = _E.AVI_MOD_B * sy
         els.append(_rect(rx, ry, rw, rh, fill=_COL_MOD_FILL, stroke=_COL_MOD_STR, sw=1.8, opacity=0.95))
         for j in range(1, mods_por_fila):
-            lx = rx + j * _AVI_ANCHO_MOD * sx
+            lx = rx + j * _E.AVI_MOD_A * sx
             els.append(_line(lx, ry, lx, ry + rh, stroke=_COL_MOD_DIV, sw=0.6))
         els.append(_text(
             rx + rw / 2, ry + rh / 2 + 4,
-            f"FILA {i+1}  ·  {mods_por_fila} módulos  ·  {mods_por_fila * _AVI_ANCHO_MOD:.2f} m",
+            f"FILA {i+1}  ·  {mods_por_fila} módulos  ·  {mods_por_fila * _E.AVI_MOD_A:.2f} m",
             size=8, fill=_COL_MOD_TXT, bold=True,
         ))
         cx_cota = X0 + DW + 20
-        els += _arrow_v(cx_cota, ry, ry + rh, f"{_AVI_PROF_MOD:.2f} m")
+        els += _arrow_v(cx_cota, ry, ry + rh, f"{_E.AVI_MOD_B:.2f} m")
 
     for i in range(num_filas - 1):
-        y_top = clearance_pared + (i + 1) * _AVI_PROF_MOD + i * pasillo
+        y_top = clearance_pared + (i + 1) * _E.AVI_MOD_B + i * pasillo
         ry    = Y0 + y_top * sy
         rh_p  = pasillo * sy
         rx    = X0 + clearance_lat * sx
-        rw    = mods_por_fila * _AVI_ANCHO_MOD * sx
+        rw    = mods_por_fila * _E.AVI_MOD_A * sx
         els.append(_rect(rx, ry, rw, rh_p,
                          fill=_COL_PASILLO, stroke=_COL_PASILLO_S, sw=0.5, opacity=0.7))
         els.append(_text(rx + rw / 2, ry + rh_p / 2 + 3,
                          f"PASILLO  {pasillo:.2f} m", size=7, fill=_COL_PASILLO_T))
 
     rx0 = X0 + clearance_lat * sx
-    rx1 = rx0 + mods_por_fila * _AVI_ANCHO_MOD * sx
+    rx1 = rx0 + mods_por_fila * _E.AVI_MOD_A * sx
     els += _arrow_h(rx0, rx1, Y0 - 22,
-                    f"{mods_por_fila * _AVI_ANCHO_MOD:.2f} m  ({mods_por_fila} × {_AVI_ANCHO_MOD} m)")
+                    f"{mods_por_fila * _E.AVI_MOD_A:.2f} m  ({mods_por_fila} × {_E.AVI_MOD_A} m)")
     if clearance_lat > 0:
         els += _arrow_h(X0, rx0, Y0 - 22, f"{clearance_lat:.2f} m")
     els += _arrow_h(X0, X0 + DW, Y0 - 38, f"{largo_nave:.0f} m")
@@ -831,7 +834,7 @@ def _footer(
     col_err  = _COL_WARN
     dens_col = col_ok if densidad <= densidad_max else col_err
     gmax_str = f"{gallinas_max:,}".replace(",", ".")
-    dens_str = f"{densidad:.1f} / {densidad_max:.0f} gal/m²"
+    dens_str = f"{densidad:.1f} / {densidad_max:.0f} gallinas/m²"
     sep      = "·"
 
     # Tres bloques en posiciones fijas: módulos | aves | densidad
@@ -926,10 +929,12 @@ def _optimal_aviario(
     ancho: float, largo: float,
     clearance_pared: float, pasillo: float, clearance_lat: float,
     num_filas_override: int = 0, mods_override: int = 0,
-    clearance_fondo: float = AVI_CLEARANCE_FONDO,
+    clearance_fondo: float | None = None,
 ) -> tuple[int, int]:
+    if clearance_fondo is None:
+        clearance_fondo = _E.AVI_CLEARANCE_FONDO
     r = estudiar_nave(EstudioRequest(tipo_zona="aviario", ancho_nave_m=ancho,
-        largo_nave_m=largo, altura_nave_cm=300,
+        largo_nave_m=largo, altura_nave_cm=_E.AVI_ALTURA_MIN[2],
         clearance_pared_m=clearance_pared, pasillo_m=pasillo,
         clearance_frontal_m=clearance_lat, clearance_fondo_m=clearance_fondo,
         num_filas=num_filas_override or None, mods_por_fila=mods_override or None))
@@ -942,14 +947,16 @@ def _metricas_aviario(
     clearance_pared: float, pasillo: float, clearance_lat: float,
     gallinas_override: int, sistema: str = "suelo", niveles: int = 2,
     ancho_alero_m: float = 0.0,
-    clearance_fondo: float = AVI_CLEARANCE_FONDO,
+    clearance_fondo: float | None = None,
     equipamiento: EquipamientoMedido | None = None,
     sup_pasto_m2: float | None = None,
 ) -> MetricasPlano:
+    if clearance_fondo is None:
+        clearance_fondo = _E.AVI_CLEARANCE_FONDO
     if num_filas <= 0 or mods_por_fila <= 0:
         raise ValueError("No cabe ninguna fila de aviario con las separaciones indicadas")
     r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema=sistema,
-        ancho_nave_m=ancho, largo_nave_m=largo, altura_nave_cm=400 if niveles == 3 else 300,
+        ancho_nave_m=ancho, largo_nave_m=largo, altura_nave_cm=_E.AVI_ALTURA_MIN.get(niveles, _E.AVI_ALTURA_MIN[2]),
         niveles=niveles, num_filas=num_filas, mods_por_fila=mods_por_fila,
         clearance_pared_m=clearance_pared, pasillo_m=pasillo,
         clearance_frontal_m=clearance_lat, clearance_fondo_m=clearance_fondo,
@@ -963,7 +970,7 @@ def _metricas_aviario(
         total_modulos=r.num_modulos, gallinas_max=r.gallinas_max,
         huella_m2=r.huella_modulos_m2, yacija_m2=r.sup_yacija_m2,
         densidad=round(aves / r.sup_disponible_m2, 2) if r.sup_disponible_m2 else 0,
-        espacio_libre_y_m=round(ancho - 2 * clearance_pared - num_filas * _AVI_PROF_MOD - (num_filas-1) * pasillo, 4),
+        espacio_libre_y_m=round(ancho - 2 * clearance_pared - num_filas * _E.AVI_MOD_B - (num_filas-1) * pasillo, 4),
         clearance_pared_m=clearance_pared, pasillo_m=pasillo,
         clearance_lateral_m=clearance_lat, clearance_fondo_m=clearance_fondo,
         densidad_max=r.densidad_max, aforo=r.aforo)
@@ -976,11 +983,14 @@ def _metricas_nidal(
     paso_izq_m: float = 1, paso_der_m: float = 1,
     equipamiento: EquipamientoMedido | None = None,
     sup_pasto_m2: float | None = None,
+    local_dentro: bool = False,
+    libre_fondo_m: float | None = None,
 ) -> MetricasPlano:
     r = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo", sistema=sistema,
         ancho_nave_m=ancho, largo_nave_m=largo, altura_nave_cm=300,
         num_modulos=num_modulos, slot_izq_m=slot_sup_m, slot_der_m=slot_inf_m,
         paso_izq_m=paso_izq_m, paso_der_m=paso_der_m,
+        local_dentro=local_dentro, libre_fondo_m=libre_fondo_m,
         equipamiento=equipamiento or EquipamientoMedido(), sup_pasto_m2=sup_pasto_m2))
     if not r.viable:
         raise ValueError(r.motivo or "La distribución no cumple las verificaciones del estudio")
@@ -1013,6 +1023,7 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                     ancho_nave_m=cfg.ancho_nave_m, largo_nave_m=cfg.largo_nave_m, altura_nave_cm=300,
                     slot_izq_m=cfg.slot_izq_m, slot_der_m=cfg.slot_der_m,
                     paso_izq_m=cfg.paso_izq_m, paso_der_m=cfg.paso_der_m,
+                    local_dentro=cfg.local_dentro, libre_fondo_m=cfg.libre_fondo_m,
                     equipamiento=cfg.equipamiento, sup_pasto_m2=cfg.sup_pasto_m2))
                 if not r.num_modulos:
                     raise ValueError(r.motivo)
@@ -1026,13 +1037,14 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 slot_sup_m=cfg.slot_izq_m, slot_inf_m=cfg.slot_der_m,
                 paso_izq_m=cfg.paso_izq_m, paso_der_m=cfg.paso_der_m,
                 equipamiento=cfg.equipamiento, sup_pasto_m2=cfg.sup_pasto_m2,
+                local_dentro=cfg.local_dentro, libre_fondo_m=cfg.libre_fondo_m,
             )
             parts = _build_nidal_distribucion_svg(
                 cfg.ancho_nave_m, cfg.largo_nave_m,
                 num_mods, nombre, cfg.gallinas, dw, dh,
                 ancho_alero_m=cfg.ancho_alero_m,
                 slot_sup_m=cfg.slot_izq_m, slot_inf_m=cfg.slot_der_m,
-                geometria=metricas.geometria_nidal,
+                geometria=metricas.geometria_nidal, local_dentro=cfg.local_dentro,
             )
             dens_max_nidal = _densidad_max_sistema(cfg.sistema)
             parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas or metricas.gallinas_max,

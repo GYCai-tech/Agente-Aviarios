@@ -38,3 +38,6 @@ Thumbs.db
 
 # Propuestas compartidas (datos en runtime, no codigo)
 backend/propuestas_guardadas/
+
+# Ficha técnica editada desde la app (datos en runtime)
+backend/datos/

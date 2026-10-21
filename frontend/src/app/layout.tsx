@@ -1,18 +1,19 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Sans, IBM_Plex_Mono } from "next/font/google";
+import { Outfit, Work_Sans } from "next/font/google";
 import "./globals.css";
 
-const plexSans = IBM_Plex_Sans({
+// Tipografía del design system (design-system/estudio-de-nave/MASTER.md)
+const outfit = Outfit({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-plex-sans",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-outfit",
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const workSans = Work_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-plex-mono",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-work-sans",
   display: "swap",
 });
 
@@ -29,7 +30,7 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${plexSans.variable} ${plexMono.variable} h-full antialiased`}
+      className={`${outfit.variable} ${workSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>

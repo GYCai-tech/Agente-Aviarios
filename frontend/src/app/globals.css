@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #484e62;
+  --background: #f8fafc;
+  --foreground: #0f172a;
   --gyc-green: #4F764D;
   --gyc-green-hover: #3d5e3b;
   --gyc-blue: #0274BE;
@@ -20,11 +20,11 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-plex-sans), "IBM Plex Sans", sans-serif;
+  font-family: var(--font-work-sans), system-ui, sans-serif;
   -webkit-font-smoothing: antialiased;
 }
 
 ::selection {
-  background: var(--gyc-blue);
+  background: #1e3a5f;
   color: #fff;
 }

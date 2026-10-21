@@ -148,3 +148,36 @@ def test_ecologico_densidad_y_nidal_colectivo():
     assert r.gallinas_max == 1666
     assert r.limitantes == ["nidales"]
     assert next(l for l in r.limites if l.criterio == "densidad").gallinas == 6000
+
+
+def test_estudio_aviario_3_niveles_reproduce_acta_perchas_8688():
+    """72 módulos de 3 niveles (3 filas × 24) = instalación del acta: limitan las perchas."""
+    referencia = json.loads((Path(__file__).parent / "backend/referencias/inspeccion_galicia_ponedoras.json").read_text(encoding="utf-8"))
+    equipo = referencia["instalacion"]
+    from agentes.estudio import AVI_EQUIPO_POR_MODULO
+    cat = AVI_EQUIPO_POR_MODULO[3]
+    assert cat["perchas_m"] * 72 == pytest.approx(equipo["perchas_utiles_total_m"])
+    assert cat["nidal_util_m2"] * 72 == pytest.approx(equipo["nidales_utiles_total_m2"])
+    assert cat["comedero_lineal_accesible_m"] * 72 == pytest.approx(equipo["comedero_lineal_accesible_total_m"])
+    assert cat["bebederos_pezon_copa"] * 72 == equipo["bebederos_pezon_copa"]
+
+    r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema="campero", ancho_nave_m=15,
+                                     largo_nave_m=36, altura_nave_cm=400, niveles=3))
+    assert r.num_modulos == 72
+    assert r.gallinas_max == referencia["limites_de_capacidad_del_acta"]["maximo_gallinas"] == 8688
+    assert r.limitante == "perchas"
+    assert all(e.limitante == "perchas" for e in r.escenarios)
+
+
+def test_equipamiento_medido_prevalece_sobre_catalogo_aviario():
+    r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema="campero", ancho_nave_m=15,
+                                     largo_nave_m=36, altura_nave_cm=400, niveles=3,
+                                     equipamiento=EquipamientoMedido(perchas_m=600)))
+    assert r.gallinas_max == 4000 and r.limitante == "perchas"
+
+
+def test_aviario_yacija_redondeada_no_supera_suelo():
+    # 29,16 × 13,8 = 402,408 → la yacija se redondea a 402,41
+    r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema="campero", ancho_nave_m=13.8,
+                                     largo_nave_m=36.16, altura_nave_cm=400, niveles=3))
+    assert r.num_modulos == 72 and r.gallinas_max == 8688
