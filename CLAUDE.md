@@ -139,6 +139,18 @@ test_ficha_tecnica.py         # La ficha editada gobierna estudio y plano
 
 Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py`
 
+### Despliegue
+
+Esta rama (`feat/herramienta-interna`) **convive** en el servidor con la app con IA de `master`;
+no se fusiona en `master` (eso sustituiría la app anterior).
+
+- Un push a `feat/herramienta-interna` lanza `.github/workflows/deploy-herramienta.yml`: tests y
+  build en GitHub y, si pasan, el runner self-hosted actualiza su propia copia del repo en
+  `<padre de DEPLOY_PATH>/herramienta-interna` y hace `docker compose up -d --build`.
+- `docker-compose.yml` usa proyecto `herramienta-interna` y contenedores `*_herramienta`; el
+  frontend se publica en `HERRAMIENTA_PORT` (por defecto 3001) y el backend no publica puerto.
+- No usar los puertos de la app de master (3000, 8082, 6333-6334) ni el 8080 (code-server).
+
 ---
 
 ## Reglas de Desarrollo

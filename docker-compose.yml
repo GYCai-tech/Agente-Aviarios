@@ -1,11 +1,14 @@
-version: "3.9"
+# La herramienta interna convive en el servidor con la app de master
+# (proyecto propio, contenedores *_legal_ai, puertos 3000 / 8082 / 6333-6334;
+# el 8080 es de code-server). Nombre de proyecto, contenedores y puertos propios
+# para no pisarla.
+name: herramienta-interna
 
 services:
   backend:
     build: ./backend
-    container_name: backend_aviario
-    ports:
-      - "8080:8000"
+    container_name: backend_herramienta
+    # Sin puerto en el host: solo lo usa el frontend por la red interna de compose
     environment:
       - FRONTEND_URL=http://frontend:3000
     volumes:
@@ -15,9 +18,10 @@ services:
 
   frontend:
     build: ./frontend
-    container_name: frontend_aviario
+    container_name: frontend_herramienta
     ports:
-      - "3000:3000"
+      # Puerto en el host configurable con HERRAMIENTA_PORT (en el .env junto a este archivo)
+      - "${HERRAMIENTA_PORT:-3001}:3000"
     environment:
       - BACKEND_URL=http://backend:8000
     depends_on:

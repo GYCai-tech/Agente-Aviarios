@@ -1,0 +1,51 @@
+name: Despliegue herramienta interna
+
+# Convive con la app de master (docker-ci.yml), que se despliega en DEPLOY_PATH.
+# La herramienta usa su propia copia del repo en una carpeta hermana
+# (<padre de DEPLOY_PATH>/herramienta-interna) y su propio proyecto de compose,
+# así que nunca toca la carpeta ni los contenedores de master.
+
+on:
+  push:
+    branches: [ "feat/herramienta-interna" ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy-herramienta
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Tests de cálculo
+        run: |
+          pip install -r backend/requirements.txt pytest
+          python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py -q
+
+      - name: Construir imágenes
+        run: docker compose build
+
+  deploy:
+    runs-on: self-hosted
+    needs: build-and-test
+    steps:
+      - name: Actualizar código y relanzar contenedores
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -e
+          DIR="$(dirname "$DEPLOY_PATH")/herramienta-interna"
+          if [ ! -d "$DIR/.git" ]; then
+            git clone --branch feat/herramienta-interna "$(git -C "$DEPLOY_PATH" remote get-url origin)" "$DIR"
+          fi
+          cd "$DIR"
+          git fetch origin feat/herramienta-interna
+          # backend/datos (ficha técnica editada) está ignorado por git: el reset no lo toca
+          git reset --hard origin/feat/herramienta-interna
+          docker compose up -d --build
+          docker compose ps
