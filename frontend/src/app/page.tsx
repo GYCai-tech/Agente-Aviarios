@@ -850,8 +850,9 @@ export default function EstudioPage() {
                     className={`est-print-logo${esCliente ? " est-print-logo--cliente" : ""}`} />
                   <div className="est-print-meta">
                     <strong>Estudio de nave</strong>
+                    <span className="est-print-regimen">{SISTEMAS.find((s) => s.value === res.sistema)?.label ?? res.sistema}</span>
                     {res.ancho_nave_m} × {res.largo_nave_m} m · {res.superficie_nave_m2.toLocaleString("es-ES")} m²<br />
-                    {res.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal colectivo A-Nida"} · {SISTEMAS.find((s) => s.value === res.sistema)?.label ?? res.sistema}<br />
+                    {res.tipo_zona === "aviario" ? "Aviario industrial" : "Nidal colectivo A-Nida"}<br />
                     {new Date().toLocaleDateString("es-ES", { day: "2-digit", month: "long", year: "numeric" })}
                     {esCliente ? " · Estudio de capacidad" : " · Documento interno"}
                   </div>
@@ -1098,7 +1099,7 @@ export default function EstudioPage() {
                                 <td className="num est-param">
                                   {res.tipo_zona === "aviario" ? e.num_filas : e.num_modulos}
                                   {e.es_optimo && <span className="est-tag is-ok" style={{ marginLeft: 8 }}>Óptimo</span>}
-                                  {sel && !e.es_optimo && <span className="est-tag is-warn" style={{ marginLeft: 8 }}>Actual</span>}
+                                  {sel && !e.es_optimo && <span className="est-tag is-warn" style={{ marginLeft: 8 }}>Seleccionado</span>}
                                 </td>
                                 {res.tipo_zona === "aviario" && <td className="num">{e.num_modulos}</td>}
                                 <td className="num">{e.gallinas.toLocaleString("es-ES")}</td>

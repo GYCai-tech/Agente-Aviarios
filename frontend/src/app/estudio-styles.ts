@@ -522,11 +522,16 @@ export const ESTUDIO_CSS = `
       border-bottom: 2px solid var(--color-primary);
     }
     /* gyc-logo-recortado.png es gyc-logo.png sin el margen transparente: la altura es la de la marca */
-    .est-print-logo { height: 26px; width: auto; }
+    .est-print-logo { height: 48px; width: auto; }
     .est-print-logo--cliente { height: 64px; }
     .est-print-meta { text-align: right; font-size: 8pt; color: var(--color-muted-foreground); line-height: 1.5; }
     .est-print-meta strong {
       display: block; font-family: var(--font-heading); font-size: 11pt; font-weight: 600; color: var(--color-primary);
+    }
+    /* El régimen de producción, destacado: cambia toda la normativa del estudio */
+    .est-print-regimen {
+      display: block; font-family: var(--font-heading); font-size: 16pt; font-weight: 700;
+      line-height: 1.15; color: var(--color-accent); margin: 0.05rem 0 0.15rem;
     }
 
     body { font-size: 9pt; line-height: 1.45; }
