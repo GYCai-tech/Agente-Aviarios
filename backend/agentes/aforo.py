@@ -92,12 +92,14 @@ def calcular_aforo(req: AforoRequest) -> AforoResultado:
     if e.nidal_util_m2 is None:
         pendientes.append("nidales")
     else:
-        divisor_nidal = Decimal("0.012") if req.sistema == "ecologico" else None
-        gallinas_nidal = (int(Decimal(str(e.nidal_util_m2)) / divisor_nidal)
-                          if divisor_nidal else int(Decimal(str(e.nidal_util_m2)) * 120))
+        # Ecológico: 120 cm² por gallina (superficie en cm² / 120);
+        # suelo y campero: 1 m² por cada 120 gallinas (superficie en m² × 120)
+        eco = req.sistema == "ecologico"
+        nidal_cm2 = (Decimal(str(e.nidal_util_m2)) * 10_000).normalize()
+        gallinas_nidal = int(nidal_cm2 / 120) if eco else int(Decimal(str(e.nidal_util_m2)) * 120)
         limites.append(LimiteAforo(criterio="nidales", gallinas=gallinas_nidal,
-            formula=(f"{e.nidal_util_m2:g} / 0,012" if divisor_nidal else f"{e.nidal_util_m2:g} × 120"),
-            fuente=("Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if divisor_nidal else "RD 3/2002, anexo IV.1.c")))
+            formula=(f"{nidal_cm2:f} cm² / 120 cm²" if eco else f"{e.nidal_util_m2:g} × 120"),
+            fuente=("Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if eco else "RD 3/2002, anexo IV.1.c")))
     agregar("comederos_lineales", e.comedero_lineal_accesible_m, 0.10)
     agregar("bebederos", e.bebederos_pezon_copa, 0.1)
     agregar("yacija_por_ave", req.yacija_m2, 0.025)

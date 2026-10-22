@@ -444,7 +444,7 @@ def requisitos_equipamiento(n: int, sistema: str) -> list[RequisitoEquipamiento]
     if sistema == "ecologico":
         req.append(RequisitoEquipamiento(
             nombre="Nidal colectivo", valor_minimo=round(n * 0.012, 2), unidad="m² útiles",
-            formula=f"{n} × 0,012 m²/gallina", articulo="Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3"))
+            formula=f"{n} × 120 cm²/gallina", articulo="Reglamento de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3"))
     else:
         req.append(RequisitoEquipamiento(
             nombre="Nidal colectivo", valor_minimo=round(n / 120, 2), unidad="m² útiles",

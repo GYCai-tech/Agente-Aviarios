@@ -130,8 +130,8 @@ def test_aforo_imprime_superficie_redondeada_y_producto_real_de_modulos():
     assert limites["densidad"].formula == "372.768 × 6"
     assert limites["modulos_instalados"].formula == "16 módulos × 144 gallinas/módulo"
     assert limites["modulos_instalados"].gallinas == 16 * 144
-    # Ecológico: 120 cm² de alfombrilla por gallina → 16 × 1,1781 / 0,012 = 1570
-    assert limites["nidales"].formula == "18.8496 / 0,012"
+    # Ecológico: 120 cm² de alfombrilla por gallina → 16 × 11.781 cm² / 120 = 1570
+    assert limites["nidales"].formula == "188496 cm² / 120 cm²"
     assert estudio.gallinas_max == limites["nidales"].gallinas == 1570
     assert estudio.aforo.limitantes == ["nidales"]
 

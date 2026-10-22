@@ -13,6 +13,44 @@ Documento de referencia para el agente de disposición.
 | Huella cuerpo | 1,20 × 1,40 = 1,68 m² |
 | Alto | no determinante para el layout |
 | Capacidad | 144 gallinas / módulo |
+| Zona de puesta | 2 alfombrillas de 1,19 × 0,495 m = 1,1781 m² / módulo |
+
+---
+
+## Zona de puesta (alfombrillas)
+
+El aforo del módulo es de **144 gallinas** en cualquier régimen. La superficie de
+puesta se verifica aparte, como el resto del equipamiento, con la norma de nidal
+colectivo de cada régimen:
+
+| Régimen | Norma | Nidal colectivo | Gallinas por módulo |
+|---|---|---|---|
+| Suelo / campero | Directiva 1999/74/CE art. 4.1.c · RD 3/2002 | 1 m² por cada 120 gallinas | 1,1781 m² × 120 = 141,4 → **141** |
+| Ecológico | Regl. de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3 (además de la anterior) | 120 cm² por gallina | 11.781 cm² / 120 = 98,2 → **98** |
+
+Las dos llevan un 120, pero no es la misma regla: en suelo/campero se
+**multiplica** por 120 la superficie en m²; en ecológico se **divide** entre 120
+la superficie en cm² (1 m² = 10.000 cm²). Ecológico exige más superficie de
+puesta por gallina (120 cm² frente a 83,3 cm²).
+
+En ecológico se aplican las dos normas y manda la más estricta. El texto vigente
+del 2020/464 (DOUE L 98/17 de 31.3.2020, sin cambios en esta fila en las
+modificaciones 2020/2042, 2021/1849 y 2021/1921) dice: «Nidos: 7 gallinas
+ponedoras por nido o, si se trata de un nido común, 120 cm² por gallina ponedora».
+
+Por debajo de las 144 gallinas del módulo, la alfombrilla es el factor
+limitante si no lo es antes la densidad. El cálculo suma la superficie de todos
+los módulos y redondea una sola vez al final, así que el total puede superar en
+unas gallinas a multiplicar 141 (o 98) por el número de módulos:
+
+```
+gallinas_puesta = floor(num_modulos × 1,1781 m² × 120)        # suelo / campero
+gallinas_puesta = floor(num_modulos × 11.781 cm² / 120 cm²)   # ecológico
+
+# Ejemplo, 14 módulos (16,4934 m² = 164.934 cm² de alfombrilla):
+#   suelo / campero: 16,4934 × 120  = 1.979 gallinas
+#   ecológico:       164.934 / 120  = 1.374 gallinas
+```
 
 ---
 

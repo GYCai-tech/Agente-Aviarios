@@ -31,6 +31,7 @@ normativo + plano** de la instalación. No hay IA, RAG ni chat: todo es cálculo
 | Parámetro | Valor |
 |---|---|
 | Capacidad | 144 gallinas / módulo |
+| Zona de puesta | 2 alfombrillas 1.19 × 0.495 m = 1.1781 m² → 141 gallinas (suelo/campero: m² × 120) · 98 (ecológico: cm² / 120, 120 cm² por gallina) |
 | Huella cuerpo (planta) | 1.20 × 1.40 m = 1.68 m² |
 | Huella slot acoplado | 1.20 × 3.00 m = 3.60 m² |
 | Huella total por módulo | 5.28 m² |
