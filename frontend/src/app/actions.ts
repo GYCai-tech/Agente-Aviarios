@@ -103,6 +103,8 @@ export interface EstudioResponse {
   num_filas: number;
   mods_por_fila: number;
   gallinas_max: number;
+  gallinas_min: number;              // gallinas_max menos el margen de incertidumbre
+  margen_incertidumbre_pct: number;
   densidad_real: number;
   densidad_max: number;
   limitante: string;
@@ -192,6 +194,9 @@ export interface FichaTecnica {
     nidal_util_m2: number;
     tensor_m: number;
     local_tecnico_m: number;
+  };
+  calculo: {
+    margen_incertidumbre_pct: number;
   };
   actualizado?: string | null;
 }

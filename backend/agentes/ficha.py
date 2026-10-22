@@ -28,6 +28,9 @@ _lock = threading.Lock()
 
 Positivo = Annotated[float, Field(gt=0, allow_inf_nan=False)]
 
+# Valor de fábrica capturado al importar, antes de aplicar ninguna ficha guardada
+_MARGEN_FABRICA = E.MARGEN_INCERTIDUMBRE_PCT
+
 
 class NivelAviario(BaseModel):
     """Datos de un módulo de aviario según su número de niveles."""
@@ -76,10 +79,18 @@ class FichaNidal(BaseModel):
     local_tecnico_m: float = Field(ge=0, allow_inf_nan=False)
 
 
+class FichaCalculo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    # % que se resta a la capacidad máxima para dar el intervalo del informe
+    margen_incertidumbre_pct: float = Field(ge=0, lt=100, allow_inf_nan=False)
+
+
 class FichaTecnica(BaseModel):
     model_config = ConfigDict(extra="forbid")
     aviario: FichaAviario
     nidal: FichaNidal
+    # Por defecto para las fichas guardadas antes de existir este apartado
+    calculo: FichaCalculo = Field(default_factory=lambda: FichaCalculo(margen_incertidumbre_pct=_MARGEN_FABRICA))
     actualizado: str | None = None
 
 
@@ -116,6 +127,7 @@ def _ficha_desde_estudio() -> FichaTecnica:
         nidal=FichaNidal(
             largo_modulo_m=E.NIDAL_LARGO, fondo_cuerpo_m=E.NIDAL_ANCHO, capacidad_gallinas=E.NIDAL_CAP,
             nidal_util_m2=E.NIDAL_UTIL_M2, tensor_m=E.NIDAL_TENSOR, local_tecnico_m=E.NIDAL_EQUIP),
+        calculo=FichaCalculo(margen_incertidumbre_pct=E.MARGEN_INCERTIDUMBRE_PCT),
     )
 
 
@@ -161,6 +173,7 @@ def aplicar_ficha(f: FichaTecnica) -> None:
         E.NIDAL_CAP = n.capacidad_gallinas
         E.NIDAL_UTIL_M2 = n.nidal_util_m2
         E.NIDAL_TENSOR, E.NIDAL_EQUIP = n.tensor_m, n.local_tecnico_m
+        E.MARGEN_INCERTIDUMBRE_PCT = f.calculo.margen_incertidumbre_pct
 
 
 def guardar_ficha(f: FichaTecnica) -> FichaTecnica:

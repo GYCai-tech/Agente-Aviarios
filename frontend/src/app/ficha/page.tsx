@@ -26,6 +26,7 @@ interface Campo {
   entero?: boolean;
   cero?: boolean;     // admite 0
   opcional?: boolean; // vacío = sin dato
+  menorQue?: number;  // límite superior excluido
 }
 
 const AVIARIO: Campo[] = [
@@ -51,9 +52,14 @@ const NIDAL: Campo[] = [
   { k: "nidal.largo_modulo_m", label: "Largo del módulo", unidad: "m", ayuda: "A lo largo de la cadena" },
   { k: "nidal.fondo_cuerpo_m", label: "Fondo del cuerpo", unidad: "m", ayuda: "Sin contar los slots" },
   { k: "nidal.capacidad_gallinas", label: "Capacidad por módulo", unidad: "gal", entero: true },
-  { k: "nidal.nidal_util_m2", label: "Nidal útil por módulo", unidad: "m²" },
+  { k: "nidal.nidal_util_m2", label: "Alfombrillas de puesta por módulo", unidad: "m²" },
   { k: "nidal.tensor_m", label: "Módulo tensor", unidad: "m", cero: true, ayuda: "Dentro de la nave, al final de la cadena" },
   { k: "nidal.local_tecnico_m", label: "Local técnico", unidad: "m", cero: true, ayuda: "Anexo exterior; no resta largo" },
+];
+
+const CALCULO: Campo[] = [
+  { k: "calculo.margen_incertidumbre_pct", label: "Margen de incertidumbre", unidad: "%", cero: true, menorQue: 100,
+    ayuda: "Se resta a la superficie de la nave para calcular la capacidad mínima" },
 ];
 
 const NIVELES = ["nivel_2", "nivel_3"] as const;
@@ -61,6 +67,7 @@ const TODOS: Campo[] = [
   ...AVIARIO,
   ...NIVELES.flatMap((n) => NIVEL.map((c) => ({ ...c, k: `aviario.${n}.${c.k}` }))),
   ...NIDAL,
+  ...CALCULO,
 ];
 
 // ── Conversión ficha ⇄ formulario ────────────────────────────────────────────
@@ -86,6 +93,7 @@ function validar(c: Campo, v: string): string | null {
   if (!Number.isFinite(n)) return "Número no válido";
   if (c.entero && !Number.isInteger(n)) return "Debe ser un número entero";
   if (c.cero ? n < 0 : n <= 0) return c.cero ? "No puede ser negativo" : "Debe ser mayor que 0";
+  if (c.menorQue !== undefined && n >= c.menorQue) return `Debe ser menor que ${c.menorQue}`;
   return null;
 }
 
@@ -210,7 +218,8 @@ export default function FichaPage() {
           <div className="est-eyebrow">Configuración</div>
           <h1 className="est-h">Ficha técnica</h1>
           <p className="est-sub">
-            Medidas y equipamiento por módulo que usa el cálculo de capacidad y el plano.
+            Medidas y equipamiento por módulo que usa el cálculo de capacidad y el plano,
+            y el margen de incertidumbre del informe.
             Los cambios se aplican a todos los estudios nuevos. Si en un estudio se introduce
             un equipamiento medido, ese valor prevalece sobre la ficha.
           </p>
@@ -253,6 +262,16 @@ export default function FichaPage() {
                 <div className="est-panel-title">Nidal colectivo A-Nida</div>
                 <p className="est-hint">Los slots y el paso a pared se eligen en cada estudio.</p>
                 <div className="est-form-grid">{NIDAL.map((c) => campo(c))}</div>
+              </section>
+
+              <section className="est-panel">
+                <div className="est-panel-title">Capacidad del informe</div>
+                <p className="est-hint">
+                  El informe da la capacidad como intervalo: el mínimo se calcula con la superficie de
+                  la nave reducida en este margen y el máximo con la superficie completa. Las
+                  verificaciones se hacen siempre con la máxima. 0 = sin intervalo.
+                </p>
+                <div className="est-form-grid">{CALCULO.map((c) => campo(c))}</div>
               </section>
 
               <section className="est-block">

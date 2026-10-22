@@ -63,3 +63,30 @@ def test_altura_minima_editable():
     F.guardar_ficha(f)
     r = estudiar_nave(EstudioRequest(**CASO))
     assert not r.viable and "420 cm" in r.motivo
+
+
+def test_margen_de_incertidumbre_da_el_intervalo_de_capacidad():
+    req = EstudioRequest(tipo_zona="nidal_colectivo", sistema="suelo", ancho_nave_m=12, largo_nave_m=28, altura_nave_cm=350)
+    r = estudiar_nave(req)
+    # De fábrica, 5 % de superficie: (336 × 0,95 − 20 cuerpos × 1,68) × 9 = 2570,4 → 2570
+    assert (r.gallinas_min, r.gallinas_max, r.margen_incertidumbre_pct) == (2570, 2721, 5)
+
+    f = F.ficha_por_defecto()
+    f.calculo.margen_incertidumbre_pct = 15
+    F.guardar_ficha(f)
+    r = estudiar_nave(req)
+    assert (r.gallinas_min, r.gallinas_max) == (2268, 2721)  # (336 × 0,85 − 33,6) × 9
+
+
+def test_ficha_guardada_sin_apartado_de_calculo_toma_el_margen_de_fabrica():
+    datos = F.ficha_por_defecto().model_dump()
+    del datos["calculo"]
+    assert F.FichaTecnica.model_validate(datos).calculo.margen_incertidumbre_pct == 5
+
+
+def test_margen_sin_efecto_si_la_superficie_no_limita():
+    # 5 módulos: limitan las alfombrillas (5 × 1,1781 × 120 = 706), no la superficie
+    r = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo", sistema="suelo", ancho_nave_m=12,
+                                     largo_nave_m=28, altura_nave_cm=350, num_modulos=5))
+    assert r.gallinas_min == r.gallinas_max == 706
+    assert r.superficie_nave_m2 == 336  # la reducción no se ve en el estudio, solo en el mínimo

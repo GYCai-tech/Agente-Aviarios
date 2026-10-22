@@ -23,7 +23,7 @@ from __future__ import annotations
 import math
 from typing import Literal, Optional
 
-from pydantic import BaseModel, Field, ConfigDict, model_validator
+from pydantic import BaseModel, Field, ConfigDict, PrivateAttr, model_validator
 from agentes.aforo import EquipamientoMedido, AforoRequest, AforoResultado, LimiteAforo, calcular_aforo
 
 Sistema = Literal["suelo", "campero", "ecologico", "jaulas"]
@@ -37,6 +37,11 @@ DENSIDAD_MAX: dict[str, float] = {
     "ecologico": 6.0,   # Regl. de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3
     "jaulas":    9.0,
 }
+
+# Margen de incertidumbre (%) que se resta a la superficie de la nave para dar
+# el extremo inferior del intervalo de capacidad del informe. Editable en la
+# ficha técnica.
+MARGEN_INCERTIDUMBRE_PCT = 5.0
 
 # Tope de gallinas por compartimento del gallinero en producción ecológica
 # (Regl. (UE) 2018/848, anexo II, parte II, 1.9.4.4.n)
@@ -68,7 +73,9 @@ def densidad_max_para(sistema: str) -> float:
 NIDAL_LARGO  = 1.20                              # m — a lo largo de la nave
 NIDAL_ANCHO  = 1.40                              # m — profundidad del cuerpo
 NIDAL_CUERPO = round(NIDAL_LARGO * NIDAL_ANCHO, 4)   # 1.68 m²
-NIDAL_UTIL_M2 = NIDAL_CUERPO                     # m² de nidal útil por módulo (= cuerpo)
+# Superficie de puesta por módulo: 2 alfombrillas de 1,19 × 0,495 m. Se verifica
+# como el resto del equipamiento; no cambia la capacidad del módulo.
+NIDAL_UTIL_M2 = round(2 * 1.19 * 0.495, 4)       # 1.1781 m²
 NIDAL_CAP    = 144                               # gallinas por módulo
 NIDAL_TENSOR = 3.00                              # m — módulo tensor, dentro de la nave
 NIDAL_EQUIP  = 4.00                              # m — local técnico, anexo exterior a la nave
@@ -170,11 +177,6 @@ def cap_ecologico(gallinas: int, sistema: str) -> tuple[int, bool]:
 
 
 # ── Capacidad del nidal — cálculo canónico ────────────────────────────────────
-
-def capacidad_nidal_eco() -> int:
-    """Gallinas por módulo en ecológico: 120 cm² de nidal común por gallina (2020/464)."""
-    return min(NIDAL_CAP, math.floor(round(NIDAL_UTIL_M2, 4) / 0.012))
-
 
 def tramos_nidal(largo_nave: float, local_dentro: bool = False,
                  libre_fondo: float | None = None) -> tuple[float, float, float]:
@@ -290,7 +292,7 @@ class CapacidadNidal(BaseModel):
     yacija_m2: float
     yacija_min_m2: float
     cumple_yacija: bool
-    limitante: str                # "capacidad_modulos" | "nidales" | "densidad" | "limite_ecologico"
+    limitante: str                # "capacidad_modulos" | "densidad" | "limite_ecologico"
 
 
 def capacidad_nidal(
@@ -315,19 +317,10 @@ def capacidad_nidal(
     yacija   = yacija_disponible(sup_nave, sup_cuerpo + sup_slot)
     yac_min  = yacija_minima(sup_nave)
 
-    sup_nidal = round(num_modulos * NIDAL_UTIL_M2, 4)
-    cap_nidal = (math.floor(sup_nidal / 0.012) if sistema == "ecologico"
-                 else math.floor(sup_nidal * GALLINAS_POR_M2_NIDAL))
-    cap_modulos  = min(num_modulos * NIDAL_CAP, cap_nidal)
+    cap_modulos  = num_modulos * NIDAL_CAP
     cap_densidad = math.floor(sup_disp * densidad_max)
     gallinas = min(cap_modulos, cap_densidad)
-    if cap_modulos > cap_densidad:
-        limitante = "densidad"
-    elif cap_nidal < num_modulos * NIDAL_CAP:
-        # Ecológico: 120 cm² de nidal por gallina dejan el módulo por debajo de su aforo
-        limitante = "nidales"
-    else:
-        limitante = "capacidad_modulos"
+    limitante = "capacidad_modulos" if cap_modulos <= cap_densidad else "densidad"
     gallinas, capeado = cap_ecologico(gallinas, sistema)
     if capeado:
         limitante = "limite_ecologico"
@@ -505,6 +498,9 @@ class EstudioRequest(BaseModel):
     pasillo_m: float = Field(default_factory=lambda: AVI_PASILLO, ge=0)
     clearance_frontal_m: float = Field(default_factory=lambda: AVI_CLEARANCE, ge=0)
     clearance_fondo_m: float = Field(default_factory=lambda: AVI_CLEARANCE_FONDO, ge=0)
+    # Fracción de la superficie de la nave que computa (uso interno: el extremo
+    # inferior del intervalo de capacidad se calcula con la nave reducida).
+    _factor_superficie: float = PrivateAttr(default=1.0)
 
     @model_validator(mode="after")
     def validar_regimen(self):
@@ -582,6 +578,9 @@ class EstudioResponse(BaseModel):
     num_filas: int = 1
     mods_por_fila: int = 0
     gallinas_max: int = 0
+    # Extremo inferior del intervalo: gallinas_max menos el margen de incertidumbre
+    gallinas_min: int = 0
+    margen_incertidumbre_pct: float = 0.0
     densidad_real: float = 0.0
     densidad_max: float = 0.0
     limitante: str = ""
@@ -671,6 +670,9 @@ def _estudio_nidal(req: EstudioRequest) -> EstudioResponse:
     # Mantener la superficie geométrica sin redondeo durante el cálculo:
     # 28,96 × 13,80 m del informe oficial son 399,648 m² (399,65 solo al mostrar).
     S = req.ancho_nave_m * req.largo_nave_m
+    if req._factor_superficie != 1:
+        # Redondeo: 336 × 0,85 da 285,5999… y costaría una gallina al truncar
+        S = round(S * req._factor_superficie, 4)
     # Con el local técnico dentro, su planta no es suelo para las aves: no
     # computa para densidad ni para yacija, y el 1/3 se mide sobre el resto.
     sup_local = sup_local_interior(req.local_dentro, req.ancho_nave_m)
@@ -805,8 +807,7 @@ def _estudio_nidal(req: EstudioRequest) -> EstudioResponse:
     notas = [
         f"Configuración de slot: {slot_izq:.0f} m a la izquierda y {slot_der:.0f} m a la derecha "
         f"({'ambos lados' if slot_izq > 0 and slot_der > 0 else 'un solo lado'}). "
-        f"El aforo del módulo es de {NIDAL_CAP} gallinas con cualquier slot"
-        + (f"; en ecológico, {capacidad_nidal_eco()} por los 120 cm² de nidal por gallina." if req.sistema == "ecologico" else "."),
+        f"El aforo del módulo es de {NIDAL_CAP} gallinas con cualquier slot.",
         "El cuerpo del módulo (1,20 × 1,40 m) es lo único que se descuenta para la densidad: "
         "el slot es superficie habitable, pero no computa como yacija.",
     ]
@@ -907,7 +908,7 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
             base.motivo = "Los módulos solicitados por fila no caben en la nave."
             return base
         mods_por_fila = req.mods_por_fila
-    suelo_util = round(largo_util * req.ancho_nave_m, 2)
+    suelo_util = round(largo_util * req.ancho_nave_m * req._factor_superficie, 2)
     sup_disp_mod = AVI_SUP_DISP[niveles]
     sup_total_mod = AVI_SUP_TOTAL[niveles]
     base.max_modulos_fisicos = mods_por_fila * filas_max
@@ -1040,6 +1041,19 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
     return base
 
 
+def _verificacion_puesta(req: EstudioRequest, sup_puesta: float, gallinas: int, n: int) -> Verificacion:
+    """Superficie de puesta del nidal frente al mínimo de nidal colectivo para `gallinas`."""
+    eco = req.sistema == "ecologico"
+    medido = req.equipamiento.nidal_util_m2 is not None
+    origen = ("Superficie medida" if medido else
+              f"{_num(NIDAL_UTIL_M2, 'm²')} de alfombrilla por módulo × {n} módulos")
+    regla = "120 cm² por gallina" if eco else "1 m² por cada 120 gallinas"
+    return _v("Superficie de puesta (alfombrillas)", sup_puesta,
+              gallinas * 0.012 if eco else gallinas / GALLINAS_POR_M2_NIDAL, "m²", "minimo",
+              ("Regl. de Ejecución (UE) 2020/464, anexo I, parte IV, punto 3" if eco else "RD 3/2002 Anexo IV"),
+              f"{origen}; {regla} ({_num(math.floor(sup_puesta / 0.012 if eco else sup_puesta * GALLINAS_POR_M2_NIDAL), 'gallinas')} como máximo)")
+
+
 def _verificaciones_comunes(req: EstudioRequest, gallinas: int, sup_pasto: float) -> list[Verificacion]:
     out: list[Verificacion] = []
     if req.sistema == "ecologico":
@@ -1080,12 +1094,29 @@ def _nota_pasto(sistema: str, gallinas: int, sup_pasto: float) -> list[str]:
 # ── Entrada pública ───────────────────────────────────────────────────────────
 
 def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
+    resultado = _estudiar(req)
+    # Intervalo de capacidad: el extremo inferior es la misma instalación con la
+    # superficie de la nave reducida en el margen de incertidumbre. Las
+    # verificaciones, el equipamiento y el plano van con la capacidad máxima.
+    resultado.margen_incertidumbre_pct = MARGEN_INCERTIDUMBRE_PCT
+    resultado.gallinas_min = resultado.gallinas_max
+    if MARGEN_INCERTIDUMBRE_PCT > 0 and resultado.num_modulos:
+        reducido = req.model_copy(update={"num_filas": resultado.num_filas} if req.tipo_zona == "aviario"
+                                  else {"num_modulos": resultado.num_modulos})
+        reducido._factor_superficie = 1 - MARGEN_INCERTIDUMBRE_PCT / 100
+        resultado.gallinas_min = min(resultado.gallinas_max, _estudiar(reducido).gallinas_max)
+    resultado.parametros = _parametros(req, resultado)
+    return resultado
+
+
+def _estudiar(req: EstudioRequest) -> EstudioResponse:
     motor = _estudio_aviario if req.tipo_zona == "aviario" else _estudio_nidal
     resultado = motor(req)
     if resultado.num_modulos and req.sistema in ("suelo", "campero", "ecologico"):
         # Mismo redondeo que suelo_util en _estudio_aviario: si no, la yacija
         # redondeada puede superar el suelo por milésimas y el aforo la rechaza.
-        suelo = (round((req.largo_nave_m - req.clearance_frontal_m - req.clearance_fondo_m) * req.ancho_nave_m, 2)
+        suelo = (round((req.largo_nave_m - req.clearance_frontal_m - req.clearance_fondo_m) * req.ancho_nave_m
+                       * req._factor_superficie, 2)
                  if req.tipo_zona == "aviario" else resultado.superficie_nave_m2 - resultado.sup_local_m2)
 
         def evaluar(n, yacija):
@@ -1097,10 +1128,9 @@ def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
             catalogo = (nidal_equipo_por_modulo(req.sistema) if req.tipo_zona == "nidal_colectivo"
                         else AVI_EQUIPO_POR_MODULO.get(resultado.niveles, {}))
             if req.tipo_zona == "nidal_colectivo" and equipamiento.nidal_util_m2 is None:
-                # La superficie del cuerpo A-Nida es la superficie de nidal útil
-                # definida por su ficha dimensional (1,20 × 1,40 m por módulo).
-                # Se calcula por escenario para que la optimización y el aforo
-                # final apliquen exactamente el mismo límite.
+                # Superficie de puesta integrada: las alfombrillas de cada módulo.
+                # Es un límite del aforo como el resto del equipamiento; se calcula
+                # por escenario para que la optimización y el aforo final coincidan.
                 equipamiento = equipamiento.model_copy(update={
                     "nidal_util_m2": round(n * NIDAL_UTIL_M2, 4),
                 })
@@ -1132,6 +1162,17 @@ def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
                 actualizado = req.model_copy(update={"num_filas": optimo.num_filas} if req.tipo_zona == "aviario"
                                             else {"num_modulos": optimo.num_modulos})
                 resultado = motor(actualizado)
+            if resultado.num_modulos:
+                # El motor compara con su óptimo geométrico; el real es el del aforo
+                aviario = req.tipo_zona == "aviario"
+                unidad = "filas" if aviario else "módulos"
+                actual, mejor = ((resultado.num_filas, optimo.num_filas) if aviario
+                                 else (resultado.num_modulos, optimo.num_modulos))
+                resultado.notas = [n for n in resultado.notas if not n.startswith("Escenario forzado")]
+                if actual != mejor:
+                    resultado.notas.append(
+                        f"Escenario forzado a {actual} {unidad[:-1] if actual == 1 else unidad}. El óptimo de la nave es "
+                        f"{mejor} {unidad} ({optimo.gallinas} gallinas).")
         resultado.escenarios = escenarios
         aforo, superficie, equipamiento = evaluar(resultado.num_modulos, resultado.sup_yacija_m2)
         cap_geometrica = resultado.gallinas_max
@@ -1170,10 +1211,15 @@ def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
                                     ("Gallinas por compartimento (ecológico)", "Trampillas al exterior")]
         resultado.verificaciones.append(_v("Densidad de alojamiento", resultado.densidad_real,
             resultado.densidad_max, "gallinas/m²", "maximo", _fuente_densidad(req.sistema)))
+        if req.tipo_zona == "nidal_colectivo" and equipamiento.nidal_util_m2 is not None:
+            resultado.verificaciones.append(_verificacion_puesta(
+                req, equipamiento.nidal_util_m2, resultado.gallinas_max, resultado.num_modulos))
         resultado.verificaciones += _verificaciones_comunes(req, resultado.gallinas_max, req.sup_pasto_m2 or 0)
         resultado.viable = resultado.gallinas_max > 0 and all(v.cumple for v in resultado.verificaciones)
         if not resultado.viable and not resultado.motivo:
-            resultado.motivo = "El equipamiento o las superficies declaradas no permiten alojar aves."
+            fallan = [v.parametro for v in resultado.verificaciones if not v.cumple]
+            resultado.motivo = ("No cumple: " + ", ".join(fallan) + "." if fallan and resultado.gallinas_max > 0
+                                else "El equipamiento o las superficies declaradas no permiten alojar aves.")
         resultado.notas = [n for n in resultado.notas if not n.startswith("Falta el dato de zona de pasto")]
         if req.tipo_zona == "aviario":
             catalogo = AVI_EQUIPO_POR_MODULO.get(resultado.niveles, {})
@@ -1198,7 +1244,6 @@ def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
         if aforo.pendientes:
             resultado.notas.append("Pendiente de medir: " + ", ".join(aforo.pendientes) + ".")
     resultado.notas.append("Estimación con geometría de catálogo pendiente de confirmar; no es un aforo autorizado.")
-    resultado.parametros = _parametros(req, resultado)
     resultado.condiciones = _condiciones_ecologico(req, resultado) if req.sistema == "ecologico" else []
     return resultado
 
@@ -1256,7 +1301,8 @@ def _equipo_previsto(req: EstudioRequest, eq: EquipamientoMedido, gallinas: int)
     eco = req.sistema == "ecologico"
     minimos = {
         "perchas_m":                   ("Perchas", "m", round(gallinas * (0.18 if eco else 0.15), 2)),
-        "nidal_util_m2":               ("Superficie de nidal", "m²",
+        "nidal_util_m2":               ("Superficie de puesta (alfombrillas)" if req.tipo_zona == "nidal_colectivo"
+                                        else "Superficie de nidal", "m²",
                                         round(gallinas * 0.012 if eco else gallinas / 120, 2)),
         "comedero_lineal_accesible_m": ("Comedero lineal", "m", round(gallinas * 0.10, 2)),
         "bebederos_pezon_copa":        ("Bebederos de pezón o copa", "uds", float(math.ceil(gallinas / 10))),
@@ -1322,12 +1368,6 @@ def _parametros(req: EstudioRequest, r: EstudioResponse) -> list[ParametroCalcul
             P(grupo=g, nombre="Largo del módulo", valor=_num(NIDAL_LARGO, "m"), origen=FT),
             P(grupo=g, nombre="Fondo del cuerpo", valor=_num(NIDAL_ANCHO, "m"), origen=FT),
             P(grupo=g, nombre="Capacidad por módulo", valor=_num(NIDAL_CAP, "gallinas"), origen=FT),
-        ]
-        if eco and req.equipamiento.nidal_util_m2 is None and capacidad_nidal_eco() < NIDAL_CAP:
-            out.append(P(grupo=g, nombre="Capacidad por módulo en ecológico",
-                         valor=f"{capacidad_nidal_eco()} gallinas = {_num(NIDAL_UTIL_M2, 'm²')} de nidal / 120 cm² por gallina",
-                         origen=NORMA))
-        out += [
             P(grupo=g, nombre="Módulo tensor (dentro de la nave)", valor=_num(NIDAL_TENSOR, "m"), origen=FT),
             P(grupo=g, nombre="Local técnico (largo)", valor=_num(NIDAL_EQUIP, "m"), origen=FT),
             P(grupo=g, nombre="Slots izquierdo / derecho",
@@ -1341,7 +1381,7 @@ def _parametros(req: EstudioRequest, r: EstudioResponse) -> list[ParametroCalcul
               origen=NAVE if req.libre_fondo_m is not None else FT),
         ]
         if req.equipamiento.nidal_util_m2 is None:
-            out.append(P(grupo="Equipamiento", nombre="Nidal útil por módulo",
+            out.append(P(grupo="Equipamiento", nombre="Alfombrillas de puesta por módulo",
                          valor=f"{_num(NIDAL_UTIL_M2, 'm²')} × {r.num_modulos} = {_num(NIDAL_UTIL_M2 * r.num_modulos, 'm²')}",
                          origen=FT))
         else:
@@ -1370,6 +1410,13 @@ def _parametros(req: EstudioRequest, r: EstudioResponse) -> list[ParametroCalcul
             out.append(P(grupo="Nave", nombre="Zona de pasto", valor=_num(req.sup_pasto_m2, "m²"), origen=NAVE))
         else:
             out.append(P(grupo="Nave", nombre="Zona de pasto", valor="Sin dato", origen=PEND))
+
+    if MARGEN_INCERTIDUMBRE_PCT > 0:
+        out.append(P(grupo="Capacidad", nombre="Margen de incertidumbre",
+                     valor=f"−{_num(MARGEN_INCERTIDUMBRE_PCT, '%')} de superficie de nave → "
+                           + (f"{_num(r.gallinas_min)} a {_num(r.gallinas_max, 'gallinas')}"
+                              if r.gallinas_min < r.gallinas_max
+                              else "sin efecto: la capacidad no la limita la superficie"), origen=FT))
 
     out += [
         P(grupo="Normativa", nombre="Densidad máxima", valor=_num(densidad_max_para(req.sistema), "gallinas/m²"), origen=NORMA),

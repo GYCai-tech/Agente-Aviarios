@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { ArrowLeft, ArrowRight, Check, Download, Layers, Minus, Printer, Rows3, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, Layers, Minus, Plus, Printer, Rows3, X } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
@@ -157,6 +157,7 @@ export default function EstudioPage() {
   const [svg, setSvg]         = useState<string>("");
   const [descargandoDxf, setDescargandoDxf] = useState(false);
   const [cargando, setCarga]  = useState(false);
+  const [recalculando, setRecalculando] = useState(false);
   const [version, setVersion] = useState<Version>("cliente");
   const esCliente = version === "cliente";
   const resultadoRef = useRef<HTMLDivElement>(null);
@@ -169,7 +170,7 @@ export default function EstudioPage() {
   // Con prefers-reduced-motion no se anima y el contenido aparece en su estado final.
   useEffect(() => {
     const raiz = resultadoRef.current;
-    if (!raiz || !res) return;
+    if (!raiz || cargando) return;
     gsap.registerPlugin(ScrollTrigger);
     const mm = gsap.matchMedia();
     mm.add("(prefers-reduced-motion: no-preference)", () => {
@@ -181,7 +182,7 @@ export default function EstudioPage() {
       });
     });
     return () => mm.revert();
-  }, [res]);
+  }, [cargando]);
   const [error, setError]     = useState<string | null>(null);
   const [mediciones, setMediciones] = useState<Record<string, string>>({});
   const equipamiento: EquipamientoMedido = form.sistema === "ecologico" ? {} : Object.fromEntries(
@@ -355,6 +356,30 @@ export default function EstudioPage() {
     setCarga(false);
   }
 
+  // Recalcula el informe con otro número de módulos (filas en el aviario)
+  // sin salir de la ficha: el resultado anterior sigue a la vista mientras tanto.
+  async function elegirConfiguracion(valor: number) {
+    if (!res || recalculando || valor === configActual) return;
+    setRecalculando(true);
+    setError(null);
+    try {
+      const r = await pedirEstudio(construirRequest(esAviarioRes ? { num_filas: valor } : { num_modulos: valor }));
+      setRes(r);
+      await cargarPlano(r);
+    } catch {
+      setError("No se pudo recalcular el estudio. Inténtalo de nuevo.");
+    }
+    setRecalculando(false);
+  }
+
+  function confirmarConfiguracion(input: HTMLInputElement) {
+    const v = Math.round(Number(input.value));
+    if (input.value === "" || !Number.isFinite(v)) { input.value = String(configActual || ""); return; }
+    const n = Math.min(configMax, Math.max(configMin, v));
+    input.value = String(n);
+    elegirConfiguracion(n);
+  }
+
   function reiniciar() {
     setZona(null); setForm(FORM_INICIAL); setRes(null); setSvg("");
     setError(null); setPaso("modulo");
@@ -373,6 +398,19 @@ export default function EstudioPage() {
   const limitesOrdenados = [...(res?.aforo?.limites ?? [])].sort((a, b) => a.gallinas - b.gallinas);
   const limitesActivos = limitesOrdenados.filter((l) => codigosLimitante.includes(l.criterio));
   const siguienteLimite = limitesOrdenados.find((l) => res && l.gallinas > res.gallinas_max);
+
+  // Capacidad como intervalo: el mínimo es la capacidad con la superficie de la
+  // nave reducida en el margen de incertidumbre
+  const conIntervalo = !!res && res.margen_incertidumbre_pct > 0 && res.gallinas_min > 0 && res.gallinas_min < res.gallinas_max;
+
+  // Configuración del informe: módulos en el nidal, filas en el aviario
+  const esAviarioRes = res?.tipo_zona === "aviario";
+  const opcionesConfig = (res?.escenarios ?? []).map((e) => (esAviarioRes ? e.num_filas : e.num_modulos));
+  const configMin = opcionesConfig.length ? Math.min(...opcionesConfig) : 0;
+  const configMax = opcionesConfig.length ? Math.max(...opcionesConfig) : 0;
+  const configActual = res ? (esAviarioRes ? res.num_filas : res.num_modulos) : 0;
+  const escenarioOptimo = res?.escenarios.find((e) => e.es_optimo);
+  const configOptima = escenarioOptimo ? (esAviarioRes ? escenarioOptimo.num_filas : escenarioOptimo.num_modulos) : null;
 
   return (
     <>
@@ -844,6 +882,49 @@ export default function EstudioPage() {
                 <h1 className="est-h">{esCliente ? "Estudio de capacidad de la nave" : "Estudio de la nave"}</h1>
                 <p className="est-sub">{res.descripcion_layout || "Sin distribución viable"}</p>
 
+                {/* ── Módulos del informe (solo en pantalla) ── */}
+                {opcionesConfig.length > 1 && (
+                  <div className={`est-config est-solo-pantalla${recalculando ? " is-busy" : ""}`} aria-busy={recalculando}>
+                    <div className="est-config-txt">
+                      <label className="est-config-lbl" htmlFor="est-config-num">
+                        {esAviarioRes ? "Filas del informe" : "Módulos del informe"}
+                      </label>
+                      <p className="est-hint">
+                        {esAviarioRes
+                          ? `De ${configMin} a ${configMax} filas de ${res.mods_por_fila} módulos.`
+                          : `De ${configMin} a ${configMax} módulos, los que caben en la nave.`}
+                        {" "}Estudio, plano y PDF se recalculan con el valor elegido.
+                      </p>
+                    </div>
+                    <div className="est-stepper">
+                      <button type="button" className="est-stepper-btn"
+                        aria-label={esAviarioRes ? "Una fila menos" : "Un módulo menos"}
+                        disabled={recalculando || configActual <= configMin}
+                        onClick={() => elegirConfiguracion(configActual - 1)}>
+                        <Minus size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                      </button>
+                      <input id="est-config-num" key={configActual} type="number" inputMode="numeric"
+                        className="est-input est-stepper-input" min={configMin} max={configMax}
+                        defaultValue={configActual || ""} disabled={recalculando}
+                        onBlur={(ev) => confirmarConfiguracion(ev.currentTarget)}
+                        onKeyDown={(ev) => { if (ev.key === "Enter") ev.currentTarget.blur(); }} />
+                      <button type="button" className="est-stepper-btn"
+                        aria-label={esAviarioRes ? "Una fila más" : "Un módulo más"}
+                        disabled={recalculando || configActual >= configMax}
+                        onClick={() => elegirConfiguracion(Math.max(configMin, configActual + 1))}>
+                        <Plus size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                      </button>
+                    </div>
+                    {escenarioOptimo && configOptima !== null && (configActual === configOptima
+                      ? <span className="est-tag is-ok">Óptimo</span>
+                      : <button type="button" className="est-config-opt" disabled={recalculando}
+                          onClick={() => elegirConfiguracion(configOptima)}>
+                          Volver al óptimo: {configOptima} {esAviarioRes ? "filas" : "módulos"} ·{" "}
+                          {escenarioOptimo.gallinas.toLocaleString("es-ES")} aves
+                        </button>)}
+                  </div>
+                )}
+
                 {/* La versión cliente no lleva frase de veredicto: los indicadores lo resumen */}
                 {!(res.viable && esCliente) && (
                 <div className={`est-verdict${res.viable ? " is-ok" : " is-no"}`}>
@@ -854,7 +935,9 @@ export default function EstudioPage() {
                     {res.viable ? (
                       <>
                         <strong>Configuración conforme.</strong>{" "}
-                        La nave admite {res.gallinas_max.toLocaleString("es-ES")} gallinas con{" "}
+                        La nave admite {conIntervalo
+                          ? <>entre {res.gallinas_min.toLocaleString("es-ES")} y {res.gallinas_max.toLocaleString("es-ES")}</>
+                          : res.gallinas_max.toLocaleString("es-ES")} gallinas con{" "}
                         {res.num_modulos} módulos cumpliendo densidad y yacija.
                         {res.limitante && <> Factor limitante: <strong>{nombreLimitante(res.limitante)}</strong>.</>}
                       </>
@@ -870,7 +953,8 @@ export default function EstudioPage() {
                 {res.viable && (
                   <div className="est-kpis">
                     <div className="est-kpi">
-                      <div className="est-kpi-val">
+                      <div className={`est-kpi-val${conIntervalo ? " est-kpi-val--rango" : ""}`}>
+                        {conIntervalo && <>{res.gallinas_min.toLocaleString("es-ES")}<span className="est-kpi-sep">–</span></>}
                         {res.gallinas_max.toLocaleString("es-ES")}<span className="est-kpi-unit">aves</span>
                       </div>
                       <div className="est-kpi-lbl">Capacidad estimada</div>
@@ -880,9 +964,6 @@ export default function EstudioPage() {
                         {res.num_modulos}<span className="est-kpi-unit">módulos</span>
                       </div>
                       <div className="est-kpi-lbl">Módulos instalados</div>
-                      <div className="est-kpi-sub">
-                        {!esCliente && res.max_modulos_fisicos > 0 && `${res.max_modulos_fisicos} caben físicamente`}
-                      </div>
                     </div>
                     <div className="est-kpi">
                       <div className="est-kpi-val">
@@ -1013,9 +1094,7 @@ export default function EstudioPage() {
                             return (
                               <tr key={`${e.num_filas}-${e.num_modulos}`}
                                 className={`est-row-btn${sel ? " est-row-sel" : ""}`}
-                                onClick={() => calcular(res.tipo_zona === "aviario"
-                                  ? { num_filas: e.num_filas }
-                                  : { num_modulos: e.num_modulos })}>
+                                onClick={() => elegirConfiguracion(esAviarioRes ? e.num_filas : e.num_modulos)}>
                                 <td className="num est-param">
                                   {res.tipo_zona === "aviario" ? e.num_filas : e.num_modulos}
                                   {e.es_optimo && <span className="est-tag is-ok" style={{ marginLeft: 8 }}>Óptimo</span>}

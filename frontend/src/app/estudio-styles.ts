@@ -358,6 +358,41 @@ export const ESTUDIO_CSS = `
   .est-verdict.is-no { background: var(--color-fail-bg); color: var(--color-fail-text); }
   .est-verdict strong { font-weight: 600; }
 
+  /* Módulos del informe: recalcula estudio y plano; no sale en el PDF */
+  .est-config {
+    display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-md) var(--space-lg);
+    margin-bottom: var(--space-lg); padding: var(--space-md) var(--space-lg);
+    background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius);
+    box-shadow: var(--shadow-sm); transition: opacity var(--t);
+  }
+  .est-config.is-busy { opacity: 0.6; }
+  .est-config-txt { flex: 1 1 240px; }
+  .est-config-lbl {
+    display: block; font-family: var(--font-heading); font-size: 0.75rem; font-weight: 600;
+    letter-spacing: 0.06em; text-transform: uppercase; color: var(--color-primary); margin-bottom: var(--space-xs);
+  }
+  .est-stepper {
+    display: inline-flex; align-items: stretch; border: 1px solid var(--color-input-border);
+    border-radius: var(--radius-sm); overflow: hidden; background: var(--color-card);
+  }
+  .est-stepper-btn {
+    display: inline-flex; align-items: center; justify-content: center; width: 48px; min-height: 48px;
+    background: var(--color-muted); border: none; color: var(--color-primary); transition: background var(--t);
+  }
+  .est-stepper-btn:hover:not(:disabled) { background: var(--color-primary-tint); }
+  .est-stepper-btn:disabled { color: var(--color-muted-foreground); cursor: not-allowed; }
+  .est-stepper-input.est-input {
+    width: 5.5rem; border: none; border-radius: 0; text-align: center;
+    font-family: var(--font-heading); font-size: 1.25rem; font-weight: 600; color: var(--color-primary);
+  }
+  .est-stepper-input.est-input:focus { box-shadow: inset 0 0 0 2px var(--color-primary); }
+  .est-config-opt {
+    min-height: 44px; padding: var(--space-sm) var(--space-md); font-size: 0.9rem; font-weight: 500;
+    color: var(--color-primary); background: var(--color-primary-tint); border: none;
+    border-radius: var(--radius-sm); transition: filter var(--t);
+  }
+  .est-config-opt:hover:not(:disabled) { filter: brightness(0.96); }
+
   .est-kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: var(--space-md); }
   .est-kpi {
     background: var(--color-card); border: 1px solid var(--color-border); border-radius: var(--radius);
@@ -367,6 +402,8 @@ export const ESTUDIO_CSS = `
     font-family: var(--font-heading); font-size: 2.25rem; font-weight: 600;
     color: var(--color-primary); line-height: 1.05; letter-spacing: -0.02em;
   }
+  .est-kpi-val--rango { font-size: 1.85rem; white-space: nowrap; }
+  .est-kpi-sep { margin: 0 0.12em; color: var(--color-muted-foreground); font-weight: 500; }
   .est-kpi-unit { font-family: var(--font-body); font-size: 0.9rem; font-weight: 500; color: var(--color-muted-foreground); margin-left: var(--space-xs); letter-spacing: 0; }
   .est-kpi-lbl {
     font-family: var(--font-heading); font-size: 0.75rem; font-weight: 600; letter-spacing: 0.06em;
@@ -514,6 +551,7 @@ export const ESTUDIO_CSS = `
     .est-kpis { grid-template-columns: repeat(4, 1fr) !important; gap: 0.5rem; }
     .est-kpi { padding: 0.55rem 0.7rem; }
     .est-kpi-val { font-size: 16pt; }
+    .est-kpi-val--rango { font-size: 13pt; }
     .est-kpi-lbl { font-size: 6pt; }
     .est-kpi-sub { font-size: 7pt; }
     .est-limit { padding: 0.6rem 0.8rem; }

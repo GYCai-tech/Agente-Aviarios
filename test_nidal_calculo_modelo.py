@@ -28,21 +28,23 @@ def test_nidal_usa_la_geometria_oficial_y_expone_limites_por_criterio():
     assert estudio.sup_disponible_m2 == 364.37  # nave - 21 × (1.20 × 1.40)
     assert estudio.sup_yacija_m2 == 213.17
     assert estudio.yacija_min_m2 == 133.22
-    assert estudio.gallinas_max == 3024  # 21 módulos × 144 aves/módulo
+    # Las alfombrillas (2 × 1,19 × 0,495 m por módulo) dan para 141 gallinas por módulo
+    assert estudio.gallinas_max == 2968  # 21 × 1,1781 m² × 120 gallinas/m²
 
     limites = {limite.criterio: limite for limite in estudio.aforo.limites}
     assert limites["modulos_instalados"].gallinas == 3024
     assert limites["modulos_instalados"].formula == "21 módulos × 144 gallinas/módulo"
     assert limites["densidad"].gallinas == 3279
-    assert limites["nidales"].gallinas == 4233
+    assert limites["nidales"].formula == "24.7401 × 120" and limites["nidales"].gallinas == 2968
     # Equipamiento integrado: mínimo normativo para 144 aves por módulo
     # (21,6 m de percha, 14,4 m de comedero, 15 bebederos)
     assert limites["perchas"].formula == "453.6 / 0.15" and limites["perchas"].gallinas == 3024
     assert limites["comederos_lineales"].formula == "302.4 / 0.1" and limites["comederos_lineales"].gallinas == 3024
     assert limites["bebederos"].formula == "315 / 0.1" and limites["bebederos"].gallinas == 3150
     assert estudio.aforo.pendientes == []
-    # Empatan con la capacidad de los módulos, de la que se derivan: no son el limitante
-    assert estudio.aforo.limitantes == ["modulos_instalados"]
+    assert estudio.aforo.limitantes == ["nidales"]
+    puesta = next(v for v in estudio.verificaciones if v.parametro == "Superficie de puesta (alfombrillas)")
+    assert puesta.valor_real == 24.74 and puesta.cumple
 
 
 def test_nidal_ecologico_dimensiona_perchas_a_18_cm():
@@ -88,7 +90,7 @@ def test_plano_centrado_usa_geometria_del_estudio_y_cotas_reales():
     assert textos.count("3.20 m") == 2
     assert "3.76 m libres" in textos  # tensor + suelo libre hasta la pared
     assert "ESC 1:50" not in textos  # el SVG se adapta a pantalla, sin escala física fija
-    assert any("3.024 aves" in (t or "") for t in textos)
+    assert any("2.968 aves" in (t or "") for t in textos)
 
 
 def test_centrado_comprueba_cada_paso_aunque_la_suma_quepa():
@@ -108,7 +110,8 @@ def test_seleccion_automatica_del_plano_considera_equipamiento():
     estudio = estudiar_nave(EstudioRequest(**datos, altura_nave_cm=300))
     plano = generar_desde_config(LayoutConfig(**datos))
     assert plano.error is None
-    assert plano.metricas.total_modulos == estudio.num_modulos == 7
+    # 7 módulos no dan alfombrilla para 1000 gallinas (7 × 1,1781 × 120 = 989)
+    assert plano.metricas.total_modulos == estudio.num_modulos == 8
     assert plano.metricas.gallinas_max == estudio.gallinas_max == 1000
     assert plano.metricas.geometria_nidal == estudio.geometria_nidal
 
@@ -122,24 +125,26 @@ def test_plano_centrado_rechaza_distribuciones_que_no_representa(config):
 
 def test_aforo_imprime_superficie_redondeada_y_producto_real_de_modulos():
     estudio = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo", sistema="ecologico",
-        ancho_nave_m=13.8, largo_nave_m=28.96, altura_nave_cm=300, sup_pasto_m2=20000))
+        ancho_nave_m=13.8, largo_nave_m=28.96, altura_nave_cm=300, sup_pasto_m2=20000, num_modulos=16))
     limites = {limite.criterio: limite for limite in estudio.aforo.limites}
     assert limites["densidad"].formula == "372.768 × 6"
-    n = estudio.num_modulos
-    assert limites["modulos_instalados"].formula == f"{n} módulos × 144 gallinas/módulo"
-    assert limites["modulos_instalados"].gallinas == n * 144
-    assert estudio.gallinas_max == limites["densidad"].gallinas == 2236
-    assert estudio.aforo.limitantes == ["densidad"]
+    assert limites["modulos_instalados"].formula == "16 módulos × 144 gallinas/módulo"
+    assert limites["modulos_instalados"].gallinas == 16 * 144
+    # Ecológico: 120 cm² de alfombrilla por gallina → 16 × 1,1781 / 0,012 = 1570
+    assert limites["nidales"].formula == "18.8496 / 0,012"
+    assert estudio.gallinas_max == limites["nidales"].gallinas == 1570
+    assert estudio.aforo.limitantes == ["nidales"]
 
 
 def test_equipamiento_previsto_cubre_el_minimo_normativo():
     estudio = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo",
         ancho_nave_m=13.8, largo_nave_m=28.96, altura_nave_cm=300))
     equipo = {e.nombre: e for e in estudio.equipamiento}
-    assert equipo["Perchas"].previsto == 453.6 and equipo["Perchas"].minimo == 453.6
+    # 2968 gallinas (las limita la alfombrilla): el resto del equipamiento va sobrado
+    assert equipo["Perchas"].previsto == 453.6 and equipo["Perchas"].minimo == 445.2
     assert equipo["Comedero lineal"].previsto == 302.4
-    assert equipo["Bebederos de pezón o copa"].previsto == 315 and equipo["Bebederos de pezón o copa"].minimo == 303
-    assert equipo["Superficie de nidal"].previsto == 35.28
+    assert equipo["Bebederos de pezón o copa"].previsto == 315 and equipo["Bebederos de pezón o copa"].minimo == 297
+    assert equipo["Superficie de puesta (alfombrillas)"].previsto == 24.74
     assert all(e.cumple and e.origen == "Integrado en el módulo" for e in estudio.equipamiento)
 
 
@@ -149,8 +154,8 @@ def test_ecologico_lista_requisitos_de_explotacion_y_trampillas():
     nombres = [c.nombre for c in r.condiciones]
     assert {"Acceso al exterior", "Trampillas de salida", "Zona al aire libre", "Iluminación"} <= set(nombres)
     assert "Sistema multinivel" not in nombres
-    # 2239 gallinas / 6 gal/m² × 4 m / 100 m² = 14,93 m
-    assert any(q.nombre.startswith("Trampillas") and q.valor_minimo == 14.93 for q in r.requisitos)
+    # 2061 gallinas / 6 gal/m² × 4 m / 100 m² = 13,74 m
+    assert any(q.nombre.startswith("Trampillas") and q.valor_minimo == 13.74 for q in r.requisitos)
     assert "salidas" in r.aforo.pendientes
     suelo = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo", sistema="suelo",
                                          ancho_nave_m=13.8, largo_nave_m=29, altura_nave_cm=300))
@@ -204,3 +209,21 @@ def test_libre_al_fondo_no_puede_dejar_sin_sitio_al_tensor():
     r = estudiar_nave(EstudioRequest(tipo_zona="nidal_colectivo", ancho_nave_m=12, largo_nave_m=28,
                                      altura_nave_cm=300, libre_fondo_m=2))
     assert not r.viable and "tensor" in r.motivo
+
+
+def test_modulos_elegidos_para_el_informe_comparan_con_el_optimo_del_aforo():
+    base = dict(tipo_zona="nidal_colectivo", sistema="suelo", ancho_nave_m=12, largo_nave_m=28, altura_nave_cm=350)
+    optimo = estudiar_nave(EstudioRequest(**base))
+    assert (optimo.num_modulos, optimo.gallinas_max) == (20, 2721)
+    assert not any(n.startswith("Escenario forzado") for n in optimo.notas)
+
+    # 19 módulos: la alfombrilla limita (19 × 1,1781 m² × 120) y el óptimo real son 20
+    elegido = estudiar_nave(EstudioRequest(**base, num_modulos=19))
+    assert (elegido.num_modulos, elegido.gallinas_max) == (19, 2686)
+    assert "Escenario forzado a 19 módulos. El óptimo de la nave es 20 módulos (2721 gallinas)." in elegido.notas
+    assert [e.num_modulos for e in elegido.escenarios if e.es_optimo] == [20]
+
+    # El plano dibuja la configuración elegida con las mismas cifras
+    plano = generar_desde_config(LayoutConfig(tipo_zona="nidal_colectivo", sistema="suelo",
+        ancho_nave_m=12, largo_nave_m=28, num_filas=0, mods_por_fila=19, gallinas=elegido.gallinas_max))
+    assert plano.metricas.total_modulos == 19 and plano.metricas.gallinas_max == 2686
