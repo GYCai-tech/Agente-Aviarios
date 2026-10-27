@@ -1,6 +1,5 @@
-# Herramienta interna «Estudio de nave». En el servidor se publica en el 3000
-# (el despliegue de master fija HERRAMIENTA_PORT); en local, en el 3001.
-# El 8080 es de code-server.
+# Herramienta interna «Estudio de nave». Se publica en HERRAMIENTA_PORT (por
+# defecto 3001): en el servidor el 3000 es de otra app y el 8080 de code-server.
 name: herramienta-interna
 
 services:

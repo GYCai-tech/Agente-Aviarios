@@ -154,12 +154,14 @@ Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py
 app con IA, que queda guardada en la etiqueta `app-ia-legacy`.
 
 - Un push a `master` lanza `.github/workflows/docker-ci.yml`: tests y build en GitHub y, si pasan,
-  el runner self-hosted actualiza la copia del repo de la carpeta del secreto `DEPLOY_PATH`, apaga
-  los contenedores de la app con IA (`*_legal_ai`) y hace `docker compose up -d --build`.
+  el runner self-hosted (`SRV-DOCKER-aviario`) actualiza la copia del repo de la carpeta de la
+  variable de Actions `HERRAMIENTA_PATH` (`/home/goyco/herramienta-interna`), la pone en `master`
+  y hace `docker compose up -d --build`.
 - `docker-compose.yml` usa proyecto `herramienta-interna` y contenedores `*_herramienta`; el
-  frontend se publica en `HERRAMIENTA_PORT` (3000 en el servidor, 3001 por defecto en local) y el
-  backend no publica puerto.
-- No usar el 8080 (code-server).
+  frontend se publica en `HERRAMIENTA_PORT` (por defecto 3001) y el backend no publica puerto.
+- En el servidor, el 3000 es de otra app (`documentacion-escandallo`) y el 8080 de code-server.
+  La copia de desarrollo `/home/goyco/apps/calculadora-capacidad` comparte nombre de proyecto
+  compose: un `docker compose up` desde ella sustituye los contenedores de producción.
 
 ---
 
