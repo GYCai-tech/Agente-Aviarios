@@ -1,0 +1,55 @@
+{
+  "id": "inspeccion_galicia_ponedoras_2026",
+  "descripcion": "Caso de regresión anonimizado de acta oficial de inspección de una instalación campera con aviario Gómez y Crespo.",
+  "fuente": "PDF aportado por el usuario: doc03347920260916095719.pdf, anexo de inspección Xunta de Galicia.",
+  "unidad": "m y m²; las áreas de equipo se registran como área útil declarada en el acta.",
+  "nave": {
+    "largo_m": 28.96,
+    "ancho_m": 13.8,
+    "suelo_m2": 399.648,
+    "superficies_utiles_por_nivel_m2": {
+      "0": 399.648,
+      "1": 221.544,
+      "2": 187.66,
+      "3": 256.296
+    },
+    "superficie_util_total_niveles_declarada_m2": 1065.148,
+    "superficie_util_total_niveles_recalculada_m2": 1065.148
+  },
+  "instalacion": {
+    "modulos": 144,
+    "desglose_modulos": "24 × 2 niveles × 3 módulos",
+    "nidal_individual_m": [1.19, 0.495],
+    "nidales_utiles_unidad_m2": 0.58905,
+    "nidales_unidades": 144,
+    "nidales_utiles_total_m2": 84.8232,
+    "perchas_por_nivel": {
+      "1_m": 144.8,
+      "2_m": 115.84,
+      "3_m": 173.76
+    },
+    "perchas_modulos_repetidos": 3,
+    "perchas_utiles_total_m": 1303.2,
+    "comedero_lineal_accesible_total_m": 1038.24,
+    "bebederos_pezon_copa": 1512,
+    "salidas_ancho_util_total_m": 21.5
+  },
+  "superficies_exteriores": {
+    "preparque_area_declarada_m2": 40.1075,
+    "preparque_dimensiones_declaradas_m": [1.212, 33.092],
+    "preparque_area_recalculada_m2": 40.107504,
+    "pasto_m2": 39817,
+    "nota": "El área declarada se verifica con el producto de las dimensiones impresas, redondeado a cuatro decimales."
+  },
+  "limites_de_capacidad_del_acta": {
+    "parque_gallinas": 9954,
+    "densidad_gallinas": 9947,
+    "nidales_gallinas_declaradas": 10178.78,
+    "perchas_gallinas": 8688,
+    "comedero_lineal_gallinas": 10382.4,
+    "bebederos_gallinas": 15120,
+    "salidas_gallinas": 10750,
+    "maximo_gallinas": 8688,
+    "limitante": "perchas"
+  }
+}

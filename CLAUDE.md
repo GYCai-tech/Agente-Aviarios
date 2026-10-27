@@ -1,76 +1,37 @@
-# CLAUDE.md — Agente de Ventas Aviario
+# CLAUDE.md — Estudio de nave (Gómez y Crespo)
 
 ## Propósito del Proyecto
 
-Sistema conversacional de ventas para dos productos de avicultura de **Gómez y Crespo**, ambos orientados a la producción de huevos:
+Herramienta **interna** de Gómez y Crespo para preparar propuestas comerciales. El comercial
+introduce los datos de la nave del cliente y obtiene **cálculos de capacidad y cumplimiento
+normativo + plano** de la instalación. No hay IA, RAG ni chat: todo es cálculo determinista.
 
 | Producto | Descripción |
 |---|---|
 | **Nidal Colectivo (A-Nida)** | Sistema de nidales colectivos para alojamiento en suelo/campero/ecológico |
 | **Aviario Industrial** | Sistema de aviario multicuerpo para producción intensiva en altura |
 
-El sistema guía al cliente a través de un cuestionario de intake, determina qué producto es óptimo para su explotación y genera una **propuesta comercial personalizada** con argumentario de ventas.
-
 ---
 
-## Flujo del Algoritmo de Ventas
+## Flujo
 
 ```
-1. INTAKE (preguntas al cliente)
-        ↓
-2. DECISIÓN (Nidal vs Aviario + niveles + módulos)
-        ↓
-3. DIMENSIONAMIENTO (capacidad, superficie, densidad)
-        ↓
-4. ARGUMENTARIO + PROPUESTA COMERCIAL
+1. MÓDULO   → el comercial elige Nidal A-Nida o Aviario
+2. NAVE     → sistema, ancho, largo, altura, parque/pasto, slots, niveles, equipamiento medido
+3. ESTUDIO  → capacidad, densidad, yacija, verificaciones normativas, escenarios
+4. PLANO    → SVG en pantalla · DXF editable (nidal) · exportación a PDF (imprimir)
 ```
 
 ---
 
-## Fase 1 — Preguntas de Intake
-
-El sistema recoge estos datos del cliente en orden lógico:
-
-| # | Variable | Tipo | Por qué se necesita |
-|---|---|---|---|
-| 1 | Número de gallinas | Número | Base de todo el dimensionamiento |
-| 2 | Sistema de producción | Enum: `suelo`, `campero`, `ecologico`, `jaulas` | Determina normativa aplicable y tipo de producto |
-| 3 | Superficie de nave (m²) | Número | Calcula densidad y número de módulos que caben |
-| 4 | Altura libre de nave (cm) | Número | Decide si el aviario es viable (requiere altura mínima) |
-| 5 | ¿Tiene zona exterior? | Booleano | Relevante para campero/ecológico |
-| 6 | Superficie exterior (m²) | Número (opcional) | Solo si tiene exterior |
-
----
-
-## Fase 2 — Lógica de Decisión: Nidal vs Aviario
-
-### Criterios para recomendar **Aviario**
-
-- Sistema `suelo`, `campero` o `ecologico`
-- Altura libre ≥ **300 cm** (mínimo para instalar 2 niveles)
-- Densidad requerida > umbral sin aviario (más gallinas por m² de suelo)
-- Cuando el cliente necesita maximizar capacidad sin ampliar nave
-
-### Criterios para recomendar **Nidal Colectivo**
-
-- Sistema `suelo`, `campero` o `ecologico`
-- Altura libre < 290 cm (no cabe el aviario)
-- Granja de tamaño medio donde la prioridad es el bienestar y acceso al nidal
-- Como complemento al aviario cuando la nave ya tiene aviarios instalados
-
-### Criterios de exclusión de Jaulas
-
-- Sistema `jaulas` → aplicar normativa específica; los productos actuales no aplican directamente.
-
----
-
-## Fase 3 — Dimensionamiento
+## Dimensionamiento
 
 ### Nidal Colectivo A-Nida
 
 | Parámetro | Valor |
 |---|---|
 | Capacidad | 144 gallinas / módulo |
+| Zona de puesta | 2 alfombrillas 1.19 × 0.495 m = 1.1781 m² → 141 gallinas (suelo/campero: m² × 120) · 98 (ecológico: cm² / 120, 120 cm² por gallina) |
 | Huella cuerpo (planta) | 1.20 × 1.40 m = 1.68 m² |
 | Huella slot acoplado | 1.20 × 3.00 m = 3.60 m² |
 | Huella total por módulo | 5.28 m² |
@@ -113,46 +74,26 @@ sup_yacija_disp  = superficie_nave − sup_cuerpo − sup_slot
 Huella para encaje en nave : 3.735 × 1.20 = 4.482 m²
 
                         Sup. total    Sup. disponible (sin zona de puesta)
-Módulo 2 niveles :      7.638 m²      5.5452 m²
+Módulo 2 niveles :      7.638 m²      5.652 m²   (planta 1: 2.55 × 1.2 + planta 2: 2.16 × 1.2)
 Módulo 3 niveles :      11.216 m²     9.1232 m²
 ```
+**Configuración por filas o por módulos** (`EstudioRequest.reparto`): por filas, un escenario por
+cada nº de filas completas; por módulos, un escenario por cada total de 1 al máximo físico, repartido
+en el mínimo de filas con filas equilibradas (`reparto_filas`: 200 en filas de 77 → 67 + 67 + 66).
+El plano recibe el total (`LayoutConfig.num_modulos`) y dibuja ese mismo reparto.
+
 La **superficie disponible** es la que computa para el cálculo de densidad normativa.
 La **superficie total** incluye la zona de puesta (no cuenta para densidad).
 
-**Cálculo de módulos y superficie útil:**
+**Cálculo de capacidad y superficie útil** (`_estudio_aviario`):
 ```
-num_modulos_caben  = floor(superficie_nave / 4.482)
-modulos_necesarios = ceil(num_gallinas / (densidad_max × sup_disp_por_modulo))
-sup_disp_total     = num_modulos_caben × sup_disp_por_modulo
-densidad_real      = num_gallinas / sup_disp_total
+suelo_util   = (largo − zona_equipos_frontal − zona_equipos_fondo) × ancho
+sup_util     = num_modulos × sup_disp_por_modulo + suelo_util
+capacidad    = floor(sup_util × densidad_max)   → después la limitan aforo, yacija/ave, tope eco, pasto
+densidad     = gallinas / sup_util
 ```
-
----
-
-## Fase 4 — Argumentario y Propuesta Comercial
-
-La propuesta generada incluye:
-
-1. **Resumen ejecutivo** — situación del cliente en 2-3 líneas
-2. **Producto recomendado** — con justificación basada en los datos del intake
-3. **Dimensionamiento detallado** — número de módulos, superficie ocupada, densidad resultante
-4. **Cumplimiento normativo** — verificación de densidades según bienestar animal (RD 3/2023 o aplicable)
-5. **Argumentos de venta personalizados** — basados en las restricciones específicas del cliente (altura, superficie, sistema)
-6. **Posibles objeciones y respuestas** — anticipadas según el perfil del cliente
-
-### Argumentos clave por producto
-
-**Nidal A-Nida:**
-- Máximo bienestar animal → cumplimiento normativo asegurado
-- Instalación modular → escalable sin obras
-- Fácil mantenimiento y limpieza
-- Reducción de huevos sucios/rotos en suelo
-
-**Aviario Industrial:**
-- Triplicar/cuadruplicar capacidad sin ampliar la nave
-- Retorno de inversión rápido por densidad
-- Cumple normativas de producción libre de jaulas (campero/ecológico)
-- Estructura de acero galvanizado → vida útil > 20 años
+El suelo bajo los módulos cuenta: las gallinas andan por debajo (no hay doble cómputo).
+Las zonas de equipos de los extremos no cuentan ni para densidad ni para yacija.
 
 ---
 
@@ -160,18 +101,20 @@ La propuesta generada incluye:
 
 | Capa | Tecnología | Función |
 |---|---|---|
-| Frontend | Next.js 14+ (App Router, TypeScript) | Chat conversacional + visualización de propuesta |
-| Backend | FastAPI (Python) | Lógica de negocio: intake, decisión, dimensionamiento |
-| IA | Google Gemini (AI Studio) | Generación del argumentario y propuesta comercial |
-| Vector DB | Qdrant | RAG sobre normativa (bienestar animal, densidades) |
+| Frontend | Next.js 16 (App Router, TypeScript) + Tailwind CSS 4 + daisyUI 5 | Formulario por pasos + resultado del estudio + plano |
+| Backend | FastAPI (Python) | Cálculo de capacidad, aforo, plano SVG y DXF |
 
-### Endpoints principales
+### Endpoints
 
 | Endpoint | Método | Descripción |
 |---|---|---|
-| `/recomendar` | POST | Recibe datos básicos → devuelve Nidal o Aviario + niveles |
-| `/intake` | POST | Dimensionamiento completo + argumentario |
-| `/calcular` | POST | Verificación normativa de la nave |
+| `/estudio` | POST | Estudio técnico de la nave con el módulo elegido |
+| `/aforo-medido` | POST | Aforo a partir de equipamiento medido |
+| `/plano-config` | POST | Plano SVG + métricas a partir de una configuración |
+| `/plano-nidal-dxf` | POST | DXF editable del nidal centrado |
+| `/ficha` | GET / PUT | Ficha técnica (medidas y equipamiento por módulo) + normativa en solo lectura |
+| `/ficha/restablecer` | POST | Vuelve a los valores de fábrica |
+| `/health` | GET | Health check |
 
 ---
 
@@ -179,38 +122,93 @@ La propuesta generada incluye:
 
 ```
 frontend/src/app/
-├── page.tsx              # Página principal con chat de intake
-├── propuesta/page.tsx    # Visualización de la propuesta comercial
-├── actions.ts            # Server actions: calcularGranja, solicitarIntake, pedirRecomendacion
-└── ChatInterface.tsx     # Componente conversacional
+├── page.tsx                  # Estudio de nave
+├── ficha/page.tsx            # Ficha técnica editable
+├── Cabecera.tsx              # Cabecera con pestañas Estudio / Ficha técnica
+├── globals.css               # Tailwind + daisyUI: tema "gyc" (tokens), barra de encaje y reglas de impresión/PDF
+├── clases.ts                 # Clases Tailwind/daisyUI compartidas por estudio y ficha (con tamaños print:)
+├── actions.ts                # Server action pedirEstudio + tipos
+└── api/
+    ├── plano-config/         # Proxy a /plano-config
+    └── plano-nidal-dxf/      # Proxy a /plano-nidal-dxf
 
 backend/
-├── main.py               # Endpoints FastAPI
-├── agentes/              # Lógica de agentes LangGraph
-└── schemas/              # Modelos Pydantic
+├── main.py                   # Endpoints FastAPI
+└── agentes/
+    ├── estudio.py            # Motor de cálculo; constantes de producto = valores de fábrica de la ficha
+    ├── ficha.py              # Ficha técnica: carga/guarda backend/datos/ficha_tecnica.json y la aplica
+    ├── aforo.py              # Aforo por equipamiento medido
+    ├── plano_agent.py        # Generación del plano SVG
+    └── dxf_nidal.py          # Exportación DXF del nidal
 
-ingesta_datos/
-├── cargar_leyes.py       # Carga normativa en Qdrant
-└── ingestar_brief_aviario.py  # Carga brief de productos
+test_calculos_capacidad.py    # Regresión de aforo y coherencia estudio ↔ plano
+test_nidal_calculo_modelo.py  # Modelo de cálculo del nidal
+test_ficha_tecnica.py         # La ficha editada gobierna estudio y plano
 ```
 
----
+Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py`
 
-## Variables de Entorno
+### Despliegue
 
-Archivo `.env` en `backend/`:
+`master` es la versión oficial (y la rama por defecto del repositorio). Sustituyó en 2026-10 a la
+app con IA, que queda guardada en la etiqueta `app-ia-legacy`.
 
-```env
-GOOGLE_API_KEY=tu_clave_google_ai_studio
-QDRANT_URL=http://localhost:6333
-COLLECTION_NAME=aviario_docs
-```
+- Un push a `master` lanza `.github/workflows/docker-ci.yml`: tests y build en GitHub y, si pasan,
+  el runner self-hosted (`SRV-DOCKER-aviario`) actualiza la copia del repo de la carpeta de la
+  variable de Actions `HERRAMIENTA_PATH` (`/home/goyco/herramienta-interna`), la pone en `master`
+  y hace `docker compose up -d --build`.
+- `docker-compose.yml` usa proyecto `herramienta-interna` y contenedores `*_herramienta`; el
+  frontend se publica en `HERRAMIENTA_PORT` (por defecto 3001) y el backend no publica puerto.
+- En el servidor, el 3000 es de otra app (`documentacion-escandallo`) y el 8080 de code-server.
+  La copia de desarrollo `/home/goyco/apps/calculadora-capacidad` comparte nombre de proyecto
+  compose: un `docker compose up` desde ella sustituye los contenedores de producción.
 
 ---
 
 ## Reglas de Desarrollo
 
-- **Los cálculos de dimensionamiento son fuente de verdad** — no redondear dimensiones de módulos. Usar los valores exactos de la sección de dimensionamiento arriba.
-- **El argumentario lo genera Gemini** — no hardcodear textos de venta en el frontend.
-- **El intake es conversacional** — el frontend no muestra un formulario plano; guía al usuario pregunta a pregunta.
-- **La propuesta es un documento exportable** — el componente de propuesta debe poder imprimirse / exportarse a PDF.
+- **Los cálculos de dimensionamiento son fuente de verdad** — no redondear dimensiones de módulos.
+  Los valores de fábrica viven en `backend/agentes/estudio.py`; la ficha técnica editada
+  (`/ficha`, guardada en `backend/datos/`) los sobrescribe en tiempo de ejecución. Por eso
+  plano y DXF leen `agentes.estudio.X` en tiempo de llamada: nunca copiar esas constantes al
+  importar ni usarlas como valor por defecto de un argumento o campo Pydantic.
+- **Nada de medidas escritas a mano en el frontend** — lo que dependa del módulo se lee de la ficha.
+- **Estudio y plano deben coincidir** — módulos, gallinas, yacija y densidad del `/estudio`
+  tienen que ser idénticos a las métricas de `/plano-config` (lo comprueban los tests).
+- **El estudio es un documento exportable** — la pantalla debe poder imprimirse / exportarse a PDF.
+- **Sin dependencias de IA** — no reintroducir Gemini, Qdrant ni LangChain en esta rama.
+- **Diseño** — sigue `design-system/estudio-de-nave/MASTER.md` (generado con el plugin ui-ux-pro-max):
+  paleta navy + emerald, Outfit / Work Sans, iconos Lucide. Los tokens viven en el tema daisyUI "gyc"
+  de `frontend/src/app/globals.css`; se maqueta con componentes daisyUI y utilidades Tailwind
+  (los tamaños del PDF van con la variante `print:`).
+
+---
+
+## Estética del frontend
+
+Estas pautas **complementan** la regla de diseño anterior: el sistema de
+`design-system/estudio-de-nave/MASTER.md` (paleta, tipografías, tokens, iconos Lucide,
+contraste ≥ 4,5:1) sigue siendo la base y manda en caso de conflicto. Las pautas de abajo
+se aplican en lo que el sistema no fija: fondos con atmósfera y profundidad, una carga de
+página bien orquestada, micro-interacciones y evitar patrones genéricos. Toda animación
+respeta `prefers-reduced-motion` y nada decorativo debe salir en la exportación a PDF.
+
+<frontend_aesthetics>
+You tend to converge toward generic, "on distribution" outputs. In frontend design, this creates what users call the "AI slop" aesthetic. Avoid this: make creative, distinctive frontends that surprise and delight. Focus on:
+
+Typography: Choose fonts that are beautiful, unique, and interesting. Avoid generic fonts like Arial and Inter; opt instead for distinctive choices that elevate the frontend's aesthetics.
+
+Color & Theme: Commit to a cohesive aesthetic. Use CSS variables for consistency. Dominant colors with sharp accents outperform timid, evenly-distributed palettes. Draw from IDE themes and cultural aesthetics for inspiration.
+
+Motion: Use animations for effects and micro-interactions. Prioritize CSS-only solutions for HTML. Use Motion library for React when available. Focus on high-impact moments: one well-orchestrated page load with staggered reveals (animation-delay) creates more delight than scattered micro-interactions.
+
+Backgrounds: Create atmosphere and depth rather than defaulting to solid colors. Layer CSS gradients, use geometric patterns, or add contextual effects that match the overall aesthetic.
+
+Avoid generic AI-generated aesthetics:
+- Overused font families (Inter, Roboto, Arial, system fonts)
+- Clichéd color schemes (particularly purple gradients on white backgrounds)
+- Predictable layouts and component patterns
+- Cookie-cutter design that lacks context-specific character
+
+Interpret creatively and make unexpected choices that feel genuinely designed for the context. Vary between light and dark themes, different fonts, different aesthetics. You still tend to converge on common choices (Space Grotesk, for example) across generations. Avoid this: it is critical that you think outside the box!
+</frontend_aesthetics>
