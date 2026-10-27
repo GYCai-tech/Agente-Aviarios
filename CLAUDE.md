@@ -74,19 +74,26 @@ sup_yacija_disp  = superficie_nave − sup_cuerpo − sup_slot
 Huella para encaje en nave : 3.735 × 1.20 = 4.482 m²
 
                         Sup. total    Sup. disponible (sin zona de puesta)
-Módulo 2 niveles :      7.638 m²      5.5452 m²
+Módulo 2 niveles :      7.638 m²      5.652 m²   (planta 1: 2.55 × 1.2 + planta 2: 2.16 × 1.2)
 Módulo 3 niveles :      11.216 m²     9.1232 m²
 ```
+**Configuración por filas o por módulos** (`EstudioRequest.reparto`): por filas, un escenario por
+cada nº de filas completas; por módulos, un escenario por cada total de 1 al máximo físico, repartido
+en el mínimo de filas con filas equilibradas (`reparto_filas`: 200 en filas de 77 → 67 + 67 + 66).
+El plano recibe el total (`LayoutConfig.num_modulos`) y dibuja ese mismo reparto.
+
 La **superficie disponible** es la que computa para el cálculo de densidad normativa.
 La **superficie total** incluye la zona de puesta (no cuenta para densidad).
 
-**Cálculo de módulos y superficie útil:**
+**Cálculo de capacidad y superficie útil** (`_estudio_aviario`):
 ```
-num_modulos_caben  = floor(superficie_nave / 4.482)
-modulos_necesarios = ceil(num_gallinas / (densidad_max × sup_disp_por_modulo))
-sup_disp_total     = num_modulos_caben × sup_disp_por_modulo
-densidad_real      = num_gallinas / sup_disp_total
+suelo_util   = (largo − zona_equipos_frontal − zona_equipos_fondo) × ancho
+sup_util     = num_modulos × sup_disp_por_modulo + suelo_util
+capacidad    = floor(sup_util × densidad_max)   → después la limitan aforo, yacija/ave, tope eco, pasto
+densidad     = gallinas / sup_util
 ```
+El suelo bajo los módulos cuenta: las gallinas andan por debajo (no hay doble cómputo).
+Las zonas de equipos de los extremos no cuentan ni para densidad ni para yacija.
 
 ---
 
@@ -94,7 +101,7 @@ densidad_real      = num_gallinas / sup_disp_total
 
 | Capa | Tecnología | Función |
 |---|---|---|
-| Frontend | Next.js 16 (App Router, TypeScript) | Formulario por pasos + resultado del estudio + plano |
+| Frontend | Next.js 16 (App Router, TypeScript) + Tailwind CSS 4 + daisyUI 5 | Formulario por pasos + resultado del estudio + plano |
 | Backend | FastAPI (Python) | Cálculo de capacidad, aforo, plano SVG y DXF |
 
 ### Endpoints
@@ -118,7 +125,8 @@ frontend/src/app/
 ├── page.tsx                  # Estudio de nave
 ├── ficha/page.tsx            # Ficha técnica editable
 ├── Cabecera.tsx              # Cabecera con pestañas Estudio / Ficha técnica
-├── estudio-styles.ts         # CSS de la pantalla (incluye estilos de impresión/PDF)
+├── globals.css               # Tailwind + daisyUI: tema "gyc" (tokens), barra de encaje y reglas de impresión/PDF
+├── clases.ts                 # Clases Tailwind/daisyUI compartidas por estudio y ficha (con tamaños print:)
 ├── actions.ts                # Server action pedirEstudio + tipos
 └── api/
     ├── plano-config/         # Proxy a /plano-config
@@ -142,15 +150,16 @@ Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py
 
 ### Despliegue
 
-Esta rama (`feat/herramienta-interna`) **convive** en el servidor con la app con IA de `master`;
-no se fusiona en `master` (eso sustituiría la app anterior).
+`master` es la versión oficial (y la rama por defecto del repositorio). Sustituyó en 2026-10 a la
+app con IA, que queda guardada en la etiqueta `app-ia-legacy`.
 
-- Un push a `feat/herramienta-interna` lanza `.github/workflows/deploy-herramienta.yml`: tests y
-  build en GitHub y, si pasan, el runner self-hosted actualiza su propia copia del repo en la
-  carpeta de la variable de Actions `HERRAMIENTA_PATH` y hace `docker compose up -d --build`.
+- Un push a `master` lanza `.github/workflows/docker-ci.yml`: tests y build en GitHub y, si pasan,
+  el runner self-hosted actualiza la copia del repo de la carpeta del secreto `DEPLOY_PATH`, apaga
+  los contenedores de la app con IA (`*_legal_ai`) y hace `docker compose up -d --build`.
 - `docker-compose.yml` usa proyecto `herramienta-interna` y contenedores `*_herramienta`; el
-  frontend se publica en `HERRAMIENTA_PORT` (por defecto 3001) y el backend no publica puerto.
-- No usar los puertos de la app de master (3000, 8082, 6333-6334) ni el 8080 (code-server).
+  frontend se publica en `HERRAMIENTA_PORT` (3000 en el servidor, 3001 por defecto en local) y el
+  backend no publica puerto.
+- No usar el 8080 (code-server).
 
 ---
 
@@ -167,7 +176,9 @@ no se fusiona en `master` (eso sustituiría la app anterior).
 - **El estudio es un documento exportable** — la pantalla debe poder imprimirse / exportarse a PDF.
 - **Sin dependencias de IA** — no reintroducir Gemini, Qdrant ni LangChain en esta rama.
 - **Diseño** — sigue `design-system/estudio-de-nave/MASTER.md` (generado con el plugin ui-ux-pro-max):
-  paleta navy + emerald, Outfit / Work Sans, iconos Lucide. Los tokens viven en `estudio-styles.ts`.
+  paleta navy + emerald, Outfit / Work Sans, iconos Lucide. Los tokens viven en el tema daisyUI "gyc"
+  de `frontend/src/app/globals.css`; se maqueta con componentes daisyUI y utilidades Tailwind
+  (los tamaños del PDF van con la variante `print:`).
 
 ---
 

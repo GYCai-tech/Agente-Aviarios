@@ -1,35 +1,59 @@
-name: Integración y Despliegue Continuo (Agente Aviario)
+name: Integración y Despliegue Continuo (Estudio de nave)
+
+# Despliegue único de la herramienta desde master, en la carpeta del secreto
+# DEPLOY_PATH y en el puerto 3000. Sustituye a la app con IA (contenedores
+# *_legal_ai), que queda guardada en la etiqueta app-ia-legacy.
 
 on:
   push:
     branches: [ "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
 
 jobs:
-  # 🧪 TRABAJO 1: Verificar que el código y el Docker compilan bien en GitHub
   build-and-test:
     runs-on: ubuntu-latest
     steps:
       - name: Clonar el repositorio
         uses: actions/checkout@v4
 
-      - name: Configurar Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Tests de cálculo
+        run: |
+          pip install -r backend/requirements.txt pytest
+          python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py -q
 
-      - name: Construir imagen del backend
-        run: docker build -t agente-aviario-backend:ci-test ./backend
+      - name: Construir imágenes
+        run: docker compose build
 
-      - name: Construir imagen del frontend
-        run: docker build -t agente-aviario-frontend:ci-test ./frontend
-
-  # 🚀 TRABAJO 2: Desplegar directamente en el servidor (self-hosted runner)
   deploy:
     runs-on: self-hosted
-    needs: build-and-test # Solo se ejecuta si el build de arriba dio verde ✅
-
+    needs: build-and-test
     steps:
       - name: Actualizar código y relanzar contenedores
+        shell: bash
         working-directory: ${{ secrets.DEPLOY_PATH }}
+        env:
+          # Carpeta del antiguo despliegue de la herramienta (puerto 3001), si existe
+          HERRAMIENTA_PATH: ${{ vars.HERRAMIENTA_PATH }}
+          HERRAMIENTA_PORT: "3000"
         run: |
-          git pull origin master
+          set -e
+          git fetch origin master
+          # backend/datos (ficha técnica editada) está ignorado por git: el checkout no lo toca
+          git checkout -f -B master origin/master
 
-          docker compose up -d --build
+          # Una sola vez: la ficha técnica editada en el antiguo despliegue pasa a este
+          FICHA=backend/datos/ficha_tecnica.json
+          if [ ! -f "$FICHA" ] && [ -n "$HERRAMIENTA_PATH" ] && [ -f "$HERRAMIENTA_PATH/$FICHA" ]; then
+            mkdir -p backend/datos
+            cp "$HERRAMIENTA_PATH/$FICHA" "$FICHA"
+          fi
+
+          # La app con IA deja de servirse (libera el puerto 3000); sus datos siguen en disco
+          docker rm -f frontend_legal_ai backend_legal_ai qdrant_legal_ai 2>/dev/null || true
+
+          docker compose up -d --build --remove-orphans
+          docker compose ps
