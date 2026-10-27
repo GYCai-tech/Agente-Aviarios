@@ -1,0 +1,54 @@
+name: Integración y Despliegue Continuo (Estudio de nave)
+
+# Despliegue de la herramienta desde master en la carpeta de la variable de
+# Actions HERRAMIENTA_PATH (Settings → Secrets and variables → Actions →
+# Variables), con su propio proyecto de compose. El puerto lo fija
+# HERRAMIENTA_PORT en el .env de esa carpeta (por defecto 3001).
+
+on:
+  push:
+    branches: [ "master" ]
+  workflow_dispatch:
+
+concurrency:
+  group: deploy
+  cancel-in-progress: false
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Clonar el repositorio
+        uses: actions/checkout@v4
+
+      - name: Tests de cálculo
+        run: |
+          pip install -r backend/requirements.txt pytest
+          python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py -q
+
+      - name: Construir imágenes
+        run: docker compose build
+
+  deploy:
+    runs-on: self-hosted
+    needs: build-and-test
+    steps:
+      - name: Actualizar código y relanzar contenedores
+        shell: bash
+        env:
+          DIR: ${{ vars.HERRAMIENTA_PATH }}
+        run: |
+          set -e
+          if [ -z "$DIR" ]; then
+            echo "Falta la variable HERRAMIENTA_PATH (carpeta del servidor donde vive la herramienta)" >&2
+            exit 1
+          fi
+          if [ ! -d "$DIR/.git" ]; then
+            git clone --branch master "https://github.com/${{ github.repository }}.git" "$DIR"
+          fi
+          cd "$DIR"
+          git fetch origin master
+          # backend/datos (ficha técnica editada) está ignorado por git: el checkout no lo toca
+          git checkout -f -B master origin/master
+          docker compose up -d --build
+          docker compose ps

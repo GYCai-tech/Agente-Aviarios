@@ -1,220 +1,7 @@
 "use server";
 
 export type Sistema = "suelo" | "campero" | "ecologico" | "jaulas";
-export type TipoNidal = "individual" | "colectivo" | "aviario";
-
-export interface DatosCalculadora {
-  num_gallinas: number;
-  sistema: Sistema;
-  superficie_nave_m2: number;
-  altura_libre_cm: number;
-  tipo_nidal: TipoNidal;
-  num_nidales?: number;
-  superficie_nidales_m2?: number;
-  superficie_exterior_m2?: number;
-  ancho_total_salidas_cm?: number;
-}
-
-export interface Verificacion {
-  parametro: string;
-  valor_real: number;
-  valor_referencia: number;
-  unidad: string;
-  tipo_limite: "minimo" | "maximo";
-  cumple: boolean;
-  diferencia: number;
-  articulo: string;
-}
-
-export interface RequisitoEquipamiento {
-  nombre: string;
-  valor_minimo: number;
-  unidad: string;
-  formula: string;
-  articulo: string;
-}
-
-export interface InformeCalculadora {
-  sistema: string;
-  num_gallinas: number;
-  verificaciones: Verificacion[];
-  requisitos: RequisitoEquipamiento[];
-  cumple_nave: boolean;
-  num_fallos: number;
-  consulta_rag: string;
-}
-
-export interface CalcularResponse {
-  informe: InformeCalculadora;
-  analisis_legal: string;
-}
-
-export async function calcularGranja(datos: DatosCalculadora): Promise<CalcularResponse> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/calcular`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-// ── Intake ──────────────────────────────────────────────────────────────────
-
 export type TipoZona = "nidal_colectivo" | "aviario";
-
-export interface DatosRecomendacion {
-  num_gallinas: number;
-  sistema: Sistema;
-  superficie_nave_m2: number;
-  altura_nave_cm: number;
-  ancho_nave_m?: number;
-  largo_nave_m?: number;
-}
-
-export interface Recomendacion {
-  tipo_zona: TipoZona;
-  niveles: number;
-  razon: string;
-}
-
-// ── Factibilidad ─────────────────────────────────────────────────────────────
-
-export interface ResultadoFactibilidad {
-  factible: boolean;
-  densidad_actual: number;
-  densidad_max: number;
-  densidad_min_aviario: number;
-  niveles_posibles: number;
-  modulos_caben: number;
-  mensaje: string;
-  sup_minima_nidal?: number;
-  gallinas_max_nidal?: number;
-  sup_minima_avi?: number;
-  gallinas_max_avi?: number;
-}
-
-export interface Opcion {
-  id: string;
-  texto: string;
-}
-
-export interface Pregunta {
-  id: string;
-  texto: string;
-  tipo: "opcion_unica" | "booleano";
-  opciones: Opcion[];
-}
-
-export interface FactibilidadResponse {
-  factibilidad: ResultadoFactibilidad;
-  preguntas: Pregunta[];
-}
-
-export interface PuntoPareto {
-  num_modulos: number;
-  max_gallinas: number;
-  sup_yacija_m2: number;
-  yacija_pct: number;
-  perdida_gallinas: number;
-}
-
-export interface LayoutAviario {
-  orientacion: string;
-  mods_por_fila: number;
-  num_filas: number;
-  descripcion: string;
-}
-
-export interface OpcionCapacidad {
-  sistema: string;
-  label: string;
-  max_gallinas: number;
-  num_modulos: number;
-  densidad_real: number;
-  densidad_max: number;
-  viable: boolean;
-  sup_disponible_m2?: number;
-  sup_yacija_m2?: number;
-  yacija_pct?: number;
-  yacija_min_m2?: number;
-  pareto?: PuntoPareto[];
-  layout?: LayoutAviario;
-  parque_invierno_m2?: number;
-  modulos_opcion_a?: number;
-  gallinas_opcion_a?: number;
-}
-
-export interface ResultadoCapacidad {
-  opciones: OpcionCapacidad[];
-  densidad_max: number;
-}
-
-export async function pedirCapacidad(datos: Omit<DatosRecomendacion, "num_gallinas"> & { num_gallinas: number }): Promise<ResultadoCapacidad> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/capacidad`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export async function pedirFactibilidad(datos: DatosRecomendacion): Promise<FactibilidadResponse> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/factibilidad`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export async function pedirRecomendacionConRespuestas(
-  datos: DatosRecomendacion,
-  respuestas: Record<string, string>,
-): Promise<Recomendacion> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/recomendar-con-respuestas`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos, respuestas }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export interface DatosIntake {
-  num_gallinas: number;
-  sistema: Sistema;
-  superficie_nave_m2: number;
-  altura_nave_cm: number;
-  tipo_zona: TipoZona;
-}
-
-export async function pedirRecomendacion(datos: DatosRecomendacion): Promise<Recomendacion> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/recomendar`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
-}
-
-export interface VerificacionNave {
-  parametro: string;
-  cumple: boolean;
-  valor_real: number;
-  valor_limite: number;
-  unidad: string;
-  tipo_limite: "minimo" | "maximo";
-  articulo: string;
-}
 
 export interface RequisitoCalculado {
   nombre: string;
@@ -224,101 +11,161 @@ export interface RequisitoCalculado {
   articulo: string;
 }
 
-export interface InformeIntake {
-  sistema: string;
-  num_gallinas: number;
-  verificaciones_nave: VerificacionNave[];
-  requisitos: RequisitoCalculado[];
-  cumple_nave: boolean;
-  advertencias: string[];
-  consulta_rag: string;
+export interface ParametroCalculo {
+  grupo: string;
+  nombre: string;
+  valor: string;
+  origen: string;
 }
 
-export interface Objecion {
-  pregunta: string;
-  respuesta: string;
+// ── Estudio técnico de nave ──────────────────────────────────────────────────
+
+export interface EquipamientoMedido {
+  perchas_m?: number;
+  nidal_util_m2?: number;
+  comedero_lineal_accesible_m?: number;
+  bebederos_pezon_copa?: number;
+  salidas_ancho_util_m?: number;
 }
 
-export interface IntakeResponse {
-  informe: InformeIntake;
-  analisis_legal: string;
-  argumentario_ventas: string;
-  argumentos_producto: string[];
-  objeciones: Objecion[];
+export interface AforoResultado {
+  gallinas_max: number;
+  limitantes: string[];
+  limites: { criterio: string; gallinas: number; formula: string; fuente: string }[];
+  pendientes: string[];
+  mediciones_completas: boolean;
 }
 
-// ── Layout nidal ─────────────────────────────────────────────────────────────
-
-export interface FilaLayout {
-  num_modulos: number;
-  slot_izq: number;
-  slot_der: number;
-  pegada_pared_izq: boolean;
-  pegada_pared_der: boolean;
-}
-
-export interface ResultadoLayoutNidal {
-  viable: boolean;
-  filas: FilaLayout[];
-  total_modulos: number;
-  max_gallinas: number;
-  yacija_interior_m2: number;
-  yacija_exterior_m2: number;
-  cumple_normativa: boolean;
-  necesita_exterior: boolean;
-  deficit_yacija_m2: number;
-  explicacion: string;
-  error?: string | null;
-}
-
-export async function pedirLayoutNidal(params: {
-  nave_m2: number;
+export interface EstudioRequest {
+  equipamiento?: EquipamientoMedido;
+  tipo_zona: TipoZona;
+  sistema: Sistema;
   ancho_nave_m: number;
   largo_nave_m: number;
+  altura_nave_cm: number;
+  /** Anexo informativo: no aumenta capacidad sin validación específica. */
+  sup_parque_m2?: number;
+  /** Zona de pasto (campero/ecologico): solo se verifica contra 4 m2/gallina */
+  sup_pasto_m2?: number;
+  slot_izq_m?: number;
+  slot_der_m?: number;
+  /** Paso libre exigido entre el borde del slat y cada pared (m). 0 = pegado a la pared */
+  paso_izq_m?: number;
+  paso_der_m?: number;
+  /** Nidal: local técnico (motor + mesa de recogida) dentro de la nave */
+  local_dentro?: boolean;
+  /** Nidal: largo libre mínimo al fondo, tensor incluido; null = largo del tensor */
+  libre_fondo_m?: number | null;
+  niveles?: number | null;
+  /** Aviario: escenarios por filas completas o por nº total de módulos */
+  reparto?: Reparto;
+  num_modulos?: number | null;
+  num_filas?: number | null;
+}
+
+export type Reparto = "filas" | "modulos";
+
+export interface VerificacionEstudio {
+  parametro: string;
+  valor_real: number;
+  valor_limite: number;
+  unidad: string;
+  tipo_limite: "minimo" | "maximo";
+  cumple: boolean;
+  articulo: string;
+  detalle: string;
+}
+
+export interface EscenarioEstudio {
+  num_modulos: number;
+  num_filas: number;
   gallinas: number;
-  sistema: string;
-  exterior_m2?: number;
-}): Promise<ResultadoLayoutNidal> {
-  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/layout-nidal`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ ...params, exterior_m2: params.exterior_m2 ?? 0 }),
-  });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
+  densidad: number;
+  sup_yacija_m2: number;
+  yacija_pct: number;
+  cumple_yacija: boolean;
+  cumple: boolean;
+  limitante: string;
+  es_optimo: boolean;
+  /** Aviario: false en los escenarios que no caben (informativos) */
+  cabe: boolean;
+  /** Por qué no cabe, p. ej. "Faltan 0.40 m de largo para 22 módulos por fila" */
+  nota: string;
 }
 
-// ── Plano SVG ─────────────────────────────────────────────────────────────────
-
-export interface FilaPlano {
-  num_modulos: number;
-  slot_izq: number;
-  slot_der: number;
-  pegada_pared_izq: boolean;
-  pegada_pared_der: boolean;
-}
-
-export interface PlanoRequest {
-  ancho_nave_m: number;
-  largo_nave_m: number;
-  filas: FilaPlano[];
+export interface EstudioResponse {
+  /** Aviario: módulos de cada fila */
+  filas_modulos: number[];
+  geometria_nidal?: { paso_lateral_m: number } | null;
+  aforo?: AforoResultado | null;
+  calculo_provisional: boolean;
   tipo_zona: string;
-  gallinas: number;
   sistema: string;
-  nombre_cliente?: string;
-  total_modulos?: number;
-  yacija_interior_m2?: number;
+  ancho_nave_m: number;
+  largo_nave_m: number;
+  altura_nave_cm: number;
+  superficie_nave_m2: number;
+  sup_parque_m2: number;
+  sup_pasto_m2: number;
+  viable: boolean;
+  motivo: string;
+  num_modulos: number;
+  num_filas: number;
+  mods_por_fila: number;
+  gallinas_max: number;
+  gallinas_min: number;              // gallinas_max menos el margen de incertidumbre
+  margen_incertidumbre_pct: number;
+  densidad_real: number;
+  densidad_max: number;
+  limitante: string;
+  sup_disponible_m2: number;
+  sup_total_m2: number;
+  sup_yacija_m2: number;
+  yacija_min_m2: number;
+  yacija_pct: number;
+  huella_modulos_m2: number;
+  slot_izq_m: number;
+  slot_der_m: number;
+  prof_total_m: number;
+  paso_izq_m: number;
+  paso_der_m: number;
+  holgura_m: number;
+  ancho_nave_minimo_m: number;
+  local_dentro: boolean;
+  sup_local_m2: number;
+  libre_fondo_m: number;
+  niveles: number;
+  descripcion_layout: string;
+  max_modulos_fisicos: number;
+  verificaciones: VerificacionEstudio[];
+  requisitos: RequisitoCalculado[];
+  escenarios: EscenarioEstudio[];
+  notas: string[];
+  parametros: ParametroCalculo[];
+  equipamiento: EquipoPrevisto[];
+  condiciones: Condicion[];
 }
 
-export interface PlanoResponse {
-  svg: string;
-  error?: string | null;
+/** Requisito del régimen de producción que no se deduce de las medidas de la nave. */
+export interface Condicion {
+  nombre: string;
+  detalle: string;
+  fuente: string;
 }
 
-export async function pedirPlano(req: PlanoRequest): Promise<PlanoResponse> {
+/** Equipamiento de la instalación frente al mínimo normativo (versión cliente). */
+export interface EquipoPrevisto {
+  nombre: string;
+  unidad: string;
+  previsto: number;
+  minimo: number;
+  origen: string;
+  cumple: boolean;
+}
+
+export async function pedirEstudio(req: EstudioRequest): Promise<EstudioResponse> {
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/plano`, {
+  const res = await fetch(`${backendUrl}/estudio`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -327,13 +174,86 @@ export async function pedirPlano(req: PlanoRequest): Promise<PlanoResponse> {
   return res.json();
 }
 
-export async function solicitarIntake(datos: DatosIntake): Promise<IntakeResponse> {
+// ── Ficha técnica (medidas y equipamiento por módulo) ───────────────────────
+
+export interface NivelAviario {
+  altura_min_cm: number;
+  sup_total_m2: number;
+  sup_disponible_m2: number;
+  perchas_m: number | null;
+  nidal_util_m2: number | null;
+  comedero_lineal_m: number | null;
+  bebederos: number | null;
+}
+
+export interface FichaTecnica {
+  aviario: {
+    largo_modulo_m: number;
+    fondo_modulo_m: number;
+    capacidad_gallinas: number;
+    pasillo_m: number;
+    zona_equipos_frontal_m: number;
+    zona_equipos_fondo_m: number;
+    nivel_2: NivelAviario;
+    nivel_3: NivelAviario;
+  };
+  nidal: {
+    largo_modulo_m: number;
+    fondo_cuerpo_m: number;
+    capacidad_gallinas: number;
+    nidal_util_m2: number;
+    tensor_m: number;
+    local_tecnico_m: number;
+  };
+  calculo: {
+    margen_incertidumbre_pct: number;
+  };
+  actualizado?: string | null;
+}
+
+export interface FichaRespuesta {
+  ficha: FichaTecnica;
+  por_defecto: FichaTecnica;
+  personalizada: boolean;
+  normativa: { criterio: string; valor: string; fuente: string }[];
+}
+
+export type ResultadoFicha = { ok: true; data: FichaRespuesta } | { ok: false; error: string };
+
+// Devuelve el error como dato: Next.js oculta en producción el mensaje de los
+// errores lanzados desde una server action, y aquí el motivo importa al usuario.
+async function llamarFicha(ruta: string, init?: RequestInit): Promise<ResultadoFicha> {
   const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
-  const res = await fetch(`${backendUrl}/intake`, {
-    method: "POST",
+  try {
+    const res = await fetch(`${backendUrl}${ruta}`, { cache: "no-store", ...init });
+    if (!res.ok) {
+      const detalle = await res.json().catch(() => null);
+      const error = Array.isArray(detalle?.detail)
+        ? detalle.detail
+            .map((d: { loc?: (string | number)[]; msg: string }) =>
+              `${(d.loc ?? []).slice(1).join(" › ")}: ${d.msg.replace(/^Value error, /, "")}`)
+            .join(" · ")
+        : `Error del servidor (${res.status})`;
+      return { ok: false, error };
+    }
+    return { ok: true, data: await res.json() };
+  } catch {
+    return { ok: false, error: "No se pudo conectar con el servidor de cálculo." };
+  }
+}
+
+export async function obtenerFicha(): Promise<ResultadoFicha> {
+  return llamarFicha("/ficha");
+}
+
+export async function guardarFicha(ficha: FichaTecnica): Promise<ResultadoFicha> {
+  return llamarFicha("/ficha", {
+    method: "PUT",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ datos }),
+    body: JSON.stringify(ficha),
   });
-  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-  return res.json();
+}
+
+export async function restablecerFicha(): Promise<ResultadoFicha> {
+  return llamarFicha("/ficha/restablecer", { method: "POST" });
 }
