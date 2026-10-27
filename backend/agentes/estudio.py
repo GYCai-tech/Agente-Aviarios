@@ -100,8 +100,9 @@ AVI_CLEARANCE_FONDO = 3.00                       # m — zona de equipos en el o
 
 # Superficie por módulo según niveles (datos del diseñador).
 # "disponible" excluye la zona de puesta y es la que computa para densidad.
+# 2 niveles: planta 1 de 2,55 × 1,20 m (3,06 m²) + planta 2 de 2,16 × 1,20 m (2,592 m²).
 AVI_SUP_TOTAL = {2: 7.638,  3: 11.216}
-AVI_SUP_DISP  = {2: 5.5452, 3: 9.1232}
+AVI_SUP_DISP  = {2: 5.652,  3: 9.1232}
 
 # Altura libre mínima de nave para instalar cada configuración (cm)
 AVI_ALTURA_MIN = {2: 300, 3: 400}
@@ -113,7 +114,7 @@ AVI_ALTURA_MIN = {2: 300, 3: 400}
 #   nidales    84,8232 m² → 1,1781 m²/módulo (2 nidos de 1,19 × 0,495 m)
 #   comedero   1038,24 m → 14,42 m/módulo
 #   bebederos  1512 uds  → 21 uds/módulo
-# Para 2 niveles no hay dato de referencia: queda pendiente de medir.
+# Para 2 niveles no hay valor de fábrica: se mide y se guarda en la ficha técnica.
 AVI_EQUIPO_POR_MODULO: dict[int, dict[str, float]] = {
     2: {},
     3: {
@@ -490,7 +491,10 @@ class EstudioRequest(BaseModel):
     libre_fondo_m: float | None = Field(default=None, ge=0)
     # Aviario: 2 o 3 niveles; None = el máximo que permita la altura
     niveles: Literal[2, 3] | None = None
-    # Escenario forzado: nº de módulos (nidal) o nº de filas (aviario)
+    # Aviario: escenarios por filas completas o por nº total de módulos, repartidos
+    # en el mínimo de filas posible con filas equilibradas (200 → 67 + 67 + 66)
+    reparto: Literal["filas", "modulos"] = "filas"
+    # Escenario forzado: nº de módulos (nidal, o aviario por módulos) o nº de filas (aviario)
     num_modulos: Optional[int] = Field(default=None, gt=0)
     num_filas: Optional[int] = Field(default=None, gt=0)
     mods_por_fila: int | None = Field(default=None, gt=0)
@@ -531,6 +535,9 @@ class Escenario(BaseModel):
     cumple: bool
     limitante: str
     es_optimo: bool = False
+    # Aviario: escenarios que no caben en la nave (informativos: capacidad que darían)
+    cabe: bool = True
+    nota: str = ""
 
 
 class ParametroCalculo(BaseModel):
@@ -560,6 +567,7 @@ class Condicion(BaseModel):
 
 class EstudioResponse(BaseModel):
     geometria_nidal: GeometriaNidalCentrado | None = None
+    filas_modulos: list[int] = []        # aviario: módulos de cada fila
     aforo: AforoResultado | None = None
     calculo_provisional: bool = True
     tipo_zona: str
@@ -854,6 +862,28 @@ def _estudio_nidal(req: EstudioRequest) -> EstudioResponse:
 
 # ── Estudio — Aviario ─────────────────────────────────────────────────────────
 
+def reparto_filas(n: int, max_por_fila: int) -> list[int]:
+    """Reparte n módulos en el mínimo de filas, equilibradas: ninguna difiere en más de uno."""
+    if n <= 0 or max_por_fila <= 0:
+        return []
+    filas = math.ceil(n / max_por_fila)
+    base, resto = divmod(n, filas)
+    return [base + 1] * resto + [base] * (filas - resto)
+
+
+def describir_filas(filas: list[int]) -> str:
+    if not filas:
+        return ""
+    if len(set(filas)) == 1:
+        return f"{len(filas)} {'fila' if len(filas) == 1 else 'filas'} de {filas[0]} módulos"
+    return f"{sum(filas)} módulos en {len(filas)} filas ({' + '.join(map(str, filas))})"
+
+
+def _aviario_por_filas(req: EstudioRequest) -> bool:
+    """El aviario se configura por filas completas salvo que se pida por módulos o se fije el total."""
+    return req.tipo_zona == "aviario" and req.reparto == "filas" and req.num_modulos is None
+
+
 def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
     S = req.ancho_nave_m * req.largo_nave_m
     densidad_max = densidad_max_para(req.sistema)
@@ -908,14 +938,24 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
             base.motivo = "Los módulos solicitados por fila no caben en la nave."
             return base
         mods_por_fila = req.mods_por_fila
+    # Todo el suelo entre las zonas de equipos, también el que queda bajo los módulos:
+    # las gallinas andan por debajo (confirmado con producto, 2026-10-27), así que
+    # suma a los niveles del módulo sin contarse dos veces.
     suelo_util = round(largo_util * req.ancho_nave_m * req._factor_superficie, 2)
     sup_disp_mod = AVI_SUP_DISP[niveles]
     sup_total_mod = AVI_SUP_TOTAL[niveles]
     base.max_modulos_fisicos = mods_por_fila * filas_max
+    por_filas = _aviario_por_filas(req)
 
+    # Un escenario por cada total de módulos, como en el nidal. Por filas, el
+    # óptimo y lo que se elige son siempre filas completas.
     escenarios: list[Escenario] = []
-    for f in range(1, filas_max + 1):
-        n = f * mods_por_fila
+    # Más allá del máximo, hasta un módulo más por fila: no caben, pero se muestra
+    # la capacidad que darían y cuánto largo falta (salvo con módulos por fila fijados)
+    extra = filas_max if req.mods_por_fila is None else 0
+    for n in range(1, base.max_modulos_fisicos + extra + 1):
+        cabe = n <= base.max_modulos_fisicos
+        f = math.ceil(n / mods_por_fila) if cabe else filas_max
         sup_disp  = round(base_densidad(n * sup_disp_mod + suelo_util), 2)
         sup_total = round(n * sup_total_mod + suelo_util, 2)
         yac_min   = yacija_minima(suelo_util)
@@ -935,11 +975,16 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
             sup_yacija_m2=yacija,
             yacija_pct=round(yacija / sup_total * 100, 1) if sup_total > 0 else 0.0,
             cumple_yacija=yacija >= yac_min - 1e-6,
-            cumple=yacija >= yac_min - 1e-6,
+            cumple=cabe and yacija >= yac_min - 1e-6,
             limitante=limitante,
+            cabe=cabe,
+            nota="" if cabe else (
+                f"Faltan {math.ceil(n / filas_max) * AVI_MOD_A - largo_util:.2f} m de largo "
+                f"para {math.ceil(n / filas_max)} módulos por fila"),
         ))
 
-    validos = [e for e in escenarios if e.cumple_yacija]
+    validos = [e for e in escenarios if e.cumple_yacija and e.cabe
+               and (not por_filas or e.num_modulos % mods_por_fila == 0)]
     if not validos:
         base.escenarios = escenarios
         base.motivo = (
@@ -950,15 +995,21 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
 
     optimo = max(validos, key=lambda e: (e.gallinas, -e.num_modulos))
     elegido = optimo
-    if req.num_filas:
+    if not por_filas and req.num_modulos:
+        if req.num_modulos > base.max_modulos_fisicos:
+            base.motivo = "Los módulos solicitados no caben en la nave."
+            return base
+        elegido = next((e for e in escenarios if e.num_modulos == req.num_modulos), optimo)
+    elif req.num_filas:
         if req.num_filas > filas_max:
             base.motivo = "El número de filas solicitado no cabe en la nave."
             return base
-        elegido = next((e for e in escenarios if e.num_filas == req.num_filas), optimo)
+        elegido = next((e for e in escenarios if e.num_modulos == req.num_filas * mods_por_fila), optimo)
     for e in escenarios:
-        e.es_optimo = e.num_filas == optimo.num_filas
+        e.es_optimo = e.num_modulos == optimo.num_modulos
 
     n = elegido.num_modulos
+    filas = [mods_por_fila] * elegido.num_filas if por_filas else reparto_filas(n, mods_por_fila)
     sup_disp  = round(base_densidad(n * sup_disp_mod + suelo_util), 2)
     sup_total = round(n * sup_total_mod + suelo_util, 2)
     yac_min   = yacija_minima(suelo_util)
@@ -980,9 +1031,9 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
            "Dimensional — aviario cód. 10007",
            f"{elegido.num_filas} filas × {AVI_MOD_B:.2f} m + {max(0, elegido.num_filas - 1)} "
            f"pasillos × {AVI_PASILLO:.2f} m"),
-        _v("Largo ocupado por la fila", mods_por_fila * AVI_MOD_A + req.clearance_frontal_m + req.clearance_fondo_m,
+        _v("Largo ocupado por la fila", max(filas) * AVI_MOD_A + req.clearance_frontal_m + req.clearance_fondo_m,
            req.largo_nave_m, "m", "maximo", "Dimensional — aviario cód. 10007",
-           f"{mods_por_fila} módulos × {AVI_MOD_A:.2f} m + {req.clearance_frontal_m:.2f} m y "
+           f"{max(filas)} módulos × {AVI_MOD_A:.2f} m + {req.clearance_frontal_m:.2f} m y "
            f"{req.clearance_fondo_m:.2f} m de zona de equipos"),
         _v("Niveles del aviario", niveles + 1, ECO_NIVELES_MAX_CON_SUELO, "niveles", "maximo",
            "Regl. de Ejecución (UE) 2020/464, art. 15.4.b",
@@ -1010,10 +1061,12 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
             f"La altura de la nave admitiría {niveles_altura} niveles, pero en ecológico el "
             f"máximo es {ECO_NIVELES_MAX_CON_SUELO} incluido el suelo: se estudian {niveles_max}."
         )
-    if elegido.num_filas != optimo.num_filas:
+    if elegido.num_modulos != optimo.num_modulos:
         notas.append(
             f"Escenario forzado a {elegido.num_filas} filas. El óptimo de la nave son "
-            f"{optimo.num_filas} filas ({optimo.gallinas} gallinas)."
+            f"{optimo.num_filas} filas ({optimo.gallinas} gallinas)." if por_filas else
+            f"Escenario forzado a {n} módulos. El óptimo de la nave son "
+            f"{optimo.num_modulos} módulos ({optimo.gallinas} gallinas)."
         )
 
     base.viable = all(v.cumple for v in verificaciones)
@@ -1023,7 +1076,8 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
                        f"{ECO_NIVELES_MAX_CON_SUELO} niveles de zona utilizable.")
     base.num_modulos = n
     base.num_filas = elegido.num_filas
-    base.mods_por_fila = mods_por_fila
+    base.mods_por_fila = max(filas)
+    base.filas_modulos = filas
     base.gallinas_max = elegido.gallinas
     base.densidad_real = elegido.densidad
     base.limitante = elegido.limitante
@@ -1033,7 +1087,7 @@ def _estudio_aviario(req: EstudioRequest) -> EstudioResponse:
     base.yacija_min_m2 = yac_min
     base.yacija_pct = elegido.yacija_pct
     base.huella_modulos_m2 = round(n * AVI_HUELLA_M2, 2)
-    base.descripcion_layout = f"{elegido.num_filas} filas de {mods_por_fila} módulos"
+    base.descripcion_layout = describir_filas(filas)
     base.verificaciones = verificaciones
     base.requisitos = requisitos_equipamiento(elegido.gallinas, req.sistema)
     base.escenarios = escenarios
@@ -1101,7 +1155,7 @@ def estudiar_nave(req: EstudioRequest) -> EstudioResponse:
     resultado.margen_incertidumbre_pct = MARGEN_INCERTIDUMBRE_PCT
     resultado.gallinas_min = resultado.gallinas_max
     if MARGEN_INCERTIDUMBRE_PCT > 0 and resultado.num_modulos:
-        reducido = req.model_copy(update={"num_filas": resultado.num_filas} if req.tipo_zona == "aviario"
+        reducido = req.model_copy(update={"num_filas": resultado.num_filas} if _aviario_por_filas(req)
                                   else {"num_modulos": resultado.num_modulos})
         reducido._factor_superficie = 1 - MARGEN_INCERTIDUMBRE_PCT / 100
         resultado.gallinas_min = min(resultado.gallinas_max, _estudiar(reducido).gallinas_max)
@@ -1154,17 +1208,20 @@ def _estudiar(req: EstudioRequest) -> EstudioResponse:
             e.densidad = round(e.gallinas / superficie, 2) if superficie > 0 else 0
             e.cumple = e.cumple and e.gallinas > 0
         validos = [e for e in escenarios if e.cumple]
+        if _aviario_por_filas(req):
+            # Por filas el óptimo es una fila completa (los escenarios van de módulo en módulo)
+            validos = [e for e in validos if e.num_modulos % resultado.mods_por_fila == 0]
         if validos:
             optimo = max(validos, key=lambda e: (e.gallinas, -e.num_modulos))
             for e in escenarios:
                 e.es_optimo = e.num_modulos == optimo.num_modulos
             if not req.num_filas and not req.num_modulos:
-                actualizado = req.model_copy(update={"num_filas": optimo.num_filas} if req.tipo_zona == "aviario"
+                actualizado = req.model_copy(update={"num_filas": optimo.num_filas} if _aviario_por_filas(req)
                                             else {"num_modulos": optimo.num_modulos})
                 resultado = motor(actualizado)
             if resultado.num_modulos:
                 # El motor compara con su óptimo geométrico; el real es el del aforo
-                aviario = req.tipo_zona == "aviario"
+                aviario = _aviario_por_filas(req)
                 unidad = "filas" if aviario else "módulos"
                 actual, mejor = ((resultado.num_filas, optimo.num_filas) if aviario
                                  else (resultado.num_modulos, optimo.num_modulos))
@@ -1226,7 +1283,7 @@ def _estudiar(req: EstudioRequest) -> EstudioResponse:
             de_catalogo = [c for c in catalogo if getattr(req.equipamiento, c) is None]
             if de_catalogo:
                 resultado.notas.append(
-                    f"Equipamiento integrado del aviario de {resultado.niveles} niveles tomado del acta de referencia "
+                    f"Equipamiento integrado del aviario de {resultado.niveles} niveles tomado de la ficha técnica "
                     f"(por módulo: {catalogo['perchas_m']:g} m de percha, {catalogo['nidal_util_m2']:g} m² de nidal, "
                     f"{catalogo['comedero_lineal_accesible_m']:g} m de comedero, {catalogo['bebederos_pezon_copa']:g} bebederos). "
                     "Si la instalación difiere, introduce el valor medido.")

@@ -57,9 +57,13 @@ export interface EstudioRequest {
   /** Nidal: largo libre mínimo al fondo, tensor incluido; null = largo del tensor */
   libre_fondo_m?: number | null;
   niveles?: number | null;
+  /** Aviario: escenarios por filas completas o por nº total de módulos */
+  reparto?: Reparto;
   num_modulos?: number | null;
   num_filas?: number | null;
 }
+
+export type Reparto = "filas" | "modulos";
 
 export interface VerificacionEstudio {
   parametro: string;
@@ -83,9 +87,15 @@ export interface EscenarioEstudio {
   cumple: boolean;
   limitante: string;
   es_optimo: boolean;
+  /** Aviario: false en los escenarios que no caben (informativos) */
+  cabe: boolean;
+  /** Por qué no cabe, p. ej. "Faltan 0.40 m de largo para 22 módulos por fila" */
+  nota: string;
 }
 
 export interface EstudioResponse {
+  /** Aviario: módulos de cada fila */
+  filas_modulos: number[];
   geometria_nidal?: { paso_lateral_m: number } | null;
   aforo?: AforoResultado | null;
   calculo_provisional: boolean;

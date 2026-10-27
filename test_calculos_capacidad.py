@@ -8,7 +8,7 @@ from pydantic import ValidationError
 
 sys.path.insert(0, str(Path(__file__).parent / "backend"))
 from agentes.aforo import AforoRequest, EquipamientoMedido, calcular_aforo
-from agentes.estudio import EstudioRequest, estudiar_nave
+from agentes.estudio import EstudioRequest, estudiar_nave, reparto_filas
 from agentes.plano_agent import LayoutConfig, generar_desde_config
 
 
@@ -93,6 +93,61 @@ def test_capacidad_estudio_plano_coinciden(tipo, niveles, perchas):
     assert r.gallinas_max == plano.metricas.gallinas_max
     assert r.sup_yacija_m2 == plano.metricas.yacija_m2
     assert r.densidad_real == plano.metricas.densidad
+
+
+def test_reparto_filas_equilibrado():
+    assert reparto_filas(200, 77) == [67, 67, 66]
+    assert reparto_filas(154, 77) == [77, 77]
+    assert reparto_filas(5, 77) == [5]
+    assert reparto_filas(0, 77) == []
+
+
+@pytest.mark.parametrize("perchas", [None, 150.0])
+def test_aviario_por_modulos_estudio_plano_coinciden(perchas):
+    equipo = EquipamientoMedido() if perchas is None else EquipamientoMedido(perchas_m=perchas)
+    base = dict(tipo_zona="aviario", sistema="suelo", ancho_nave_m=15, largo_nave_m=100,
+                altura_nave_cm=450, equipamiento=equipo)
+    por_filas = estudiar_nave(EstudioRequest(**base))
+    r = estudiar_nave(EstudioRequest(**base, reparto="modulos", num_modulos=200))
+    assert r.viable and r.num_modulos == 200
+    assert r.filas_modulos == [67, 67, 66] and r.num_filas == 3 and r.mods_por_fila == 67
+    # Un escenario por cada total de módulos, del 1 al máximo físico
+    assert [e.num_modulos for e in r.escenarios if e.cabe] == list(range(1, por_filas.max_modulos_fisicos + 1))
+    assert sum(e.es_optimo for e in r.escenarios) == 1
+    plano = generar_desde_config(LayoutConfig(ancho_nave_m=15, largo_nave_m=100, tipo_zona="aviario",
+        sistema="suelo", niveles=r.niveles, num_modulos=200, gallinas=r.gallinas_max, equipamiento=equipo))
+    assert plano.error is None
+    assert plano.metricas.filas_modulos == [67, 67, 66]
+    assert r.num_modulos == plano.metricas.total_modulos
+    assert r.gallinas_max == plano.metricas.gallinas_max
+    assert r.sup_yacija_m2 == plano.metricas.yacija_m2
+    assert r.densidad_real == plano.metricas.densidad
+
+
+def test_aviario_por_modulos_sin_forzar_da_el_optimo():
+    base = dict(tipo_zona="aviario", sistema="ecologico", ancho_nave_m=15, largo_nave_m=100, altura_nave_cm=450)
+    r = estudiar_nave(EstudioRequest(**base, reparto="modulos"))
+    optimo = next(e for e in r.escenarios if e.es_optimo)
+    assert r.num_modulos == optimo.num_modulos and r.gallinas_max == optimo.gallinas
+    # Con el tope ecológico, por módulos basta con menos módulos que con filas completas
+    assert r.num_modulos <= estudiar_nave(EstudioRequest(**base)).num_modulos
+
+
+def test_aviario_por_filas_compara_por_modulos_y_elige_filas_completas():
+    r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema="suelo", ancho_nave_m=14,
+                                     largo_nave_m=33, altura_nave_cm=400))
+    assert [e.num_modulos for e in r.escenarios if e.cabe] == list(range(1, r.max_modulos_fisicos + 1))
+    # Hasta un módulo más por fila: no caben, no son elegibles y dicen cuánto largo falta
+    fuera = [e for e in r.escenarios if not e.cabe]
+    assert [e.num_modulos for e in fuera] == [64, 65, 66]
+    assert all(not e.cumple and not e.es_optimo for e in fuera)
+    assert fuera[-1].nota == "Faltan 0.40 m de largo para 22 módulos por fila"
+    assert fuera[-1].gallinas > r.gallinas_max
+    optimo = next(e for e in r.escenarios if e.es_optimo)
+    assert optimo.num_modulos % r.mods_por_fila == 0 and r.num_modulos == optimo.num_modulos
+    forzado = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema="suelo", ancho_nave_m=14,
+                                           largo_nave_m=33, altura_nave_cm=400, num_filas=2))
+    assert forzado.num_filas == 2 and forzado.num_modulos == 2 * forzado.mods_por_fila
 
 
 def test_no_cabe_no_inventa_modulos():

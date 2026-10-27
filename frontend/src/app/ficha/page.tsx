@@ -10,7 +10,11 @@ import {
   type FichaRespuesta,
   type FichaTecnica,
 } from "../actions";
-import { ESTUDIO_CSS } from "../estudio-styles";
+import {
+  ART, BLOCK, BLOCK_H, BLOCK_NOTE, BTN_GHOST, BTN_PRIMARY, ERR, EYEBROW, FIELD, FORM_GRID, H1, HINT,
+  INPUT_IN, INPUT_UNIT, LABEL, MAIN, PANEL, PANEL_BODY, PANEL_TITLE, PARAM, SIDE, SIDE_TITLE, SUB,
+  TABLE, TABLE_WRAP, TAG, THEAD, UNIT,
+} from "../clases";
 import Cabecera from "../Cabecera";
 
 const ICON_SM = 16;
@@ -44,7 +48,7 @@ const NIVEL: Campo[] = [
   { k: "sup_disponible_m2", label: "Superficie disponible por módulo", unidad: "m²", ayuda: "La que computa para densidad" },
   { k: "perchas_m", label: "Perchas por módulo", unidad: "m", cero: true, opcional: true },
   { k: "nidal_util_m2", label: "Nidal útil por módulo", unidad: "m²", cero: true, opcional: true },
-  { k: "comedero_lineal_m", label: "Comedero lineal por módulo", unidad: "m", cero: true, opcional: true },
+  { k: "comedero_lineal_m", label: "Comedero lineal accesible por módulo", unidad: "m", cero: true, opcional: true, ayuda: "Si se come por los dos lados, el doble del largo" },
   { k: "bebederos", label: "Bebederos por módulo", unidad: "uds", cero: true, opcional: true, entero: true },
 ];
 
@@ -180,15 +184,15 @@ export default function FichaPage() {
     const modificado = v !== (fabrica[k] ?? "");
     const id = `f-${k.replaceAll(".", "-")}`;
     return (
-      <div className="est-field" key={k}>
-        <label className="est-label" htmlFor={id}>
+      <div className={FIELD} key={k}>
+        <label className={LABEL} htmlFor={id}>
           {c.label}
-          {modificado && <span className="ft-mod" title="Distinto del valor de fábrica">modificado</span>}
+          {modificado && <span className={`${TAG} badge-warning ml-2 font-sans`} title="Distinto del valor de fábrica">modificado</span>}
         </label>
-        <div className="est-input-wrap">
+        <div className={`${INPUT_UNIT}${err ? " input-error" : ""}`}>
           <input
             id={id}
-            className={`est-input est-input--unit${err ? " is-err" : ""}`}
+            className={INPUT_IN}
             type="text"
             inputMode={c.entero ? "numeric" : "decimal"}
             value={v}
@@ -197,9 +201,9 @@ export default function FichaPage() {
             aria-describedby={`${id}-ayuda`}
             onChange={(e) => set(k, e.target.value)}
           />
-          <span className="est-unit">{c.unidad}</span>
+          <span className={UNIT}>{c.unidad}</span>
         </div>
-        <span id={`${id}-ayuda`} className={err ? "ft-err" : "est-hint"}>
+        <span id={`${id}-ayuda`} className={err ? "text-sm text-error" : HINT}>
           {err ?? (modificado
             ? `Fábrica: ${fabrica[k] || "sin dato"}${c.ayuda ? ` · ${c.ayuda}` : ""}`
             : c.ayuda ?? (c.opcional && !v ? "Vacío = pendiente de medir en cada estudio" : ""))}
@@ -210,84 +214,83 @@ export default function FichaPage() {
 
   return (
     <>
-      <style>{ESTUDIO_CSS + FICHA_CSS}</style>
       <Cabecera activa="ficha" />
 
-      <main className="est-main">
+      <main className={MAIN}>
         <div className="est-anim">
-          <div className="est-eyebrow">Configuración</div>
-          <h1 className="est-h">Ficha técnica</h1>
-          <p className="est-sub">
+          <div className={EYEBROW}>Configuración</div>
+          <h1 className={H1}>Ficha técnica</h1>
+          <p className={SUB}>
             Medidas y equipamiento por módulo que usa el cálculo de capacidad y el plano,
             y el margen de incertidumbre del informe.
             Los cambios se aplican a todos los estudios nuevos. Si en un estudio se introduce
             un equipamiento medido, ese valor prevalece sobre la ficha.
           </p>
 
-          {errorCarga && <div className="est-err" role="alert">{errorCarga}</div>}
+          {errorCarga && <div className={ERR} role="alert">{errorCarga}</div>}
 
           {datos && (
             <>
-              <div className="ft-status">
+              <div className="-mt-4 mb-4">
                 {datos.personalizada ? (
-                  <span className="est-tag is-warn">Ficha personalizada · {fechaLarga(datos.ficha.actualizado)}</span>
+                  <span className={`${TAG} badge-warning`}>Ficha personalizada · {fechaLarga(datos.ficha.actualizado)}</span>
                 ) : (
-                  <span className="est-tag is-ok">Valores de fábrica</span>
+                  <span className={`${TAG} badge-success`}>Valores de fábrica</span>
                 )}
               </div>
 
-              <section className="est-panel">
-                <div className="est-panel-title">Aviario industrial</div>
-                <p className="est-hint">Geometría común a 2 y 3 niveles.</p>
-                <div className="est-form-grid">{AVIARIO.map((c) => campo(c))}</div>
-              </section>
+              <section className={PANEL}><div className={PANEL_BODY}>
+                <div className={PANEL_TITLE}>Aviario industrial</div>
+                <p className={`${HINT} mb-6`}>Geometría común a 2 y 3 niveles.</p>
+                <div className={FORM_GRID}>{AVIARIO.map((c) => campo(c))}</div>
+              </div></section>
 
-              <section className="est-panel">
-                <div className="est-panel-title">Aviario por niveles</div>
-                <p className="est-hint">
+              <section className={PANEL}><div className={PANEL_BODY}>
+                <div className={PANEL_TITLE}>Aviario por niveles</div>
+                <p className={`${HINT} mb-6`}>
                   Superficies y equipamiento integrado de cada módulo. El equipamiento vacío queda
                   pendiente de medir en cada estudio.
                 </p>
-                <div className="ft-niveles">
+                <div className="grid gap-4 md:grid-cols-2">
                   {NIVELES.map((n) => (
-                    <div key={n} className="est-side">
-                      <div className="est-side-title">{n === "nivel_2" ? "2 niveles" : "3 niveles"}</div>
-                      <div className="ft-col">{NIVEL.map((c) => campo(c, `aviario.${n}.${c.k}`))}</div>
+                    <div key={n} className={SIDE}>
+                      <div className={SIDE_TITLE}>{n === "nivel_2" ? "2 niveles" : "3 niveles"}</div>
+                      <div className="flex flex-col gap-4">{NIVEL.map((c) => campo(c, `aviario.${n}.${c.k}`))}</div>
                     </div>
                   ))}
                 </div>
-              </section>
+              </div></section>
 
-              <section className="est-panel">
-                <div className="est-panel-title">Nidal colectivo A-Nida</div>
-                <p className="est-hint">Los slots y el paso a pared se eligen en cada estudio.</p>
-                <div className="est-form-grid">{NIDAL.map((c) => campo(c))}</div>
-              </section>
+              <section className={PANEL}><div className={PANEL_BODY}>
+                <div className={PANEL_TITLE}>Nidal colectivo A-Nida</div>
+                <p className={`${HINT} mb-6`}>Los slots y el paso a pared se eligen en cada estudio.</p>
+                <div className={FORM_GRID}>{NIDAL.map((c) => campo(c))}</div>
+              </div></section>
 
-              <section className="est-panel">
-                <div className="est-panel-title">Capacidad del informe</div>
-                <p className="est-hint">
+              <section className={PANEL}><div className={PANEL_BODY}>
+                <div className={PANEL_TITLE}>Capacidad del informe</div>
+                <p className={`${HINT} mb-6`}>
                   El informe da la capacidad como intervalo: el mínimo se calcula con la superficie de
                   la nave reducida en este margen y el máximo con la superficie completa. Las
                   verificaciones se hacen siempre con la máxima. 0 = sin intervalo.
                 </p>
-                <div className="est-form-grid">{CALCULO.map((c) => campo(c))}</div>
-              </section>
+                <div className={FORM_GRID}>{CALCULO.map((c) => campo(c))}</div>
+              </div></section>
 
-              <section className="est-block">
-                <h2 className="est-block-h">
+              <section className={BLOCK}>
+                <h2 className={BLOCK_H}>
                   Normativa aplicada
-                  <span>solo lectura · fijada por la legislación</span>
+                  <span className={BLOCK_NOTE}>solo lectura · fijada por la legislación</span>
                 </h2>
-                <div className="est-table-wrap">
-                  <table className="est-table">
-                    <thead><tr><th>Criterio</th><th>Límite</th><th>Fuente</th></tr></thead>
+                <div className={TABLE_WRAP}>
+                  <table className={TABLE}>
+                    <thead className={THEAD}><tr><th>Criterio</th><th>Límite</th><th>Fuente</th></tr></thead>
                     <tbody>
                       {datos.normativa.map((r) => (
                         <tr key={r.criterio}>
-                          <td className="est-param">{r.criterio}</td>
+                          <td className={PARAM}>{r.criterio}</td>
                           <td>{r.valor}</td>
-                          <td className="est-art">{r.fuente}</td>
+                          <td className={ART}>{r.fuente}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -295,34 +298,34 @@ export default function FichaPage() {
                 </div>
               </section>
 
-              <div className="ft-bar" role="region" aria-label="Guardar ficha">
-                <div className="ft-bar-msg" aria-live="polite">
+              <div className="sticky bottom-0 z-[5] mt-12 flex flex-wrap items-center gap-2 border-t border-base-300 bg-base-200 py-2 sm:gap-4 sm:py-4" role="region" aria-label="Guardar ficha">
+                <div className="flex-[1_1_100%] text-sm sm:flex-[1_1_260px] sm:text-[0.9rem]" aria-live="polite">
                   {errorGuardar ? (
-                    <span className="ft-err"><AlertTriangle size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" /> {errorGuardar}</span>
+                    <span className="inline-flex items-center gap-1 text-error"><AlertTriangle size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" /> {errorGuardar}</span>
                   ) : aviso ? (
-                    <span className="ft-ok"><Check size={ICON_SM} strokeWidth={2.25} aria-hidden="true" /> {aviso}</span>
+                    <span className="inline-flex items-center gap-1 text-success"><Check size={ICON_SM} strokeWidth={2.25} aria-hidden="true" /> {aviso}</span>
                   ) : hayErrores ? (
-                    <span className="ft-err">Corrige los campos marcados para guardar.</span>
+                    <span className="text-error">Corrige los campos marcados para guardar.</span>
                   ) : cambios ? (
                     <span>{cambios} {cambios === 1 ? "cambio sin guardar" : "cambios sin guardar"}</span>
                   ) : (
-                    <span className="est-hint">Sin cambios. <Link href="/">Volver al estudio</Link></span>
+                    <span className={HINT}>Sin cambios. <Link href="/" className="link link-secondary">Volver al estudio</Link></span>
                   )}
                 </div>
-                <button type="button" className="est-btn est-btn--ghost" onClick={restablecer}
+                <button type="button" className={`${BTN_GHOST} max-sm:flex-1`} onClick={restablecer}
                   disabled={ocupado || !datos.personalizada}>
                   <RotateCcw size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
-                  <span className="ft-largo">Valores de fábrica</span><span className="ft-corto">Fábrica</span>
+                  <span className="hidden sm:inline">Valores de fábrica</span><span className="sm:hidden">Fábrica</span>
                 </button>
-                <button type="button" className="est-btn est-btn--ghost" onClick={() => cargar(datos)}
+                <button type="button" className={`${BTN_GHOST} max-sm:flex-1`} onClick={() => cargar(datos)}
                   disabled={ocupado || !cambios}>
                   <Undo2 size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
                   Descartar
                 </button>
-                <button type="button" className="est-btn est-btn--primary" onClick={guardar}
+                <button type="button" className={`${BTN_PRIMARY} max-sm:flex-1`} onClick={guardar}
                   disabled={ocupado || !cambios || hayErrores}>
                   <Save size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
-                  {ocupado ? "Guardando…" : <><span className="ft-largo">Guardar cambios</span><span className="ft-corto">Guardar</span></>}
+                  {ocupado ? "Guardando…" : <><span className="hidden sm:inline">Guardar cambios</span><span className="sm:hidden">Guardar</span></>}
                 </button>
               </div>
             </>
@@ -332,33 +335,3 @@ export default function FichaPage() {
     </>
   );
 }
-
-const FICHA_CSS = `
-  .ft-status { margin: calc(-1 * var(--space-md)) 0 var(--space-md); }
-  .ft-niveles { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-md); }
-  @media (max-width: 700px) { .ft-niveles { grid-template-columns: 1fr; } }
-  .ft-col { display: flex; flex-direction: column; gap: var(--space-md); }
-  .ft-mod {
-    margin-left: var(--space-sm); font-family: var(--font-body); font-size: 0.7rem; font-weight: 600;
-    color: var(--color-warn-text); background: var(--color-warn-bg); border-radius: 999px; padding: 1px 8px;
-  }
-  .est-input.is-err { border-color: var(--color-fail-text); }
-  .est-input.is-err:focus { box-shadow: 0 0 0 3px #B91C1C20; }
-  .ft-err { display: inline-flex; align-items: center; gap: var(--space-xs); font-size: 0.85rem; color: var(--color-fail-text); }
-  .ft-ok  { display: inline-flex; align-items: center; gap: var(--space-xs); color: var(--color-ok-text); }
-  .ft-bar {
-    position: sticky; bottom: 0; z-index: 5; display: flex; flex-wrap: wrap; align-items: center;
-    gap: var(--space-md); margin-top: var(--space-2xl); padding: var(--space-md) 0;
-    background: var(--color-background); border-top: 1px solid var(--color-border);
-  }
-  .ft-bar-msg { flex: 1 1 260px; font-size: 0.9rem; color: var(--color-foreground); }
-  .ft-bar-msg a { color: var(--color-secondary); }
-  .ft-corto { display: none; }
-  @media (max-width: 640px) {
-    .ft-bar { gap: var(--space-sm); padding: var(--space-sm) 0; }
-    .ft-bar-msg { flex-basis: 100%; font-size: 0.85rem; }
-    .ft-bar .est-btn { flex: 1 1 0; padding: 8px 10px; font-size: 0.9rem; min-height: 44px; }
-    .ft-largo { display: none; }
-    .ft-corto { display: inline; }
-  }
-`;

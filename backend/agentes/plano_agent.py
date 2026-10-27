@@ -20,7 +20,6 @@ from agentes.estudio import (
     EstudioRequest, estudiar_nave,
     DENSIDAD_MAX as _DENSIDAD_MAX,
     MAX_GALLINAS_ECOLOGICO as _MAX_GALLINAS_ECOLOGICO,
-    densidad_max_para as _densidad_max_sistema,
     base_densidad,
     yacija_disponible,
     cap_ecologico,
@@ -47,11 +46,11 @@ SVG_W  = 1100
 SVG_H  = 720
 PAD_L  = 90
 PAD_T  = 60
-PAD_R  = 40
-PAD_B  = 130
+PAD_R  = 70     # cotas de las filas a la derecha del dibujo
+PAD_B  = 112
 
 # ── Paleta del plano (limpio / profesional) ────────────────────────────────────
-_FONT           = "'Segoe UI',Helvetica,Arial,sans-serif"
+_FONT           = "'Work Sans','Segoe UI',Helvetica,Arial,sans-serif"
 _COL_INK        = "#101a36"   # contorno de nave, título
 _COL_GRID       = "#eaeef3"   # rejilla de fondo
 _COL_DIM        = "#717c8e"   # líneas de cota
@@ -78,7 +77,6 @@ _COL_EXT_STR    = "#3e7440"
 _COL_EXT_TXT    = "#1f4a21"
 _COL_PANEL      = "#f7f8fa"   # paneles (bloque de título)
 _COL_OK         = "#2f6b46"
-_COL_WARN       = "#b4602a"
 
 
 # ── Modelos Pydantic ──────────────────────────────────────────────────────────
@@ -96,6 +94,8 @@ class LayoutConfig(BaseModel):
     sistema: str = "suelo"
     num_filas: int = 0
     mods_por_fila: int = 0
+    # Aviario por módulos: total repartido en filas equilibradas (0 = num_filas × mods_por_fila)
+    num_modulos: int = Field(default=0, ge=0)
     clearance_pared_m: float = _AVI_CLEAR_PARED
     pasillo_m: float = Field(default_factory=lambda: _E.AVI_PASILLO)
     clearance_lateral_m: float = Field(default_factory=lambda: _E.AVI_CLEARANCE)
@@ -118,6 +118,7 @@ class MetricasPlano(BaseModel):
     clearance_fondo_m: float = Field(default_factory=lambda: _E.AVI_CLEARANCE_FONDO)
     num_filas: int
     mods_por_fila: int
+    filas_modulos: list[int] = []
     total_modulos: int
     gallinas_max: int
     huella_m2: float
@@ -181,7 +182,7 @@ def _arrow_h(x1, x2, y, label) -> list[str]:
     return out
 
 
-def _arrow_v(x, y1, y2, label, vertical_text=False) -> list[str]:
+def _arrow_v(x, y1, y2, label, vertical_text=False, derecha=False) -> list[str]:
     arr = 5
     out = [_line(x, y1, x, y2, stroke=_COL_DIM, sw=0.7)]
     for yp, sign in ((y1, 1), (y2, -1)):
@@ -191,9 +192,16 @@ def _arrow_v(x, y1, y2, label, vertical_text=False) -> list[str]:
         tx, ty = x - 7, (y1 + y2) / 2
         out.append(_text(tx, ty, label, size=8, fill=_COL_DIM_TXT,
                          extra=f'transform="rotate(-90 {_e(tx)} {_e(ty)})"'))
+    elif derecha:
+        out.append(_text(x + 7, (y1 + y2) / 2 + 3, label, size=8, anchor="start", fill=_COL_DIM_TXT))
     else:
         out.append(_text(x - 7, (y1 + y2) / 2 + 3, label, size=8, anchor="end", fill=_COL_DIM_TXT))
     return out
+
+
+def _cabe(texto: str, size: float, ancho_px: float) -> bool:
+    """Estimación de si un rótulo cabe en un hueco (ancho medio de glifo ≈ 0,6 em)."""
+    return len(texto) * size * 0.6 <= ancho_px - 4
 
 
 # ── Generador NIDAL — Hoja 1: distribución ───────────────────────────────────
@@ -361,8 +369,8 @@ def _build_nidal_distribucion_svg(
     room_mid_y = py(cuerpo_cy_m) if local_dentro else room_y0 + room_ph / 2
     # Etiqueta del local
     els.append(_text(room_cx, room_y0 + 10,
-                     f"LOCAL TÉCNICO {_E.NIDAL_EQUIP:g} × {ancho_nave:.2f} m" if local_dentro
-                     else f"LOCAL PROPUESTO {_E.NIDAL_EQUIP:g} × {_E.NIDAL_EQUIP:g} m",
+                     f"LOCAL {_E.NIDAL_EQUIP:g} × {ancho_nave:.2f} m" if local_dentro
+                     else f"LOCAL {_E.NIDAL_EQUIP:g} × {_E.NIDAL_EQUIP:g} m",
                      size=6, bold=True, fill="#444"))
     # Cinta saliendo del local hacia la nave (barra roja a través del hueco)
     els.append(_rect(X0, cy0 + ch / 2 - belt_h / 2,
@@ -383,8 +391,9 @@ def _build_nidal_distribucion_svg(
     els.append(f'<circle cx="{_e(mr_x)}" cy="{_e(mr_y)}" r="{_e(mr_r)}" '
                f'fill="#ddd" stroke="#333" stroke-width="1.2"/>')
     # Etiquetas
-    els.append(_text(mr_x, mr_y + mr_r + 9, "Motor", size=6, fill="#444"))
-    els.append(_text(mx, my + sz + 9, "Mesa recogida", size=6, fill="#444"))
+    # Motor encima y mesa debajo: en un local estrecho, a la misma altura se pisaban
+    els.append(_text(mr_x, mr_y - mr_r - 3, "Motor", size=6, fill="#444"))
+    els.append(_text(mx, my + sz + 8, "Mesa", size=6, fill="#444"))
 
     # ── Módulo tensor ──────────────────────────────────────────────────
     # El tensor es un rodillo: se dibuja como círculo a escala real, no como
@@ -440,7 +449,7 @@ def _build_nidal_distribucion_svg(
         els += _arrow_v(X0 - 26, py(y_nidal_end), nave_bot_px, f"{y_margin:.2f} m", vertical_text=True)
 
     rx_t = X0 + DW + 8
-    els += _arrow_v(rx_t, py(y_cuerpo), py(y_slot_bot), f"{_E.NIDAL_ANCHO:.2f}")
+    els += _arrow_v(rx_t, py(y_cuerpo), py(y_slot_bot), f"{_E.NIDAL_ANCHO:.2f}", derecha=True)
 
     # Tick extensions
     for xp in sorted({X0, nave_x0, X0 + room_px, X0 + DW}):
@@ -661,9 +670,13 @@ def _build_aviario_svg(
     dh: float,
     ancho_alero_m: float = 0.0,
     clearance_fondo: float | None = None,
+    filas_modulos: list[int] | None = None,
 ) -> list[str]:
+    """filas_modulos: módulos de cada fila; por defecto num_filas filas de mods_por_fila."""
     if clearance_fondo is None:
         clearance_fondo = _E.AVI_CLEARANCE_FONDO
+    filas = filas_modulos or [mods_por_fila] * num_filas
+    mods_por_fila = max(filas)
     total_y_m = ancho_nave + (ancho_alero_m if ancho_alero_m > 0 else 0.0)
     # Escala UNIFORME en X e Y: si no, el módulo de 1,20 × 3,30 m sale deformado.
     sx = sy = min(dw / largo_nave, dh / total_y_m)
@@ -712,42 +725,38 @@ def _build_aviario_svg(
         ry  = Y0 + y_m * sy
         rh  = _E.AVI_MOD_B * sy
         els.append(_rect(X0, ry, zw, rh, fill=_COL_EQUIP_FILL, stroke=_COL_EQUIP_STR, sw=1.2))
-        els.append(_text(X0 + zw / 2, ry + rh / 2 + 4,
-                         "NORIA · COMIDA", size=7, fill=_COL_EQUIP_TXT))
+        if _cabe("NORIA · COMIDA", 7, zw):
+            els.append(_text(X0 + zw / 2, ry + rh / 2 + 4,
+                             "NORIA · COMIDA", size=7, fill=_COL_EQUIP_TXT))
         els.append(_rect(x_der, ry, w_rasc, rh, fill=_COL_RASC_FILL, stroke=_COL_RASC_STR, sw=1.2))
-        els.append(_text(x_der + w_rasc / 2, ry + rh / 2 + 4,
-                         "RASCADOR", size=7, fill=_COL_RASC_TXT))
+        if _cabe("RASCADOR", 7, w_rasc):
+            els.append(_text(x_der + w_rasc / 2, ry + rh / 2 + 4,
+                             "RASCADOR", size=7, fill=_COL_RASC_TXT))
 
-    y_lbl = Y0 + clearance_pared * sy / 2 + 3
-    els.append(_text(X0 + zw / 2, y_lbl,
-                     f"← {clearance_lat:.1f} m EQUIPO", size=7, fill=_COL_EQUIP_TXT, bold=True))
-    els.append(_text(x_der + w_rasc / 2, y_lbl,
-                     f"EQUIPO {clearance_fondo:.1f} m →", size=7, fill=_COL_RASC_TXT, bold=True))
-
-    for i in range(num_filas):
+    for i, mods in enumerate(filas):
         y_m = clearance_pared + i * (_E.AVI_MOD_B + pasillo)
         rx  = X0 + clearance_lat * sx
         ry  = Y0 + y_m * sy
-        rw  = mods_por_fila * _E.AVI_MOD_A * sx
+        rw  = mods * _E.AVI_MOD_A * sx
         rh  = _E.AVI_MOD_B * sy
         els.append(_rect(rx, ry, rw, rh, fill=_COL_MOD_FILL, stroke=_COL_MOD_STR, sw=1.8, opacity=0.95))
-        for j in range(1, mods_por_fila):
+        for j in range(1, mods):
             lx = rx + j * _E.AVI_MOD_A * sx
             els.append(_line(lx, ry, lx, ry + rh, stroke=_COL_MOD_DIV, sw=0.6))
         els.append(_text(
             rx + rw / 2, ry + rh / 2 + 4,
-            f"FILA {i+1}  ·  {mods_por_fila} módulos  ·  {mods_por_fila * _E.AVI_MOD_A:.2f} m",
+            f"FILA {i+1}  ·  {mods} módulos  ·  {mods * _E.AVI_MOD_A:.2f} m",
             size=8, fill=_COL_MOD_TXT, bold=True,
         ))
         cx_cota = X0 + DW + 20
-        els += _arrow_v(cx_cota, ry, ry + rh, f"{_E.AVI_MOD_B:.2f} m")
+        els += _arrow_v(cx_cota, ry, ry + rh, f"{_E.AVI_MOD_B:.2f} m", derecha=True)
 
-    for i in range(num_filas - 1):
+    for i in range(len(filas) - 1):
         y_top = clearance_pared + (i + 1) * _E.AVI_MOD_B + i * pasillo
         ry    = Y0 + y_top * sy
         rh_p  = pasillo * sy
         rx    = X0 + clearance_lat * sx
-        rw    = mods_por_fila * _E.AVI_MOD_A * sx
+        rw    = max(filas[i], filas[i + 1]) * _E.AVI_MOD_A * sx
         els.append(_rect(rx, ry, rw, rh_p,
                          fill=_COL_PASILLO, stroke=_COL_PASILLO_S, sw=0.5, opacity=0.7))
         els.append(_text(rx + rw / 2, ry + rh_p / 2 + 3,
@@ -759,6 +768,8 @@ def _build_aviario_svg(
                     f"{mods_por_fila * _E.AVI_MOD_A:.2f} m  ({mods_por_fila} × {_E.AVI_MOD_A} m)")
     if clearance_lat > 0:
         els += _arrow_h(X0, rx0, Y0 - 22, f"{clearance_lat:.2f} m")
+    if clearance_fondo > 0:
+        els += _arrow_h(x_der, X0 + DW, Y0 - 22, f"{clearance_fondo:.2f} m")
     els += _arrow_h(X0, X0 + DW, Y0 - 38, f"{largo_nave:.0f} m")
     nave_bot_px = Y0 + nave_ph
     if ancho_alero_m > 0:
@@ -820,38 +831,16 @@ def _footer(
     total_modulos: int,
     gallinas: int,
     hoja: str = "1 DE 2",
-    gallinas_max: int = 0,
-    densidad: float = 0.0,
-    densidad_max: float = 9.0,
+    y0: float = SVG_H - PAD_B,
 ) -> list[str]:
+    """y0: base del dibujo; la leyenda y el cajetín van justo debajo."""
     els: list[str] = []
-    dh   = SVG_H - PAD_T - PAD_B
-    y0   = PAD_T + dh        # base de la zona de dibujo
 
-    # ── Línea de métricas clave ───────────────────────────────────────
-    band_y   = y0 + 16
-    col_ok   = _COL_OK
-    col_err  = _COL_WARN
-    dens_col = col_ok if densidad <= densidad_max else col_err
-    gmax_str = f"{gallinas_max:,}".replace(",", ".")
-    dens_str = f"{densidad:.1f} / {densidad_max:.0f} gallinas/m²"
-    sep      = "·"
-
-    # Tres bloques en posiciones fijas: módulos | aves | densidad
-    xs = [PAD_L, PAD_L + 220, PAD_L + 460]
-    datos = [
-        (f"Módulos: {total_modulos}",       "#000823"),
-        (f"Aves máx.: {gmax_str}",           col_ok),
-        (f"Densidad: {dens_str}",            dens_col),
-    ]
-    for (txt, col), x in zip(datos, xs):
-        els.append(_text(x, band_y, txt, size=9, anchor="start", fill=col, bold=True))
-    # separadores
-    for x in xs[1:]:
-        els.append(_text(x - 14, band_y, sep, size=9, anchor="middle", fill=_COL_DIM))
+    # Sin banda de cifras (módulos, aves, densidad): el informe ya las da
+    band_y = y0 + 16
 
     # ── Leyenda ────────────────────────────────────────────────────────
-    y_leg = band_y + 16
+    y_leg = band_y
 
     if req_tipo == "aviario":
         items = [
@@ -888,39 +877,37 @@ def _footer(
     els.append(_text(bx + bw / 2, by + 56,
                      f"{nombre_cliente}  ·  {total_modulos} mód.  ·  {gallinas_str} aves",
                      size=7, fill=_COL_DIM_TXT))
-    escala = "COTAS EN m" if req_tipo == "nidal_colectivo" else "ESC 1:50"
-    els.append(_text(bx + bw - 4, by + 15, escala, size=7, anchor="end", fill=_COL_DIM_TXT))
+    # El SVG se adapta a la pantalla: no tiene una escala física de impresión
+    els.append(_text(bx + bw - 4, by + 15, "COTAS EN m", size=7, anchor="end", fill=_COL_DIM_TXT))
     els.append(_text(bx + bw - 4, by + 28, f"HOJA {hoja}", size=7, anchor="end", fill=_COL_DIM_TXT))
 
-    if req_tipo == "nidal_colectivo":
-        # El SVG se adapta a la pantalla: no tiene una escala física de impresión
-        # ni conocemos la orientación geográfica de esta nave.
-        els.append(_text(PAD_L, y_leg + 34,
-                         "Conjunto centrado · Distribución preliminar · Medidas del equipo por confirmar",
-                         size=8, anchor="start", fill=_COL_DIM_TXT))
-        return els
-
-    nx, ny = PAD_L + 22, y_leg + 22
-    els.append(_line(nx, ny + 14, nx, ny, stroke=_COL_INK, sw=1.3))
-    els.append(f'<polygon points="{_e(nx)},{_e(ny)} {_e(nx-4)},{_e(ny+8)} {_e(nx+4)},{_e(ny+8)}" fill="{_COL_INK}"/>')
-    els.append(_text(nx, ny - 5, "N", size=9, bold=True, fill=_COL_INK))
-
+    # Sin norte: no conocemos la orientación geográfica de la nave
+    nota = ("Conjunto centrado · " if req_tipo == "nidal_colectivo" else "") + \
+        "Distribución preliminar · Medidas del equipo por confirmar"
+    els.append(_text(PAD_L, y_leg + 34, nota, size=8, anchor="start", fill=_COL_DIM_TXT))
     return els
 
 
-def _wrap_svg(parts: list[str]) -> str:
+def _wrap_svg(parts: list[str], alto: float = SVG_H) -> str:
     inner = "\n  ".join(parts)
+    h = _e(alto, 0)
     bg = (
-        f'<rect width="{SVG_W}" height="{SVG_H}" fill="#ffffff"/>'
-        f'<defs><pattern id="gcgrid" width="40" height="40" patternUnits="userSpaceOnUse">'
-        f'<path d="M40 0H0V40" fill="none" stroke="{_COL_GRID}" stroke-width="1"/></pattern></defs>'
-        f'<rect width="{SVG_W}" height="{SVG_H}" fill="url(#gcgrid)"/>'
+        f'<rect width="{SVG_W}" height="{h}" fill="#ffffff"/>'
+        f'<rect x="8" y="8" width="{SVG_W - 16}" height="{_e(alto - 16, 0)}" fill="none" '
+        f'stroke="{_COL_GRID}" stroke-width="1"/>'
     )
     return (
-        f'<svg viewBox="0 0 {SVG_W} {SVG_H}" width="{SVG_W}" height="{SVG_H}" xmlns="http://www.w3.org/2000/svg" '
+        f'<svg viewBox="0 0 {SVG_W} {h}" width="{SVG_W}" height="{h}" xmlns="http://www.w3.org/2000/svg" '
         f'style="font-family:{_FONT};background:#fff">\n  '
         f'{bg}\n  {inner}\n</svg>'
     )
+
+
+def _alto_dibujo(total_x_m: float, total_y_m: float, dw: float, dh: float) -> float:
+    """Alto en px del dibujo a escala uniforme: el SVG se recorta a él y no deja bandas vacías."""
+    if total_x_m <= 0 or total_y_m <= 0:
+        return dh
+    return total_y_m * min(dw / total_x_m, dh / total_y_m)
 
 
 # ── Cálculo layout óptimo aviario ─────────────────────────────────────────────
@@ -950,14 +937,17 @@ def _metricas_aviario(
     clearance_fondo: float | None = None,
     equipamiento: EquipamientoMedido | None = None,
     sup_pasto_m2: float | None = None,
+    num_modulos: int = 0,
 ) -> MetricasPlano:
+    """num_modulos > 0: aviario por módulos (total repartido en filas); si no, num_filas × mods_por_fila."""
     if clearance_fondo is None:
         clearance_fondo = _E.AVI_CLEARANCE_FONDO
-    if num_filas <= 0 or mods_por_fila <= 0:
+    if num_modulos <= 0 and (num_filas <= 0 or mods_por_fila <= 0):
         raise ValueError("No cabe ninguna fila de aviario con las separaciones indicadas")
     r = estudiar_nave(EstudioRequest(tipo_zona="aviario", sistema=sistema,
         ancho_nave_m=ancho, largo_nave_m=largo, altura_nave_cm=_E.AVI_ALTURA_MIN.get(niveles, _E.AVI_ALTURA_MIN[2]),
-        niveles=niveles, num_filas=num_filas, mods_por_fila=mods_por_fila,
+        niveles=niveles, **({"reparto": "modulos", "num_modulos": num_modulos} if num_modulos > 0
+                            else {"num_filas": num_filas, "mods_por_fila": mods_por_fila}),
         clearance_pared_m=clearance_pared, pasillo_m=pasillo,
         clearance_frontal_m=clearance_lat, clearance_fondo_m=clearance_fondo,
         equipamiento=equipamiento or EquipamientoMedido(), sup_pasto_m2=sup_pasto_m2))
@@ -967,10 +957,10 @@ def _metricas_aviario(
         raise ValueError(f"El objetivo supera la capacidad calculada: {r.gallinas_max} gallinas")
     aves = gallinas_override if gallinas_override > 0 else r.gallinas_max
     return MetricasPlano(num_filas=r.num_filas, mods_por_fila=r.mods_por_fila,
-        total_modulos=r.num_modulos, gallinas_max=r.gallinas_max,
+        filas_modulos=r.filas_modulos, total_modulos=r.num_modulos, gallinas_max=r.gallinas_max,
         huella_m2=r.huella_modulos_m2, yacija_m2=r.sup_yacija_m2,
         densidad=round(aves / r.sup_disponible_m2, 2) if r.sup_disponible_m2 else 0,
-        espacio_libre_y_m=round(ancho - 2 * clearance_pared - num_filas * _E.AVI_MOD_B - (num_filas-1) * pasillo, 4),
+        espacio_libre_y_m=round(ancho - 2 * clearance_pared - r.num_filas * _E.AVI_MOD_B - (r.num_filas-1) * pasillo, 4),
         clearance_pared_m=clearance_pared, pasillo_m=pasillo,
         clearance_lateral_m=clearance_lat, clearance_fondo_m=clearance_fondo,
         densidad_max=r.densidad_max, aforo=r.aforo)
@@ -1039,6 +1029,8 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 equipamiento=cfg.equipamiento, sup_pasto_m2=cfg.sup_pasto_m2,
                 local_dentro=cfg.local_dentro, libre_fondo_m=cfg.libre_fondo_m,
             )
+            ext_m = 0.0 if cfg.local_dentro else _E.NIDAL_EQUIP
+            dh = _alto_dibujo(ext_m + cfg.largo_nave_m, cfg.ancho_nave_m + (cfg.ancho_alero_m or 0.0), dw, dh)
             parts = _build_nidal_distribucion_svg(
                 cfg.ancho_nave_m, cfg.largo_nave_m,
                 num_mods, nombre, cfg.gallinas, dw, dh,
@@ -1046,31 +1038,19 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
                 slot_sup_m=cfg.slot_izq_m, slot_inf_m=cfg.slot_der_m,
                 geometria=metricas.geometria_nidal, local_dentro=cfg.local_dentro,
             )
-            dens_max_nidal = _densidad_max_sistema(cfg.sistema)
             parts += _footer("nidal_colectivo", nombre, num_mods, cfg.gallinas or metricas.gallinas_max,
-                              hoja="1 DE 1",
-                              gallinas_max=metricas.gallinas_max,
-                              densidad=metricas.densidad,
-                              densidad_max=dens_max_nidal)
-            return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
+                              hoja="1 DE 1", y0=PAD_T + dh)
+            return LayoutConfigResponse(svg=_wrap_svg(parts, PAD_T + dh + PAD_B), metricas=metricas)
 
         # ── Aviario ────────────────────────────────────────────────────
         clearance_lat = cfg.clearance_lateral_m
-        nf, mpf = _optimal_aviario(
+        # Por módulos el estudio reparte el total en filas; por filas, el óptimo o lo pedido
+        nf, mpf = (0, 0) if cfg.num_modulos else _optimal_aviario(
             cfg.ancho_nave_m, cfg.largo_nave_m,
             cfg.clearance_pared_m, cfg.pasillo_m, clearance_lat,
             cfg.num_filas, cfg.mods_por_fila, cfg.clearance_fondo_m,
         )
-        parts = []
-        parts += _build_aviario_svg(
-            cfg.ancho_nave_m, cfg.largo_nave_m,
-            nf, mpf,
-            cfg.clearance_pared_m, cfg.pasillo_m, clearance_lat,
-            cfg.nombre_cliente or "Propuesta GyC",
-            cfg.gallinas, nf * mpf,
-            dw, dh,
-            ancho_alero_m=cfg.ancho_alero_m, clearance_fondo=cfg.clearance_fondo_m,
-        )
+        # Las métricas salen del mismo estudio que el informe y fijan las filas que se dibujan
         metricas = _metricas_aviario(
             cfg.ancho_nave_m, cfg.largo_nave_m,
             nf, mpf,
@@ -1078,14 +1058,23 @@ def generar_desde_config(cfg: LayoutConfig) -> LayoutConfigResponse:
             cfg.gallinas, cfg.sistema, cfg.niveles,
             ancho_alero_m=cfg.ancho_alero_m, clearance_fondo=cfg.clearance_fondo_m,
             equipamiento=cfg.equipamiento, sup_pasto_m2=cfg.sup_pasto_m2,
+            num_modulos=cfg.num_modulos,
         )
-        dens_max_cfg = _densidad_max_sistema(cfg.sistema)
+        dh = _alto_dibujo(cfg.largo_nave_m, cfg.ancho_nave_m + (cfg.ancho_alero_m or 0.0), dw, dh)
+        parts = []
+        parts += _build_aviario_svg(
+            cfg.ancho_nave_m, cfg.largo_nave_m,
+            metricas.num_filas, metricas.mods_por_fila,
+            cfg.clearance_pared_m, cfg.pasillo_m, clearance_lat,
+            cfg.nombre_cliente or "Propuesta GyC",
+            cfg.gallinas, metricas.total_modulos,
+            dw, dh,
+            ancho_alero_m=cfg.ancho_alero_m, clearance_fondo=cfg.clearance_fondo_m,
+            filas_modulos=metricas.filas_modulos,
+        )
         parts += _footer("aviario", cfg.nombre_cliente or "Propuesta GyC",
-                         nf * mpf, cfg.gallinas, hoja="1 DE 1",
-                         gallinas_max=metricas.gallinas_max,
-                         densidad=metricas.densidad,
-                         densidad_max=dens_max_cfg)
-        return LayoutConfigResponse(svg=_wrap_svg(parts), metricas=metricas)
+                         metricas.total_modulos, cfg.gallinas, hoja="1 DE 1", y0=PAD_T + dh)
+        return LayoutConfigResponse(svg=_wrap_svg(parts, PAD_T + dh + PAD_B), metricas=metricas)
 
     except Exception as exc:
         logging.error(f"[plano_agent] generar_desde_config: {exc}")
