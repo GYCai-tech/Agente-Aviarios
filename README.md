@@ -18,12 +18,19 @@ npm install
 BACKEND_URL=http://localhost:8000 npm run dev
 ```
 
-O con Docker: `docker compose up -d --build` (frontend en :3000, backend en :8080).
+O con Docker: `docker compose up -d --build` (frontend en :3001, configurable con `HERRAMIENTA_PORT`;
+el backend no publica puerto).
 
 ## Tests
 
 ```bash
-python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py
+python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py
 ```
 
-Más detalle en [CLAUDE.md](CLAUDE.md).
+## Documentación
+
+- [Guía de soporte](docs/GUIA_SOPORTE.md): qué hacer si algo falla, comandos del servidor, glosario.
+  Pensada para quien no es programador.
+- [Documentación técnica](docs/DOCUMENTACION_TECNICA.md): arquitectura, modelo de cálculo, despliegue,
+  recetas de cambios y trampas conocidas. Para quien mantiene el código.
+- [CLAUDE.md](CLAUDE.md): reglas de desarrollo y dimensionamiento.
