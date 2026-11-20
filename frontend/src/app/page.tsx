@@ -55,6 +55,7 @@ interface FormState {
   localDentro: boolean;
   libreFondo: string;
   niveles: "auto" | "2" | "3";
+  pasoPared: string;   // aviario: paso a cada pared lateral; vacío = 0 m
 }
 
 const FORM_INICIAL: FormState = {
@@ -71,6 +72,7 @@ const FORM_INICIAL: FormState = {
   localDentro: false,
   libreFondo: "",
   niveles: "auto",
+  pasoPared: "",
 };
 
 const ICON_SM = 16;     // icono en línea con texto
@@ -78,6 +80,8 @@ const ICON_LG = 24;     // icono destacado
 const ICON_STROKE = 1.75;
 
 const PASO_PARED_DEF = 1.0;   // m — paso libre por defecto entre el slat y cada pared
+// m — paso a cada pared lateral del aviario al proponer medidas si no se indica otro
+const PASO_PARED_AVI_DIM = 1.0;
 
 // Nombres legibles de los criterios que devuelve el backend como `limitante`
 const LIMITANTES: Record<string, string> = {
@@ -282,6 +286,7 @@ export default function EstudioPage() {
   const pasoMinimo = Math.max(pasoIzqM, pasoDerM);
   const anchoMinimo = profTotal + 2 * pasoMinimo;
   const slotsInvalidos = esNidal && form.slotIzq + form.slotDer === 0;
+  const pasoParedAvi = Math.max(0, parseFloat(form.pasoPared) || 0);
 
   // Reparto a lo largo: [local técnico si va dentro] + módulos + libre al fondo (tensor incluido)
   const moduloLargo = ficha?.nidal.largo_modulo_m ?? 1.2;
@@ -341,6 +346,7 @@ export default function EstudioPage() {
       libre_fondo_m: esNidal && form.libreFondo !== "" ? libreFondoM : null,
       niveles: !esNidal && form.niveles !== "auto" ? parseInt(form.niveles) : null,
       reparto: esNidal ? "filas" : reparto,
+      clearance_pared_m: esNidal ? 0 : pasoParedAvi,
       ...overrides,
     };
   }
@@ -359,6 +365,7 @@ export default function EstudioPage() {
     paso_der_m: pasoDerM,
     local_dentro: esNidal && form.localDentro,
     libre_fondo_m: esNidal && form.libreFondo !== "" ? libreFondoM : null,
+    paso_pared_m: form.pasoPared !== "" ? pasoParedAvi : PASO_PARED_AVI_DIM,
   } : null;
   const claveDim = peticionDim ? JSON.stringify(peticionDim) : "";
   const dimVigente = dimensionado && dimensionado.clave === claveDim ? dimensionado.data : null;
@@ -382,10 +389,12 @@ export default function EstudioPage() {
     setForm((f) => ({
       ...f, ancho: String(o.ancho_nave_m), largo: String(o.largo_nave_m),
       altura: alturaNave > 0 ? String(alturaNave) : f.altura,
+      pasoPared: esNidal ? f.pasoPared : String(o.paso_pared_m),
     }));
     if (alturaNave > 0 && !slotsInvalidos && !libreCorto) {
       setReparto("modulos");
-      calcular({ ancho_nave_m: o.ancho_nave_m, largo_nave_m: o.largo_nave_m, altura_nave_cm: alturaNave, reparto: "modulos" });
+      calcular({ ancho_nave_m: o.ancho_nave_m, largo_nave_m: o.largo_nave_m, altura_nave_cm: alturaNave, reparto: "modulos",
+        ...(esNidal ? {} : { clearance_pared_m: o.paso_pared_m }) });
     } else {
       document.getElementById("e-altura")?.focus();
     }
@@ -402,7 +411,7 @@ export default function EstudioPage() {
       num_filas: 0,
       mods_por_fila: r.tipo_zona === "aviario" ? 0 : r.num_modulos,
       num_modulos: r.tipo_zona === "aviario" ? r.num_modulos : 0,
-      clearance_pared_m: 0,
+      clearance_pared_m: r.tipo_zona === "aviario" ? pasoParedAvi : 0,
       clearance_fondo_m: 3,
       equipamiento,
       sup_pasto_m2: form.pasto !== "" ? Number(form.pasto) : undefined,
@@ -750,6 +759,19 @@ export default function EstudioPage() {
                       <option value="2">2 niveles</option>
                       <option value="3">3 niveles</option>
                     </select>
+                  </div>
+                )}
+
+                {!esNidal && (
+                  <div className={FIELD}>
+                    <label className={LABEL} htmlFor="e-paso-pared">Paso a las paredes laterales</label>
+                    <div className={INPUT_UNIT}>
+                      <input id="e-paso-pared" type="number" className={INPUT_IN}
+                        min={0} step="0.1" placeholder="0" value={form.pasoPared}
+                        onChange={(e) => set("pasoPared", e.target.value)} />
+                      <span className={UNIT}>m</span>
+                    </div>
+                    <span className={HINT}>Libre entre la fila exterior y cada pared. Vacío = filas pegadas a la pared (al proponer medidas se dejan {num(PASO_PARED_AVI_DIM)} m).</span>
                   </div>
                 )}
               </div>

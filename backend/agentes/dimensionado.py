@@ -23,6 +23,9 @@ LARGO_TOPE_M = 1000.0   # por encima no se propone nave
 ANCHO_EXTRA_NIDAL_M = 6.0
 ANCHO_PASO_NIDAL_M = 0.5
 FILAS_MAX_AVIARIO = 4
+# Aviario: paso libre entre la fila exterior y cada pared lateral. Sin él, la
+# nave más pequeña sería siempre una sola fila pegada a las dos paredes.
+AVI_PASO_PARED_M = 1.0
 
 
 class DimensionadoRequest(BaseModel):
@@ -38,6 +41,8 @@ class DimensionadoRequest(BaseModel):
     paso_der_m: float = Field(default=E.NIDAL_PASO_PARED, ge=0)
     local_dentro: bool = False
     libre_fondo_m: float | None = Field(default=None, ge=0)
+    # Aviario: paso a cada pared lateral (clearance_pared_m del estudio)
+    paso_pared_m: float = Field(default=AVI_PASO_PARED_M, ge=0)
 
 
 class OpcionNave(BaseModel):
@@ -47,6 +52,7 @@ class OpcionNave(BaseModel):
     altura_nave_cm: float
     superficie_m2: float
     niveles: int = 0
+    paso_pared_m: float = 0.0       # aviario: paso a cada pared lateral
     num_modulos: int
     num_filas: int
     descripcion_layout: str
@@ -80,6 +86,7 @@ def _estudio(req: DimensionadoRequest, ancho: float, largo: float) -> E.EstudioR
         paso_izq_m=req.paso_izq_m, paso_der_m=req.paso_der_m,
         local_dentro=req.local_dentro, libre_fondo_m=req.libre_fondo_m,
         niveles=req.niveles, reparto="modulos",
+        clearance_pared_m=req.paso_pared_m if req.tipo_zona == "aviario" else 0,
     ))
 
 
@@ -105,8 +112,9 @@ def _largo_minimo(req: DimensionadoRequest, ancho: float, largo_desde: float) ->
     return _estudio(req, ancho, round(hi * PASO_LARGO_M, 1))
 
 
-def _opcion(titulo: str, r: E.EstudioResponse) -> OpcionNave:
+def _opcion(titulo: str, r: E.EstudioResponse, paso_pared: float = 0.0) -> OpcionNave:
     return OpcionNave(
+        paso_pared_m=paso_pared,
         titulo=titulo, ancho_nave_m=r.ancho_nave_m, largo_nave_m=r.largo_nave_m,
         altura_nave_cm=r.altura_nave_cm, superficie_m2=round(r.superficie_nave_m2, 2),
         niveles=r.niveles, num_modulos=r.num_modulos, num_filas=r.num_filas,
@@ -139,10 +147,10 @@ def _opciones_nidal(req: DimensionadoRequest) -> list[OpcionNave]:
     return opciones
 
 
-def _ancho_filas(filas: int, pasillo: float) -> float:
-    """Ancho al centímetro en el que caben `filas` filas de aviario (sin paso a pared)."""
-    ancho = math.ceil((filas * E.AVI_MOD_B + (filas - 1) * pasillo) * 100 - 1e-6) / 100
-    while math.floor((ancho + pasillo) / (E.AVI_MOD_B + pasillo)) < filas:
+def _ancho_filas(filas: int, pasillo: float, paso_pared: float) -> float:
+    """Ancho al centímetro en el que caben `filas` filas de aviario con su paso a cada pared."""
+    ancho = math.ceil((2 * paso_pared + filas * E.AVI_MOD_B + (filas - 1) * pasillo) * 100 - 1e-6) / 100
+    while math.floor((ancho - 2 * paso_pared + pasillo) / (E.AVI_MOD_B + pasillo)) < filas:
         ancho = round(ancho + 0.01, 2)
     return ancho
 
@@ -152,11 +160,11 @@ def _opciones_aviario(req: DimensionadoRequest) -> list[OpcionNave]:
     largo_desde = E.AVI_MOD_A + E.AVI_CLEARANCE + E.AVI_CLEARANCE_FONDO - PASO_LARGO_M
     opciones: list[OpcionNave] = []
     for filas in range(1, FILAS_MAX_AVIARIO + 1):
-        r = _largo_minimo(req, _ancho_filas(filas, pasillo), largo_desde)
+        r = _largo_minimo(req, _ancho_filas(filas, pasillo, req.paso_pared_m), largo_desde)
         # Si el estudio usa menos filas, la nave es más ancha de lo necesario
         if r is None or r.num_filas < filas:
             continue
-        opciones.append(_opcion(f"{filas} {'fila' if filas == 1 else 'filas'}", r))
+        opciones.append(_opcion(f"{filas} {'fila' if filas == 1 else 'filas'}", r, req.paso_pared_m))
     if opciones:
         min(opciones, key=lambda o: (o.superficie_m2, o.num_filas)).recomendada = True
     return opciones
@@ -186,6 +194,6 @@ def dimensionar_nave(req: DimensionadoRequest) -> DimensionadoResponse:
         "Medidas interiores libres. La capacidad puede superar lo pedido porque los módulos son enteros.",
     ]
     if req.tipo_zona == "aviario":
-        out.notas.append("Filas de aviario sin paso a las paredes laterales y pasillos de "
+        out.notas.append(f"Aviario con {req.paso_pared_m:g} m de paso a cada pared lateral y pasillos de "
                          f"{E.AVI_PASILLO:g} m entre filas.")
     return out

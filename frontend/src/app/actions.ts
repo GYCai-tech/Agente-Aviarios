@@ -61,6 +61,8 @@ export interface EstudioRequest {
   reparto?: Reparto;
   num_modulos?: number | null;
   num_filas?: number | null;
+  /** Aviario: paso libre entre la fila exterior y cada pared lateral (m) */
+  clearance_pared_m?: number;
 }
 
 export type Reparto = "filas" | "modulos";
@@ -189,6 +191,8 @@ export interface DimensionadoRequest {
   paso_der_m?: number;
   local_dentro?: boolean;
   libre_fondo_m?: number | null;
+  /** Aviario: paso a cada pared lateral (m) */
+  paso_pared_m?: number;
 }
 
 export interface OpcionNave {
@@ -198,6 +202,7 @@ export interface OpcionNave {
   altura_nave_cm: number;
   superficie_m2: number;
   niveles: number;
+  paso_pared_m: number;
   num_modulos: number;
   num_filas: number;
   descripcion_layout: string;
