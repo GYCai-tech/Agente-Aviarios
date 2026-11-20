@@ -1,36 +1,25 @@
-version: "3.9"
+# Herramienta interna «Estudio de nave». Se publica en HERRAMIENTA_PORT (por
+# defecto 3001): en el servidor el 3000 es de otra app y el 8080 de code-server.
+name: herramienta-interna
 
 services:
-  qdrant:
-    image: qdrant/qdrant:latest
-    container_name: qdrant_legal_ai
-    ports:
-      - "6333:6333"
-      - "6334:6334"
-    volumes:
-      - ./qdrant_data:/qdrant/storage
-    restart: unless-stopped
-
   backend:
     build: ./backend
-    container_name: backend_legal_ai
-    ports:
-      - "8080:8000"
-    env_file:
-      - .env
+    container_name: backend_herramienta
+    # Sin puerto en el host: solo lo usa el frontend por la red interna de compose
     environment:
-      - QDRANT_URL=http://qdrant:6333
+      - FRONTEND_URL=http://frontend:3000
     volumes:
-      - ./backend:/app
-    depends_on:
-      - qdrant
+      # Ficha técnica editada desde la app (persiste entre despliegues)
+      - ./backend/datos:/app/datos
     restart: unless-stopped
 
   frontend:
     build: ./frontend
-    container_name: frontend_legal_ai
+    container_name: frontend_herramienta
     ports:
-      - "3000:3000"
+      # Puerto en el host configurable con HERRAMIENTA_PORT (en el .env junto a este archivo)
+      - "${HERRAMIENTA_PORT:-3001}:3000"
     environment:
       - BACKEND_URL=http://backend:8000
     depends_on:

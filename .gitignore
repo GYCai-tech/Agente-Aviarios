@@ -35,3 +35,12 @@ Thumbs.db
 
 # Claude Code (config local, no compartible)
 .claude/settings.local.json
+
+# Propuestas compartidas (datos en runtime, no codigo)
+backend/propuestas_guardadas/
+
+# Ficha técnica editada desde la app (datos en runtime)
+backend/datos/
+
+# Artefactos de la skill design-taste-frontend (capturas, inspecciones)
+.taste-skill/

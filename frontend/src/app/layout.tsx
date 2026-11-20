@@ -1,31 +1,25 @@
 import type { Metadata } from "next";
-import { Montserrat, Source_Sans_3, JetBrains_Mono } from "next/font/google";
+import { Outfit, Work_Sans } from "next/font/google";
 import "./globals.css";
 
-const montserrat = Montserrat({
+// Tipografía del design system (design-system/estudio-de-nave/MASTER.md)
+const outfit = Outfit({
   subsets: ["latin"],
-  weight: ["600", "700", "800"],
-  variable: "--font-montserrat",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-outfit",
   display: "swap",
 });
 
-const sourceSans = Source_Sans_3({
+const workSans = Work_Sans({
   subsets: ["latin"],
-  weight: ["300", "400", "600", "700"],
-  variable: "--font-source-sans",
-  display: "swap",
-});
-
-const jetbrainsMono = JetBrains_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "700"],
-  variable: "--font-jetbrains",
+  weight: ["300", "400", "500", "600", "700"],
+  variable: "--font-work-sans",
   display: "swap",
 });
 
 export const metadata: Metadata = {
-  title: "Agente Aviario — Gómez y Crespo",
-  description: "Calcula la capacidad de tu nave y obtén los requisitos normativos para la producción avícola.",
+  title: "Estudio de nave — Gómez y Crespo",
+  description: "Herramienta interna: cálculo de capacidad y plano de nidal colectivo y aviario para propuestas comerciales.",
 };
 
 export default function RootLayout({
@@ -36,7 +30,8 @@ export default function RootLayout({
   return (
     <html
       lang="es"
-      className={`${montserrat.variable} ${sourceSans.variable} ${jetbrainsMono.variable} h-full antialiased`}
+      data-theme="gyc"
+      className={`${outfit.variable} ${workSans.variable} h-full antialiased`}
     >
       <body className="min-h-full flex flex-col">{children}</body>
     </html>
