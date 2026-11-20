@@ -174,6 +174,57 @@ export async function pedirEstudio(req: EstudioRequest): Promise<EstudioResponse
   return res.json();
 }
 
+// ── Dimensionado: nave necesaria para un número de gallinas ─────────────────
+
+export interface DimensionadoRequest {
+  tipo_zona: TipoZona;
+  sistema: Sistema;
+  gallinas: number;
+  /** Aviario: null = la altura mínima de los niveles estudiados */
+  altura_nave_cm?: number | null;
+  niveles?: number | null;
+  slot_izq_m?: number;
+  slot_der_m?: number;
+  paso_izq_m?: number;
+  paso_der_m?: number;
+  local_dentro?: boolean;
+  libre_fondo_m?: number | null;
+}
+
+export interface OpcionNave {
+  titulo: string;
+  ancho_nave_m: number;
+  largo_nave_m: number;
+  altura_nave_cm: number;
+  superficie_m2: number;
+  niveles: number;
+  num_modulos: number;
+  num_filas: number;
+  descripcion_layout: string;
+  gallinas_max: number;
+  gallinas_min: number;
+  limitante: string;
+  recomendada: boolean;
+}
+
+export interface DimensionadoResponse {
+  gallinas: number;
+  opciones: OpcionNave[];
+  motivo: string;
+  notas: string[];
+}
+
+export async function pedirDimensionado(req: DimensionadoRequest): Promise<DimensionadoResponse> {
+  const backendUrl = process.env.BACKEND_URL ?? "http://localhost:8000";
+  const res = await fetch(`${backendUrl}/dimensionar`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+  if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+  return res.json();
+}
+
 // ── Ficha técnica (medidas y equipamiento por módulo) ───────────────────────
 
 export interface NivelAviario {

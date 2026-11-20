@@ -24,7 +24,7 @@ jobs:
       - name: Tests de cálculo
         run: |
           pip install -r backend/requirements.txt pytest
-          python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py -q
+          python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py test_dimensionado.py -q
 
       - name: Construir imágenes
         run: docker compose build

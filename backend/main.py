@@ -14,6 +14,7 @@ from fastapi.responses import Response
 
 from agentes.aforo import AforoRequest, AforoResultado, calcular_aforo
 from agentes.estudio import EstudioRequest, EstudioResponse, estudiar_nave
+from agentes.dimensionado import DimensionadoRequest, DimensionadoResponse, dimensionar_nave
 from agentes.plano_agent import LayoutConfig, LayoutConfigResponse, generar_desde_config
 from agentes.dxf_nidal import generar_dxf_nidal
 from agentes.ficha import (FichaRespuesta, FichaTecnica, aplicar_ficha, cargar_ficha,
@@ -46,6 +47,12 @@ app.add_middleware(
 def estudio(request: EstudioRequest):
     """Estudio técnico de nave con el módulo ya elegido."""
     return estudiar_nave(request)
+
+
+@app.post("/dimensionar", response_model=DimensionadoResponse)
+def dimensionar(request: DimensionadoRequest):
+    """Naves posibles (ancho × largo mínimo) para alojar un número de gallinas."""
+    return dimensionar_nave(request)
 
 
 @app.post("/aforo-medido", response_model=AforoResultado)

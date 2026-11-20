@@ -2,13 +2,17 @@
 
 import { useEffect, useRef, useState } from "react";
 import { flushSync } from "react-dom";
-import { ArrowLeft, ArrowRight, Check, Download, Layers, Minus, Plus, Printer, Rows3, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, Layers, Minus, Plus, Printer, Rows3, Ruler, X } from "lucide-react";
 import Link from "next/link";
 import gsap from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import {
   pedirEstudio,
+  pedirDimensionado,
   obtenerFicha,
+  type DimensionadoRequest,
+  type DimensionadoResponse,
+  type OpcionNave,
   type FichaTecnica,
   type EstudioResponse,
   type EstudioRequest,
@@ -227,6 +231,12 @@ export default function EstudioPage() {
   // Datos del informe: no afectan al cálculo, solo a la portada, el pie y el cajetín del plano
   const [informe, setInforme] = useState<DatosInforme>(INFORME_VACIO);
   const [emitido, setEmitido] = useState<Date | null>(null);
+  // Dimensionado: naves posibles para un número de gallinas. `clave` es la
+  // petición con la que se calcularon, para no mostrarlas si cambia la configuración.
+  const [gallinasObjetivo, setGallinasObjetivo] = useState("");
+  const [dimensionado, setDimensionado] = useState<{ clave: string; data: DimensionadoResponse } | null>(null);
+  const [dimCargando, setDimCargando] = useState(false);
+  const [dimError, setDimError] = useState<string | null>(null);
   const esCliente = version === "cliente";
   const resultadoRef = useRef<HTMLDivElement>(null);
 
@@ -333,6 +343,52 @@ export default function EstudioPage() {
       reparto: esNidal ? "filas" : reparto,
       ...overrides,
     };
+  }
+
+  // Lo que condiciona la nave necesaria: sistema, niveles y la configuración del nidal
+  const gallinasPedidas = Math.round(Number(gallinasObjetivo));
+  const peticionDim: DimensionadoRequest | null = zona && gallinasPedidas > 0 ? {
+    tipo_zona: zona,
+    sistema: form.sistema,
+    gallinas: gallinasPedidas,
+    altura_nave_cm: !esNidal && altura > 0 ? altura : null,
+    niveles: !esNidal && form.niveles !== "auto" ? parseInt(form.niveles) : null,
+    slot_izq_m: form.slotIzq,
+    slot_der_m: form.slotDer,
+    paso_izq_m: pasoIzqM,
+    paso_der_m: pasoDerM,
+    local_dentro: esNidal && form.localDentro,
+    libre_fondo_m: esNidal && form.libreFondo !== "" ? libreFondoM : null,
+  } : null;
+  const claveDim = peticionDim ? JSON.stringify(peticionDim) : "";
+  const dimVigente = dimensionado && dimensionado.clave === claveDim ? dimensionado.data : null;
+  const dimDesfasado = !!dimensionado && !dimVigente;
+
+  async function calcularDimensiones() {
+    if (!peticionDim || dimCargando) return;
+    setDimCargando(true);
+    setDimError(null);
+    try {
+      setDimensionado({ clave: claveDim, data: await pedirDimensionado(peticionDim) });
+    } catch {
+      setDimError("No se pudo calcular la nave necesaria. Inténtalo de nuevo.");
+    }
+    setDimCargando(false);
+  }
+
+  // Pasa la nave propuesta al formulario y la estudia; el nidal necesita además la altura
+  function usarOpcion(o: OpcionNave) {
+    const alturaNave = altura > 0 ? altura : esNidal ? 0 : o.altura_nave_cm;
+    setForm((f) => ({
+      ...f, ancho: String(o.ancho_nave_m), largo: String(o.largo_nave_m),
+      altura: alturaNave > 0 ? String(alturaNave) : f.altura,
+    }));
+    if (alturaNave > 0 && !slotsInvalidos && !libreCorto) {
+      setReparto("modulos");
+      calcular({ ancho_nave_m: o.ancho_nave_m, largo_nave_m: o.largo_nave_m, altura_nave_cm: alturaNave, reparto: "modulos" });
+    } else {
+      document.getElementById("e-altura")?.focus();
+    }
   }
 
   function configPlano(r: EstudioResponse) {
@@ -475,6 +531,7 @@ export default function EstudioPage() {
 
   function reiniciar() {
     setZona(null); setForm(FORM_INICIAL); setRes(null); setSvg(""); setInforme(INFORME_VACIO); setReparto("modulos");
+    setGallinasObjetivo(""); setDimensionado(null); setDimError(null);
     setError(null); setPaso("modulo");
   }
 
@@ -702,6 +759,95 @@ export default function EstudioPage() {
                   Superficie de nave: <strong>{superficie.toLocaleString("es-ES", { maximumFractionDigits: 1 })} m²</strong>
                 </p>
               )}
+
+              {/* ── Dimensionado: qué nave hace falta para un número de gallinas ── */}
+              <div className={PANEL}>
+                <div className={PANEL_BODY}>
+                  <div className="flex items-start gap-4">
+                    <span className="inline-flex size-10 shrink-0 items-center justify-center rounded-field bg-primary/10 text-primary" aria-hidden="true">
+                      <Ruler size={ICON_SM + 4} strokeWidth={ICON_STROKE} />
+                    </span>
+                    <div className="min-w-0">
+                      <div className={PANEL_TITLE}>¿Aún no hay nave? Calcula las medidas</div>
+                      <p className={HINT}>
+                        Indica cuántas gallinas quiere alojar el cliente y te propongo naves de ancho × largo mínimo que
+                        cumplen toda la normativa, con el sistema{esNidal ? ", los slots y el reparto a lo largo" : " y los niveles"} de
+                        este formulario.
+                      </p>
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex flex-wrap items-end gap-4">
+                    <div className={`${FIELD} w-full sm:w-56`}>
+                      <label className={LABEL} htmlFor="e-gallinas">Gallinas a alojar</label>
+                      <div className={INPUT_UNIT}>
+                        <input id="e-gallinas" type="number" className={INPUT_IN}
+                          min={1} step="1" placeholder="10000" value={gallinasObjetivo}
+                          onChange={(e) => setGallinasObjetivo(e.target.value)}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); calcularDimensiones(); } }} />
+                        <span className={UNIT}>gallinas</span>
+                      </div>
+                    </div>
+                    <button type="button" className={BTN_GHOST} onClick={calcularDimensiones}
+                      disabled={!peticionDim || dimCargando || slotsInvalidos}>
+                      {dimCargando ? <span className="loading loading-spinner loading-sm" aria-hidden="true" /> : (
+                        <Ruler size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                      )}
+                      {dimCargando ? "Calculando…" : "Calcular nave necesaria"}
+                    </button>
+                  </div>
+
+                  {dimError && <div role="alert" className={`${ERR} mt-4 mb-0`}>{dimError}</div>}
+                  {dimDesfasado && !dimCargando && (
+                    <p className={`${HINT} mt-4`} role="status">
+                      Has cambiado las gallinas o la configuración: vuelve a calcular la nave necesaria.
+                    </p>
+                  )}
+                  {dimVigente?.motivo && <div role="alert" className="alert alert-warning alert-soft mt-4">{dimVigente.motivo}</div>}
+
+                  {dimVigente && dimVigente.opciones.length > 0 && (
+                    <>
+                      <div className="mt-6 grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-4" aria-live="polite">
+                        {dimVigente.opciones.map((o, i) => (
+                          <div key={`${o.ancho_nave_m}x${o.largo_nave_m}`}
+                            className={`card card-border est-anim bg-base-100 transition duration-200 hover:-translate-y-0.5 hover:shadow-md ${
+                              o.recomendada ? "border-2 border-success" : ""}`}
+                            style={{ animationDelay: `${i * 60}ms` }}>
+                            <div className="card-body gap-1 p-5">
+                              <div className="flex flex-wrap items-center justify-between gap-2">
+                                <span className="font-display text-xs font-semibold uppercase tracking-wider text-secondary">{o.titulo}</span>
+                                {o.recomendada && <span className="badge badge-soft badge-success badge-sm font-semibold">Recomendada</span>}
+                              </div>
+                              <div className="mt-1 font-display text-2xl font-semibold tracking-tight text-primary tabular-nums">
+                                {num(o.ancho_nave_m)} × {num(o.largo_nave_m)}<span className="ml-1 font-sans text-sm font-medium text-base-content/70">m</span>
+                              </div>
+                              <div className="text-sm tabular-nums text-base-content/70">
+                                {num(o.superficie_m2)} m² · {o.descripcion_layout || `${o.num_modulos} módulos`}
+                              </div>
+                              {!esNidal && (
+                                <div className="text-sm tabular-nums text-base-content/70">
+                                  {o.niveles} niveles · altura ≥ {num(o.altura_nave_cm)} cm
+                                </div>
+                              )}
+                              <div className="mt-2 text-sm">
+                                <strong className="tabular-nums">{miles(o.gallinas_max)}</strong> gallinas de capacidad
+                                <span className="block text-xs text-base-content/70">Limita: {nombreLimitante(o.limitante)}</span>
+                              </div>
+                              <button type="button" className="btn btn-sm btn-primary mt-3 font-display" onClick={() => usarOpcion(o)}>
+                                Usar estas medidas
+                                <ArrowRight size={ICON_SM} strokeWidth={ICON_STROKE} aria-hidden="true" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                      <ul className={`${HINT} mt-4 list-disc space-y-1 pl-5`}>
+                        {dimVigente.notas.map((n) => <li key={n}>{n}</li>)}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              </div>
 
               {/* Opcional: si no se rellena, el estudio usa el equipamiento por módulo de la ficha técnica */}
               <details className="collapse collapse-arrow mt-8 border border-base-300 bg-base-100 shadow-sm">

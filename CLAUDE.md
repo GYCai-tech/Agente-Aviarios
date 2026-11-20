@@ -109,6 +109,7 @@ Las zonas de equipos de los extremos no cuentan ni para densidad ni para yacija.
 | Endpoint | Método | Descripción |
 |---|---|---|
 | `/estudio` | POST | Estudio técnico de la nave con el módulo elegido |
+| `/dimensionar` | POST | Naves posibles (ancho × largo mínimo) para alojar X gallinas |
 | `/aforo-medido` | POST | Aforo a partir de equipamiento medido |
 | `/plano-config` | POST | Plano SVG + métricas a partir de una configuración |
 | `/plano-nidal-dxf` | POST | DXF editable del nidal centrado |
@@ -137,6 +138,7 @@ backend/
 └── agentes/
     ├── estudio.py            # Motor de cálculo; constantes de producto = valores de fábrica de la ficha
     ├── ficha.py              # Ficha técnica: carga/guarda backend/datos/ficha_tecnica.json y la aplica
+    ├── dimensionado.py       # Nave necesaria para X gallinas: largo mínimo por ancho, vía estudiar_nave
     ├── aforo.py              # Aforo por equipamiento medido
     ├── plano_agent.py        # Generación del plano SVG
     └── dxf_nidal.py          # Exportación DXF del nidal
@@ -144,9 +146,10 @@ backend/
 test_calculos_capacidad.py    # Regresión de aforo y coherencia estudio ↔ plano
 test_nidal_calculo_modelo.py  # Modelo de cálculo del nidal
 test_ficha_tecnica.py         # La ficha editada gobierna estudio y plano
+test_dimensionado.py          # Cada nave propuesta aloja las gallinas y es la más corta
 ```
 
-Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py`
+Tests: `python -m pytest test_calculos_capacidad.py test_nidal_calculo_modelo.py test_ficha_tecnica.py test_dimensionado.py`
 
 ### Despliegue
 
